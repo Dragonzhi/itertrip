@@ -1,0 +1,36 @@
+# ---------- Node / 测试依赖 ----------
+node_modules/
+package.json
+package-lock.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---------- 敏感信息（API key / 密钥）----------
+.env
+.env.*
+*.key
+.secrets
+config.local.json
+
+# ---------- 构建产物 ----------
+# examples/ 下的 HTML 是已提交的展示示例，保留在 git 里；
+# 跑测试时临时生成的产物一律放 test-artifacts/，不提交
+test-artifacts/
+*.generated.html
+/tmp/
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# ---------- 提交前检查 ----------
+# 用下面命令确认没有 key 混进来再 push：
+#   git grep -i "mcp_\|bearer\|api_key" -- . ':!*.md'
