@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import export, plan
+from .api import export, geocode, plan, search
 
 app = FastAPI(
     title="IterTrip API",
@@ -20,6 +20,8 @@ app.add_middleware(
 )
 
 app.include_router(plan.router)
+app.include_router(geocode.router)
+app.include_router(search.router)
 app.include_router(export.router)
 
 

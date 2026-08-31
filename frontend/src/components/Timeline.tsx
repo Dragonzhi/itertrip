@@ -164,7 +164,7 @@ export default function Timeline({
                 })}
 
                 {day.hotel && day.hotel.name && (
-                  <HotelCard hotel={day.hotel} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} />
+                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} />
                 )}
               </div>
             )}

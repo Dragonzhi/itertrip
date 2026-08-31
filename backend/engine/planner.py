@@ -15,6 +15,7 @@ import os
 
 import httpx
 
+from .coordinates import geocode
 from .schema import RouteJSON
 
 SYSTEM_PROMPT = """你是专业旅行规划师。根据用户需求生成行程 JSON。
@@ -166,11 +167,45 @@ def plan_mock(req: dict) -> RouteJSON:
     return RouteJSON.model_validate(route)
 
 
+async def _enrich_coordinates(route: RouteJSON, destination: str) -> int:
+    """对缺失/无效坐标的地点做补全（Phase 4）；返回补全个数。补不到的由前端低置信度提示。"""
+    filled = 0
+    for day in route.days:
+        for p in day.places:
+            if p.lat is not None and p.lng is not None and (p.lat != 0 or p.lng != 0):
+                continue
+            result = await geocode(p.name, destination)
+            if result["lat"] is not None:
+                p.lat = result["lat"]
+                p.lng = result["lng"]
+                p.note = (p.note or "") + ("【坐标待确认】" if result["confidence"] != "high" else "")
+                filled += 1
+        h = day.hotel
+        if h is not None and (h.lat == 0 and h.lng == 0):
+            result = await geocode(h.name, destination)
+            if result["lat"] is not None:
+                h.lat = result["lat"]
+                h.lng = result["lng"]
+    return filled
+
+
 async def plan(req: dict) -> tuple[RouteJSON, str]:
     """统一入口。返回 (route, source)，source ∈ {"llm", "mock"}。"""
     if _llm_config() is not None:
         try:
-            return await plan_with_llm(req), "llm"
+            route = await plan_with_llm(req)
+            source = "llm"
         except Exception as e:  # 降级不中断服务
             print(f"[planner] LLM 规划失败，降级 mock: {e}")
-    return plan_mock(req), "mock"
+            route = plan_mock(req)
+            source = "mock"
+    else:
+        route = plan_mock(req)
+        source = "mock"
+    try:
+        filled = await _enrich_coordinates(route, route.trip.destination)
+        if filled:
+            print(f"[planner] 坐标补全 {filled} 个地点")
+    except Exception as e:
+        print(f"[planner] 坐标补全失败（忽略）: {e}")
+    return route, source

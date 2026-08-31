@@ -31,3 +31,31 @@ export async function exportHtml(route: RouteJSON, filename: string): Promise<vo
   a.click();
   URL.revokeObjectURL(url);
 }
+/** 单点 geocode（编辑器「按名称找位置」用）。 */
+export async function geocode(name: string, city: string): Promise<{ lat: number | null; lng: number | null; confidence: string }> {
+  const resp = await fetch("/api/geocode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, city }),
+  });
+  if (!resp.ok) throw new Error("geocode 失败 (" + resp.status + ")");
+  return resp.json();
+}
+
+/** 酒店价格搜索（可选能力；未配置数据源时返回提示）。 */
+export interface SearchResult {
+  prices: { platform: string; price: number; breakfast?: boolean; note?: string }[];
+  bookingUrl?: string;
+  source: string;
+  note: string;
+}
+
+export async function searchHotel(hotel: string, city: string, checkIn = "", checkOut = ""): Promise<SearchResult> {
+  const resp = await fetch("/api/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hotel, city, checkIn, checkOut }),
+  });
+  if (!resp.ok) throw new Error("search 失败 (" + resp.status + ")");
+  return resp.json();
+}
