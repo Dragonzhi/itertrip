@@ -1,78 +1,67 @@
-# 🧭 IterTrip · Web
+# 🧭 IterTrip
 
 > 拉丁语 *iter*「道路」，Itinerary 行程单的词源。
-> **AI 旅行规划 Web 应用**（开发中）
+> **把你从任何地方看到的旅游攻略，变成一张可以动手改、可以带走的地图。**
 
-IterTrip 是一个 AI 驱动的旅行规划系统。输入目的地，系统自动规划路线、补全坐标、生成可交互地图。支持拖拽编辑、酒店比价、自包含 HTML 导出。
+IterTrip 是一个独立的 AI 旅行攻略落地应用：把小红书/公众号/截图里的碎片攻略贴进对话框，
+AI 提取成结构化路线，在地图上直观呈现；支持对话式修改与手动编辑（拖拽/跨天/改点/撤销），
+一键导出自包含 HTML 随时随地打开。
 
-> 📢 **Hana Agent Skill 版本**：请访问 [github.com/Dragonzhi/itertrip-skill](https://github.com/Dragonzhi/itertrip-skill)
-
-[English](./README.en.md) · [规划文档](./WEB_APP_PLAN.md) · [设计文档](./DESIGN.md)
-
----
+[English](./README.en.md) · [设计文档](./DESIGN.md) · [部署指南](./DEPLOY.md)
 
 ## 为什么需要它
 
-国内 OTA（携程/美团/飞猪）不开放酒店价格聚合 API，同酒店跨平台差价可达 3 倍，但**没有任何中立比价工具**——大厂没动机做打自己脸的比价，独立产品爬数据又违反 ToS。
+刷攻略的痛点从来不是「没有攻略」，而是**攻略落地**：十张图里藏着三个店名、两个「导航搜 XX 就行」，
+你得边刷边收藏、开地图逐个搜、手动排顺序——最后发现动线是乱的。
 
-IterTrip 的解法：**价格数据交给用户**。用户亲手把各平台报价喂给 AI，AI 负责整理、汇总、比价。数据合法、结果中立、大厂抄不了。
+IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**。不生产攻略，只做攻略的落地工具。
 
-## 当前状态
+## 功能
 
-项目已从自包含 HTML 单文件转型为**前后端分离架构**，处于积极开发中：
+- 🗺 **地图直观呈现**：按天色板图钉、有向路线（段中点箭头）、点击联动高亮
+- 💬 **对话式规划**：说「想去成都 3 天」或直接贴一段攻略文字/截图
+- ✋ **双轨修改**：对话改（「博物馆挪到第一天下午」）+ 手动改（拖拽排序/跨天移动/编辑表单/地图改点/撤销重做）
+- 🏨 **酒店比价卡**：价格由用户手动提供（中立，不抓数据），最低价自动高亮
+- 📦 **自包含导出**：可编辑 HTML 双击即开，分享即产品体验
+- 🔑 **BYOK**：设置面板填自己的 LLM key（OpenAI 兼容格式），本地存储不出本机
 
-| 组件 | 状态 | 说明 |
-|------|------|------|
-| 后端（FastAPI） | 🟡 骨架 | `backend/` 目录已就绪，路由/引擎待实现 |
-| 前端（React + Vite） | 🟡 骨架 | `frontend/` 目录已就绪，页面/组件待实现 |
-| 规划引擎 | ⏳ 待实现 | LLM 规划 → 坐标补全 → HTML 构建 |
-| 交互编辑器 | 🔄 待移植 | 旧版 v0.5 功能将移植到 React 版本 |
-| 自包含 HTML 导出 | 🔄 待实现 | 后端 `POST /api/export` 封装 |
+## 快速开始
 
-## 架构概览
-
-```
-浏览器 (React)  ──►  API (FastAPI)  ──►  规划引擎
-    │                                        │
-    │                                        ▼
-    └───────────────────  LLM + 搜索 + 坐标补全
+```powershell
+# Windows：一条命令（首次自动构建前端 + 创建 venv）
+powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-详细规划见 [WEB_APP_PLAN.md](./WEB_APP_PLAN.md)。
+打开 http://127.0.0.1:8787 → 设置里填入你的 LLM API key（OpenAI 兼容，推荐多模态模型）→ 开始对话。
 
-## 地图瓦片
+无 key 也可用：内置 mock 路由器供体验完整流程。
 
-默认用**高德公共栅格瓦片**（无需 key，国内加载快、中文标注，开箱即用），地图左上角图层面板可随时切回 OSM 标准。想用高德**官方 Web JS API**（带自己的 key）时：
+## 技术栈
 
-1. 到 [高德开放平台](https://lbs.amap.com/) 注册，申请 **Web 端 JS API** key
-2. 在 `route_map.html` 模板里把瓦片源换成官方高德（注释处有指引）
-3. 网络不佳时，也可把 Leaflet CDN 从 jsDelivr 换成 BootCDN
-
-## 地图缩放
-
-缩放级别限制在 **3–18**：高德公共瓦片从 z3 起提供内容，更小级别没有瓦片（会白屏），因此直接锁定下限，最小级别即可总览全国。
+FastAPI（规划引擎 + 静态托管）· React 18 + Vite + Tailwind · Leaflet（高德公共瓦片，OSM 兜底）
+· pydantic route JSON 契约 · 零账号零云依赖，本地优先
 
 ## 目录结构
 
 ```
 itertrip/
-├── backend/              # FastAPI 后端
-│   ├── api/              # API 路由（plan / geocode / search / export）
-│   └── engine/           # 规划引擎（planner / coordinates / builder）
-├── frontend/             # React + Vite 前端
-│   └── src/              # 页面与组件
-├── DESIGN.md             # 设计文档
-├── WEB_APP_PLAN.md       # 转型规划文档
-├── README.md             # 本文件
-├── README.en.md          # English README
-└── LICENSE               # MIT
+├── backend/           # FastAPI：规划引擎 / geocode / 导出 / SPA 托管
+│   ├── api/           # plan / geocode / search / export
+│   ├── engine/        # planner / coordinates / builder / schema
+│   └── templates/     # 自包含 HTML 导出模板
+├── frontend/          # React + Vite + Tailwind
+│   └── src/           # pages / components / hooks / mapCore
+├── start.ps1          # 一键单进程启动（本地方案）
+├── DESIGN.md          # 设计文档（定位/架构/路线图）
+├── DEPLOY.md          # 部署指南（本地/云）
+└── LICENSE            # MIT
 ```
 
 ## 边界
 
-- 不做实时比价、收藏夹、预订、账号
-- 不抓取任何平台价格，不依赖付费 API
-- 价格有时效性，产出是「当场决策」工具，不是长期数据库
+- 不做账号、不做云同步、不抓取任何平台价格
+- 链接解析为 best-effort 可选能力；粘贴文字/截图是主路径
+- 产出的路线可编辑、可导出——工具不锁定你的数据
 
 ## License
 
