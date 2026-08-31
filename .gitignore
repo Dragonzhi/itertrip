@@ -1,7 +1,6 @@
 # ---------- Node / 测试依赖 ----------
 node_modules/
-package.json
-package-lock.json
+dist/
 
 # ---------- Python ----------
 __pycache__/
