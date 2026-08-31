@@ -14,14 +14,6 @@ export function useTripHistory(initial: RouteJSON) {
   // 版本号仅用于让 undo/redo 后触发重渲染（route 引用可能相同形状）
   const [, bump] = useState(0);
 
-  const setRoute = useCallback((updater: (r: RouteJSON) => void) => {
-    setRouteState((prev) => {
-      const next = JSON.parse(JSON.stringify(prev)) as RouteJSON;
-      updater(next);
-      return next;
-    });
-  }, []);
-
   /** 变更完成后调用：当前 route 压入历史。 */
   const pushHistory = useCallback(
     (snapshot: RouteJSON) => {

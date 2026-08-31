@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Place, PlaceType } from "../types/route";
+import type { PlaceType } from "../types/route";
 
 export const PICK_HINT_ADD = "📍 点击地图选择地点位置（Esc 取消）";
 export const PICK_HINT_REPICK = "📍 点击地图为新位置（Esc 取消）";
