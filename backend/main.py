@@ -1,7 +1,17 @@
-"""IterTrip API 入口。启动：uvicorn backend.main:app --reload"""
+"""IterTrip API 入口。
+
+启动：uvicorn backend.main:app --reload
+单进程整站（C-1）：先 `npm run build` 生成 frontend/dist，再启动本服务，
+http://127.0.0.1:8787/ 即完整 Web 应用（API + 前端同源，无 CORS）。
+"""
+
+import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .api import export, geocode, plan, search
 
@@ -11,10 +21,11 @@ app = FastAPI(
     description="AI 旅行规划系统 —— 规划引擎同时服务 Web 前端与 Hana Skill 两个入口",
 )
 
-# 前端本地开发（Vite 默认 5173）与同机联调需要跨域，开发期全放行
+# CORS：生产用 ITERTRIP_CORS_ORIGINS 逗号分隔白名单；未配置时全放行（开发期/开放 API）
+_cors = os.environ.get("ITERTRIP_CORS_ORIGINS", "").strip()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in _cors.split(",") if o.strip()] or ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -28,3 +39,24 @@ app.include_router(export.router)
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok", "service": "itertrip-api", "version": "0.1.0"}
+
+
+# ---------------- 单进程整站（C-1）：托管 frontend/dist ----------------
+# 存在 dist 时：/assets 走静态文件，其余非 API 路径回退 index.html（SPA）。
+# 不存在 dist 时：仅 API 模式（开发态，前端走 Vite 5173）。
+_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if _DIST.is_dir() and (_DIST / "index.html").is_file():
+    assets = _DIST / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str):
+        """非 API 路径一律回退 index.html；带扩展名的静态资源找不到时返回 404。"""
+        if full_path.startswith("api/"):
+            return FileResponse(_DIST / "index.html", status_code=404)  # 保险：API 404 不回 SPA
+        candidate = _DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_DIST / "index.html")

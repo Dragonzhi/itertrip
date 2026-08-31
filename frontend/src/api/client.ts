@@ -1,8 +1,13 @@
 import type { PlanRequest, RouteJSON } from "../types/route";
 
+/**
+ * API 基地址：开发留空走 Vite 代理；生产构建时注入 VITE_API_BASE（如 https://itertrip-api.up.railway.app）。
+ */
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+
 /** 规划：返回 route JSON；来源（llm/mock）通过响应头带出。 */
 export async function planTrip(req: PlanRequest): Promise<{ route: RouteJSON; source: string }> {
-  const resp = await fetch("/api/plan", {
+  const resp = await fetch(API_BASE + "/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -17,7 +22,7 @@ export async function planTrip(req: PlanRequest): Promise<{ route: RouteJSON; so
 
 /** 导出：把 route JSON 提交给后端换取自包含 HTML 并触发下载。 */
 export async function exportHtml(route: RouteJSON, filename: string): Promise<void> {
-  const resp = await fetch("/api/export", {
+  const resp = await fetch(API_BASE + "/api/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ route, filename }),
@@ -33,7 +38,7 @@ export async function exportHtml(route: RouteJSON, filename: string): Promise<vo
 }
 /** 单点 geocode（编辑器「按名称找位置」用）。 */
 export async function geocode(name: string, city: string): Promise<{ lat: number | null; lng: number | null; confidence: string }> {
-  const resp = await fetch("/api/geocode", {
+  const resp = await fetch(API_BASE + "/api/geocode", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, city }),
@@ -51,7 +56,7 @@ export interface SearchResult {
 }
 
 export async function searchHotel(hotel: string, city: string, checkIn = "", checkOut = ""): Promise<SearchResult> {
-  const resp = await fetch("/api/search", {
+  const resp = await fetch(API_BASE + "/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hotel, city, checkIn, checkOut }),

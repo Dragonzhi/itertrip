@@ -1,6 +1,6 @@
 # IterTrip · 从 Skill 到 Web 应用转型规划
 
-> 2026-08-30 · v0.3 · 规划文档（已同步 GitHub 实际代码状态）
+> 2026-08-31 · v0.4 · 规划文档（Phase 1-4 已实现；Phase 5 自动化部分就绪，见 DEPLOY.md）
 
 ---
 
@@ -323,30 +323,30 @@ backend 内部调用 `engine/builder.py`（即 `build_html.py` 的封装）。
 
 ## 10. 开发阶段
 
-> **当前状态**：Phase 3（交互编辑）已在自包含 HTML 模板中完成并可独立使用。
-> 后续 Phase 的优先级取决于是否决定启动前后端分离转型。
+> **当前状态**：Phase 1-4 全部实现并通过自动化验证（smoke 20/20；Edge 探针 13/13、18/18、4/4）。
+> Phase 5 剩余为人工账号操作，步骤见 DEPLOY.md。
 
-### Phase 1：后端先跑（MVP，1-2 天）
+### Phase 1：后端先跑（✅ 已完成 · 实测 smoke 20/20）
 
-- [ ] FastAPI 脚手架 + 路由注册
-- [ ] `engine/planner.py`：调用 LLM 生成行程 JSON（先把坐标硬编码）
-- [ ] `engine/builder.py`：封装 `build_html.py` 为可调用函数
-- [ ] `POST /api/plan` 返回 route JSON
-- [ ] `POST /api/export` 生成 HTML 下载
-- [ ] 验证：curl 调 API 能拿到完整行程
+- [x] FastAPI 脚手架 + 路由注册
+- [x] `engine/planner.py`：调用 LLM 生成行程 JSON（mock 降级兜底，无 key 也可联调）
+- [x] `engine/builder.py`：封装 build_html 为可调用函数（模板自 git 历史恢复至 backend/templates/）
+- [x] `POST /api/plan` 返回 route JSON
+- [x] `POST /api/export` 生成 HTML 下载
+- [x] 验证：API 冒烟测试全通过，导出 HTML 经 Edge 探针 6/6 确认可打开渲染
 
-### Phase 2：Web 前端（2-3 天）
+### Phase 2：Web 前端（✅ 已完成 · Edge 探针 13/13）
 
-- [ ] React + Vite + Tailwind 脚手架
-- [ ] 首页：输入表单
-- [ ] 规划页：Leaflet 地图 + 时间线面板（移植现有模板逻辑）
-- [ ] 比价表展示
-- [ ] 双向联动（点击标记 ↔ 高亮条目）
-- [ ] 调用 `POST /api/plan` 联调
+- [x] React 18 + Vite + Tailwind 脚手架（frontend/）
+- [x] 首页：输入表单（目的地/天数/日期/人数/预算/风格/约束）
+- [x] 规划页：Leaflet 地图 + 时间线面板（几何逻辑逐行移植，mapCore.ts 纯函数可测）
+- [x] 比价表展示（最低价自动高亮）
+- [x] 双向联动（点击标记 ↔ 高亮条目 + 当日流动动画）
+- [x] 调用 `POST /api/plan` 联调（Vite 代理 /api → 8787）
 
-### Phase 3：交互编辑（已完成 · v0.5）
+### Phase 3：交互编辑（✅ React 移植完成 · 探针 18/18 + DnD 4/4）
 
-> 已在 `templates/route_map.html` 中实现，浏览器打开即用，无需后端。
+> v0.5 已在旧版自包含模板中实现（见 git 历史与 DESIGN §7.7）；现已完整移植到 React 前端。
 
 - [x] 拖拽排序 + 跨天移动（jQuery UI Sortable，双向联动地图）
 - [x] 撤销/重做（快照模型，上限 50 帧）
@@ -356,21 +356,26 @@ backend 内部调用 `engine/builder.py`（即 `build_html.py` 的封装）。
 - [x] 编辑已有地点：全部字段修改 + 地图重选位置
 - [x] 空修改检测：保存前逐字段比对，无变化不进历史
 - [x] 导出 JSON / HTML
-- [x] 移动端适配：触屏编辑按钮常显，375px 窗口验证通过
-- [x] 测试覆盖：jsdom 30 条断言 + Edge 真机探针 23/23 通过
+- [x] 设计红线全移植：同天拖拽索引补偿 / 空修改不进历史 / repick 点回原位不进历史 / 无坐标不写 0,0 / Esc 优先级
+- [x] 测试覆盖：Edge 真机探针 18/18 + 拖拽专项 4/4（历史栈/表单/选点/repick 全链路）
 
-### Phase 4：坐标补全 + 搜索（1 天）
+### Phase 4：坐标补全 + 搜索（✅ 已完成 · smoke 20/20）
 
-- [ ] `engine/coordinates.py`：LLM 或 web_search 补坐标
-- [ ] `POST /api/geocode`
-- [ ] 可选：`POST /api/search` 调用 RollingGo 或搜索 API
+- [x] `engine/coordinates.py`：LLM 知识 → 搜索兜底 → 城市中心表 三级降级 + confidence 标记
+- [x] `POST /api/geocode`
+- [x] 可选：`POST /api/search`（RollingGo / 搜索抓价，未配源时优雅降级为手动报价提示）
+- [x] 前端集成：HotelCard「搜索网络报价」按钮 + 低置信「坐标待确认」标注
 
-### Phase 5：Skill 转型 + 部署（1 天）
+### Phase 5：Skill 转型 + 部署（⚙️ 自动化部分完成 · 账号操作待人工）
 
-- [ ] 重写 `SKILL.md` 为薄客户端版
-- [ ] 部署后端（Railway / fly.io）
-- [ ] 部署前端（Cloudflare Pages / Vercel）
-- [ ] 修改 Hana itertrip Agent 的 config，指向部署后的 API
+- [x] 重写 `SKILL.md` 为薄客户端版（需求→API→展示→比价→交付，含错误处理与 mock 告知义务）
+- [x] 部署配置文件：`Dockerfile` + `railway.json`（healthcheck）+ `Procfile` + `.dockerignore`
+- [x] 前端 `vercel.json` + `VITE_API_BASE` 环境变量化 + `.env.example`
+- [x] 后端 CORS 白名单环境变量化（`ITERTRIP_CORS_ORIGINS`）
+- [x] `DEPLOY.md`：Railway / Vercel / Cloudflare 逐步指引 + 环境变量汇总
+- [ ] （人工）Railway 创建项目 + 配置 secrets + 绑定域名
+- [ ] （人工）Vercel 导入 frontend + 配 VITE_API_BASE
+- [ ] （人工）Hana Agent config 指向部署后的 API
 
 ---
 
