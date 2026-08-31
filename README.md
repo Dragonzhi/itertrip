@@ -1,11 +1,13 @@
-# 🧭 IterTrip
+# 🧭 IterTrip · Web
 
 > 拉丁语 *iter*「道路」，Itinerary 行程单的词源。
-> **AI 规划路线，用户喂价格，产出地图。**
+> **AI 旅行规划 Web 应用。**
 
-一个开源的旅行规划 Agent Skill：告诉 AI 想去哪儿玩，它生成含景点、酒店、交通的行程，请你手动贴出各平台酒店报价，最终产出一份**可分享的 HTML 地图路线图**（Leaflet 地图 + 每日时间线 + 酒店比价表）。
+IterTrip 的 **Web 应用版本**（开发中）。输入目的地，AI 自动规划路线、补全坐标、生成可交互地图。支持拖拽编辑、酒店比价、自包含 HTML 导出。
 
-[English](./README.en.md) · [设计文档](./DESIGN.md)
+> 📢 **Hana Agent Skill 版本**：请访问 [github.com/Dragonzhi/itertrip-skill](https://github.com/Dragonzhi/itertrip-skill)
+
+[English](./README.en.md) · [规划文档](./WEB_APP_PLAN.md) · [设计文档](./DESIGN.md)
 
 ## 为什么需要它
 

@@ -1,11 +1,13 @@
-# 🧭 IterTrip
+# 🧭 IterTrip · Web
 
 > Latin *iter* — "road". The root of the word *itinerary*.
-> **AI plans the route, you feed the prices, out comes a map.**
+> **AI travel planning web application.**
 
-An open-source travel-planning Agent Skill: tell an AI agent where you want to go, it drafts an itinerary with sights, hotels and transit, asks you to paste in hotel quotes from each booking platform, and produces a **shareable HTML route map** — an interactive Leaflet map with a day-by-day timeline and a hotel price-comparison table.
+IterTrip's **Web application edition** (under development). Tell the AI where you want to go, it plans the route, geocodes coordinates, and generates an interactive map. Supports drag-and-drop editing, hotel price comparison, and self-contained HTML export.
 
-[中文](./README.md) · [Design doc](./DESIGN.md)
+> 📢 **Hana Agent Skill edition**: visit [github.com/Dragonzhi/itertrip-skill](https://github.com/Dragonzhi/itertrip-skill)
+
+[中文](./README.md) · [Planning doc](./WEB_APP_PLAN.md) · [Design doc](./DESIGN.md)
 
 ## Why it exists
 
