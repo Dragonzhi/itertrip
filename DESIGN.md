@@ -1,11 +1,13 @@
-# IterTrip Skill 设计文档
+# IterTrip · Web 应用设计文档
 
-> 状态：M1 完成，进入实现 · 版本：v0.2 · 作者：ZLOONG × Hanako · 2026-08-29
+> 状态：Web 应用骨架就绪，积极开发中 · 版本：v0.3 · 作者：ZLOONG · 2026-08-31
 > 仓库名：**IterTrip**（拉丁语 iter「道路」，Itinerary 行程单的词源）
 
 ## 1. 一句话定位
 
-一个开源的 Agent Skill：用户告诉 AI 想去哪儿玩，AI 生成行程规划，请用户手动补上各平台酒店价格，最终产出一份「地图路线图 + 酒店比价表」的自包含 HTML 交付物。
+一个 AI 驱动的旅行规划 Web 应用：用户输入目的地和天数，系统自动规划路线、补全坐标、生成可分享的交互式地图。支持拖拽编辑、酒店比价、自包含 HTML 导出。
+
+> 同时提供 [Hana Agent Skill 版本](https://github.com/Dragonzhi/itertrip-skill) 作为 Hana 生态的接入点。
 
 ## 2. 背景与问题
 
@@ -33,46 +35,64 @@
 2. **一次性**：当场决策工具，不做收藏夹、不做价格监控
 3. **开箱即用**：零注册、零 API key 即可跑通（地图默认高德公共瓦片，OSM 兜底）
 4. **单文件交付**：产物是一个自包含 HTML，可分享、可打印、手机电脑都能开
-5. **通用格式**：遵循主流 Agent Skill 规范（SKILL.md + frontmatter），Claude Code / Cursor / Codex / Hana 皆可装载
+5. **双入口**：Web 应用为主力，Hana Agent Skill 为 Hana 生态接入点，共享同一套后端
 
-## 4. 核心工作流（写进 SKILL.md）
+## 4. 核心工作流
 
 ```
-【触发】"帮我规划去 XX 的行程" / "想去 XX 玩 N 天"
-   ↓
-① 收集：目的地、天数、日期、预算档位、风格偏好（同行人/节奏）
-   ↓
-② 生成行程初稿：每日安排，含景点、大致时间、交通方式、酒店候选
-   （工具：web_search 查开放时间 / 门票 / 天气）
-   ↓
-③ 输出「比价清单」：针对每家候选酒店列出平台，请用户贴回各平台报价
-   （接受链接 / 截图文字 / 直接口述，LLM 负责结构化）
-   ↓
-④ 汇总为结构化 route JSON（schema 见 §6）
-   ↓
-⑤ 调用 build_html.py 生成自包含 HTML 地图路线图
-   ↓
-⑥ 交付 + 附 AI 综合建议（性价比排序 / 交通合理性 / 天气提醒）
+用户输入（目的地/天数/风格）
+    ↓
+① 前端 POST /api/plan → 后端 LLM 生成行程草稿
+    ↓
+② 坐标补全（LLM 知识 / web_search 兜底，低置信度标记）
+    ↓
+③ 价格注入（可选：用户手动提供 / RollingGo 搜索）
+    ↓
+④ 校验 schema → 返回 route JSON
+    ↓
+⑤ 前端渲染：地图 + 时间线 + 比价表
+    ↓
+⑥ 用户可在编辑器内调整（拖拽 / 编辑 / 新增 / 删除）
+    ↓
+⑦ 导出：自包含 HTML 或 JSON
 ```
 
 **关键交互约束**：喂价一步必须「三步以内」完成，支持直接粘贴分享链接、贴价格截图、口述报价三种方式。
 
 ## 5. 技术选型
 
+### 5.1 后端
+
+| 层 | 选型 | 理由 |
+| --- | --- | --- |
+| 框架 | **FastAPI** (Python 3.12+) | 异步支持好，自动生成 OpenAPI 文档，轻量 |
+| LLM 调用 | **httpx** + 任意 LLM API | 不绑定供应商，兼容 DeepSeek / OpenAI / 本地模型 |
+| 搜索 | **AnySearch** / Tavily 等 | 复用现有 API key |
+| 部署 | **Railway** 或 **fly.io** | 免费额度够用，Serverless 友好 |
+
+### 5.2 前端
+
+| 层 | 选型 | 理由 |
+| --- | --- | --- |
+| 框架 | **React 18** + Vite | 求职标配，轻量 |
+| 地图 | **Leaflet** (react-leaflet) | 与现有模板一致，国内高德瓦片可用 |
+| 样式 | **Tailwind CSS** | 轻量、实用、求职常见 |
+| 部署 | **Cloudflare Pages** 或 **Vercel** | 免费，自动 CI/CD |
+
+### 5.3 地图瓦片
+
 | 项 | 选择 | 理由 |
 | --- | --- | --- |
 | 地图库 | Leaflet 1.9.x | 42KB 轻量、开源、无需 key |
 | 默认瓦片 | 高德公共栅格瓦片（webrd 端点） | 无需 key、国内加载快、中文标注 |
 | 兜底瓦片 | OSM 标准 | 朴素，作 fallback |
-| 可选瓦片 | 高德官方 JS API | 需用户自申请 key（README 说明） |
+| 可选瓦片 | 高德官方 JS API | 需用户自申请 key |
 | ~~Carto Voyager~~ | ~~已弃用~~ | 2024 年起要求 API key 否则打水印 |
-| 构建脚本 | Python 3，标准库 | 零第三方依赖，Agent 环境普遍自带 |
-| HTML 注入方式 | 模板占位符 + `build_html.py` 渲染 | 输出稳定，不依赖 LLM 手写 HTML |
-| CDN | jsDelivr（README 注明国内可换 BootCDN） | 稳定，国内备选已说明 |
+| CDN | jsDelivr（可换 BootCDN） | 稳定，国内备选已说明 |
 
 ## 6. 数据模型：route JSON（核心契约）
 
-LLM 只负责生成结构化 JSON，HTML 统一由脚本渲染。JSON 是 skill 与模板之间的契约，也被设计成可被其他工具消费。
+LLM 只负责生成结构化 JSON，HTML 统一由脚本渲染。JSON 是前后端之间的契约，也被设计成可被其他工具消费。
 
 ```json
 {
@@ -121,93 +141,115 @@ LLM 只负责生成结构化 JSON，HTML 统一由脚本渲染。JSON 是 skill 
 - `place.type`：`attraction` / `food` / `transport` / `other`，决定地图图标
 - `hotel.prices`：至少两家平台才参与比价；`breakfast` 布尔
 - 坐标必须填，否则地图无法定位
-- 允许跨天共享一个酒店（重复引用）；注意当前实现是每天各画一枚酒店标记，共享同一坐标会叠点（后续如需要可按坐标去重）
 
-## 7. HTML 展示设计（route_map.html）
+## 7. 前端架构
 
-### 7.1 布局（已定：全屏地图 + 侧滑面板）
+### 7.1 页面流
 
-- 顶部：行程标题 + 日期 + 预算 + 风格标签（悬浮于地图上方）
-- **地图全屏铺底**，右侧滑出面板（桌面与移动统一此结构）
-- 侧滑面板含每日时间线，按天分组、可折叠；每天含景点列表 + 酒店卡片（内嵌比价表）
-- 面板可收起/展开，收起时地图完全可见；点地图标记可从右侧拉出对应详情
-- 面板左边缘有可拖拽手柄（`role=separator`，鼠标/触摸/键盘可达，`touch-action:none` 不抢地图手势），拖动实时改宽度并在抬手后持久化；宽度上限始终沿用 96px 左上控件带预留。注意地图是全屏铺底、面板只是覆盖层，拖宽度不改地图容器尺寸，所以**故意不调用 `invalidateSize`**——Leaflet 自己监听 window resize，多余的调用只会让视野中心吸附到像素网格（实测 103386.68px→103387px）
+```
+首页 (Index) → 输入目的地/天数/风格 → 点击「开始规划」
+    ↓
+规划页 (Plan) → 地图 + 时间线展示 + 比价表
+    ↓
+编辑页 (Edit) → 拖拽排序 + 跨天移动 + 删除 + 新增地点 + 编辑 + 导出
+```
 
-### 7.2 地图交互
+### 7.2 组件树
 
-- **图标规则（已定）：有 emoji 就用 emoji（🏨 ⛰️ 🍜），没有对应 emoji 的用 SVG 图钉兜底**
-- 酒店用金色 emoji/SVG 标记，景点按天着色
-- 同一天的景点用**有向连线**（polyline）串联：白色描边 + 每日主色，每段中点箭头标注行进方向；激活当日景点时该日线播放流动虚线动画（prefers-reduced-motion 时静止）
-- 箭头角度实现红线：`atan2` 的 dx/dy 必须同为弧度尺度（Δ经度×π/180 对齐 Mercator `mercY`），且跨 180° 经线取最短方向；中点用投影空间中点（mercY 均值反演）而非经纬度均值——测试 `scripts/test_render.js` 以独立投影实现做非循环比对（≤0.5°）
-- 点击地图标记 ↔ 点击时间线条目，双向联动高亮
-- 点击标记弹出详情卡（时间 / 门票 / 交通 / 备注）
-- 缩放级别限制 3–18：高德瓦片从 z3 起提供内容，更小级别为空白，直接锁定下限（见 7.6）
+```
+App
+├── Index（首页 · 输入表单）
+├── Plan（规划结果页）
+│   ├── MapView（Leaflet 地图封装）
+│   ├── Timeline（时间线面板 · 双向联动）
+│   └── HotelCard（比价表）
+└── Edit（交互编辑页）
+    ├── MapView（同上）
+    ├── Timeline（同上 · 可拖拽）
+    ├── Editor（拖拽排序 + 编辑表单）
+    └── Toolbar（撤销/重做/导出）
+```
 
-### 7.3 比价表呈现
+### 7.3 布局与地图交互
 
-- 每家酒店卡片内嵌横向比价表：平台 | 价格 | 含早 | 备注
-- 最低价平台自动高亮 + 打「最低」标签
-- AI 综合建议放在行程末尾，引用具体酒店
+这些设计继承自旧版 v0.5 模板，在 React 版本中延续：
 
-### 7.4 视觉方向
+- **全屏地图 + 右侧滑出面板**，桌面与移动统一
+- 面板可收起/展开，点地图标记从右侧拉出对应详情
+- 面板左边缘可拖拽手柄（`role=separator`，鼠标/触摸/键盘可达）
+- 地图全屏铺底，面板是覆盖层，拖宽度不改地图容器，**故意不调用 `invalidateSize`**
+- **图标规则**：emoji 优先（🏨 ⛰️ 🍜），缺失用 SVG 图钉兜底
+- 酒店金色标记，景点按天着色
+- 同天景点用**有向连线**串联，中点箭头标注方向
+- 缩放级别限制 3–18
+
+### 7.4 编辑器设计
+
+编辑器功能参考旧版 v0.5 模板实现，移植为 React 组件：
+
+- **拖拽重排 & 跨天移动**：HTML5 DnD 或 Sortable 库
+- **撤销/重做**：快照模型历史栈，上限 50 帧
+- **地图点选新增**：点击地图进入选点模式
+- **编辑表单**：新增/编辑统一表单，含时间/交通/门票 `<datalist>` 预设
+- **地图重选位置**：编辑表单中点击「更改位置」→ 选点模式 → 点击地图写回坐标
+- **空修改检测**：保存前逐字段比对，无变化不进历史
+- **导出**：自包含 HTML（调用后端 `POST /api/export`）/ JSON
+
+### 7.5 视觉方向
 
 旅行感配色，非通用蓝白后台风：
 - 底色：暖米白 `#FAF6F0` / 卡片 `#FFFFFF`
 - 主强调：深墨绿 `#1F6B54`
 - 高亮（最低价 / 选中）：暖琥珀金 `#C8903C`
 - 天数色板：珊瑚 `#E07A5F`、琥珀 `#E9B44C`、青绿 `#3D8B8A`、蓝紫 `#6D5B9E`、砖红 `#B85C5C`
-- 字体：系统栈（`-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`），不依赖外部字体
+- 字体：系统栈（`-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`）
 
-### 7.5 自包含要求
-
-单个 HTML 内含全部 CSS/JS/数据，Leaflet 走 CDN。不依赖任何本地文件，双击即可打开。
-
-### 7.6 低缩放层级：缩放下限锁定 3（v0.3 决策）
-
-- **问题**：高德/OSM 瓦片在 z0–z2 返回空白（实测高德为 179 字节透明 PNG），Leaflet 默认允许缩到 0 → 缩到最小时白屏。
-- **方案**：地图显式设置 `minZoom: 3`，瓦片层同样保持 minZoom 3（不发空白请求）。最终缩放范围 3–18。
-- **决策记录**：曾实现 Canvas 2D 正射投影 3D 地球概览（z<3 替代空白瓦片，零依赖），真机实测体验不佳（全屏覆盖层在不同环境下的布局/交互问题难根除），已移除；`leaflet-globe` 插件停维护、three.js +670KB 且国内加载慢，均不采用。锁定缩放下限是最简单可靠的解。
-
-### 7.7 交互编辑器（v0.4 设计红线）
-
-产物即编辑器：面板底部工具条提供拖拽排序（HTML5 DnD，桌面优先）、删除、地图选点新增、撤销/重做、双产物导出。实现红线：
-
-- **可重渲染**：marker/polyline/箭头全部进一个 `L.layerGroup`（瓦片与控件不进），编辑 = 改 `TRIP.days` → `clearMap()` → `render()`；重渲染保持用户视野（抑制 `fitBounds`）并恢复折叠状态；`markers/routeGroups/dayEls` 声明为 `let`（整体重置）
-- **历史栈**：每次编辑「变更完成后」推入新状态快照，`idx` 指向当前帧；undo 取 `idx-1`、redo 取 `idx+1`。变更前快照模型下编辑后状态不在栈里，redo 无帧可回——这是被探针证伪后修正的模型
-- **导出基于纯净快照**：脚本最顶部（任何渲染前）捕获 `document.documentElement.outerHTML`；导出时用 `const TRIP = ...;` 正则替换该快照。直接序列化实时 DOM 会把 Leaflet 运行时 pane/marker 一起写入，而 `L.map()` 初始化不清理容器，重开必脏。JSON 内 `<` 全量转义为 6 字符转义序列（防脚本闭合标签提前终止与 HTML 注释解析边界）
-- **酒店只读**：酒店卡片在 `.day-body` 内但拖拽索引只数 `.place-item`，占位符至多插到酒店卡片之前
-- **同天拖拽索引补偿**：先删后插，`dstIdx > srcIdx` 时 `dstIdx -= 1`；原位放置（补偿后相等）不进历史
-- **选点模式**：`map.once('click')` + 禁 dragging/doubleClickZoom + `body.picking` CSS（crosshair 光标、标记 `pointer-events:none` 防抢点击）；表单含天数下拉（默认最后交互天）；提示条文案随模式切换（新增选点 vs 编辑改位置）
-- **编辑表单（v0.5）**：每条地点悬停显现 ✎ 按钮（触屏常显），复用新增表单切 edit 模式——预填全部字段（名称/类型/时间/交通/门票/备注），隐藏天下拉（跨天移动仍走拖拽），显示「更改位置」按钮。「更改位置」= 关表单 → 进选点模式 → 点击地图写回坐标（点回原位不进历史）。保存前逐字段比对，空修改只关表单不推历史帧；无坐标地点编辑文字字段不得写入 0,0 坐标
-- **表单预设（v0.5）**：新增/编辑表单补全时间、交通、门票字段，用 `<input list>` + `<datalist>` 提供常用值（上午/中午/下午等时段、步行/地铁/公交等交通方式、免费/收费），自由输入与快速选择兼得，零依赖
-- **已知限制**：触屏不支持 DnD（编辑/删除/新增/导出可用）；不支持增删「天」；行内（双击）编辑不做，统一走编辑表单；summary 为生成时快照
-
-
-## 8. Skill 包结构（开源形态）
+## 8. 项目结构
 
 ```
 itertrip/
-├── SKILL.md              # frontmatter(name/description/version) + 触发词 + 工作流 + 输出规范
-├── templates/
-│   └── route_map.html    # 地图路线图模板
-├── scripts/
-│   └── build_html.py     # JSON → HTML 注入（标准库，无依赖）
-├── examples/
-│   ├── sample_itinerary.json
-│   └── sample_route.html   # 构建产物示例
-├── README.md             # 安装 / 使用 / 高德可选配置 / 示例
-└── LICENSE               # MIT
+├── backend/              # FastAPI 后端
+│   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── plan.py           # POST /api/plan
+│   │   ├── geocode.py        # POST /api/geocode
+│   │   ├── search.py         # POST /api/search
+│   │   └── export.py         # POST /api/export
+│   ├── engine/
+│   │   ├── __init__.py
+│   │   ├── planner.py        # LLM 行程规划
+│   │   ├── coordinates.py    # 坐标补全与校验
+│   │   ├── builder.py        # HTML 构建
+│   │   └── schema.py         # route JSON 数据模型
+│   ├── templates/
+│   │   └── route_map.html    # 导出模板（复用旧版）
+│   └── requirements.txt
+├── frontend/               # React + Vite 前端
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── pages/
+│   │   │   ├── Index.tsx     # 首页：输入需求
+│   │   │   ├── Plan.tsx      # 规划结果
+│   │   │   └── Edit.tsx      # 拖拽编辑
+│   │   ├── components/
+│   │   │   ├── MapView.tsx   # Leaflet 地图
+│   │   │   ├── Timeline.tsx  # 时间线面板
+│   │   │   ├── Editor.tsx    # 拖拽编辑
+│   │   │   ├── HotelCard.tsx # 比价表
+│   │   │   └── Toolbar.tsx   # 工具条
+│   │   └── api/
+│   │       └── client.ts     # API 调用封装
+│   ├── package.json
+│   └── vite.config.ts
+├── DESIGN.md               # 本文件
+├── WEB_APP_PLAN.md          # 转型规划文档
+├── README.md                # 使用说明（中文）
+├── README.en.md             # 使用说明（英文）
+└── LICENSE                  # MIT
 ```
 
-## 9. 开源发布计划
-
-- 仓库名：**IterTrip**（已定）
-- License：MIT（宽松，利于传播）
-- README 核心内容：一段话定位、GIF/截图示例、三种装载方式（Claude Code / Cursor / Codex）、喂价交互说明、高德可选切换
-- 示例 HTML 直接放 examples/ 下，让访客点开即见效果
-- 仓库独立于私人箱庭，单独托管
-
-## 10. 边界（明确不做）
+## 9. 边界（明确不做）
 
 1. 不自动抓取任何平台价格（数据墙 + ToS）
 2. 不做价格实时监控 / 收藏夹
@@ -215,17 +257,20 @@ itertrip/
 4. 不依赖任何付费 API
 5. 高德 key 为可选增强，缺省也能完整运行
 
-## 11. 里程碑
+## 10. 里程碑
 
 - [x] M1：设计文档评审通过
-- [x] M2：route_map.html 模板 + build_html.py + 示例跑通
-- [x] M3：SKILL.md 主指令编写
-- [x] M4：README + LICENSE，仓库初始化
-- [x] M4.5：交互编辑器（拖拽排序/跨天移动/删除/选点新增/撤销重做/双产物导出，见 §7.7）
-- [x] M5：真机实测一轮（用一份真实行程跑完整流程）
-- [x] M6：开源发布
+- [x] M2：旧版自包含 HTML 模板跑通（已归档）
+- [x] M3：SKILL.md 主指令编写（已归档至 skill 仓库）
+- [x] M4：旧版编辑器 v0.5 完成（拖拽/撤销/编辑表单/地图点选/导出）
+- [x] M5：真机实测 + 测试覆盖（jsdom 30 断言 + 探针 23/23）
+- [x] M6：项目转型为 Web 应用架构（backend/ + frontend/ 骨架）
+- [ ] M7：后端 Phase 1 — FastAPI 脚手架 + POST /api/plan 返回 route JSON
+- [ ] M8：前端 Phase 2 — React 首页 + 规划页 + 地图渲染
+- [ ] M9：前端 Phase 3 — 编辑器移植到 React
+- [ ] M10：坐标补全 + 搜索 + 部署上线
 
-## 12. 决策记录（已全部拍板）
+## 11. 决策记录
 
 ### 布局与产品决策
 
@@ -234,3 +279,19 @@ itertrip/
 3. 默认瓦片：高德公共栅格瓦片（OSM 兜底，官方高德 key 可选）
 4. 打印 / PDF 导出：暂不做
 5. 仓库名：**IterTrip**（拉丁语 iter「道路」）
+
+### 架构决策
+
+6. 前后端分离：FastAPI + React，同一套规划引擎服务 Web 和 Hana 两个入口
+7. 编辑器历史栈：快照模型，上限 50 帧，变更后推入
+8. 空修改检测：保存前逐字段比对，无变化不进历史
+9. 导出基于纯净快照：模板渲染前捕获 outerHTML，正则替换 JSON 数据
+10. 缩放下限锁定 3（Canvas 3D 地球方案已移除，原因见旧版 §7.6）
+
+### 迁移注意事项
+
+11. 旧版 `templates/route_map.html` 的 render()、routeArrowDeg、routeMidPoint、pinIcon 等逻辑直接移植为 React 组件
+12. 旧版编辑器的状态机（formMode、editTarget、rePickTarget）和选点流程（startRepick → rePickTo）可作为 React 实现的参考
+13. 酒店只读约束保持不变（酒店卡片不参与拖拽排序）
+14. 触屏不支持 DnD（编辑/删除/新增/导出可用）
+15. 行内（双击）编辑不做，统一走编辑表单
