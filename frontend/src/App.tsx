@@ -3,7 +3,6 @@ import Chat from "./pages/Chat";
 import Index from "./pages/Index";
 import Plan from "./pages/Plan";
 import SettingsPanel from "./components/SettingsPanel";
-import { planTrip } from "./api/client";
 import {
   loadCurrentRoute,
   loadSettings,
@@ -11,7 +10,7 @@ import {
   saveSettings,
   type LlmSettings,
 } from "./lib/settings";
-import type { PlanRequest, RouteJSON } from "./types/route";
+import type { RouteJSON } from "./types/route";
 
 type Screen = { name: "index" } | { name: "chat"; prefill?: string } | { name: "plan"; source: string };
 
@@ -24,8 +23,6 @@ export default function App() {
   const [route, setRoute] = useState<RouteJSON | null>(() => loadCurrentRoute());
   const [chatPrefill, setChatPrefill] = useState<string | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => {
@@ -43,17 +40,12 @@ export default function App() {
 
   const hasModel = useMemo(() => Boolean(settings.apiKey.trim() || settings.baseUrl.trim()), [settings]);
 
-  const handleQuickStart = async (req: PlanRequest) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { route: r, source } = await planTrip(req, settings);
-      setRoute(r);
-      setScreen({ name: "plan", source });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+  /** 首页「直接进入地图」：已有行程则进规划页；没有则去对话页生成 */
+  const enterMap = () => {
+    if (route) {
+      setScreen({ name: "plan", source: "restored" });
+    } else {
+      openChat();
     }
   };
 
@@ -119,12 +111,11 @@ export default function App() {
   return (
     <>
       <Index
-        onQuickStart={handleQuickStart}
         onChat={openChat}
+        onEnterMap={enterMap}
         onOpenSettings={() => setShowSettings(true)}
         hasModel={hasModel}
-        loading={loading}
-        error={error}
+        hasRoute={!!route}
       />
       {showSettings && (
         <SettingsPanel

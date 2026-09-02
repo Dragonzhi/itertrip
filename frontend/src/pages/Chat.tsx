@@ -28,6 +28,16 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     saveChatHistory(messages);
   }, [messages]);
 
+  const clearHistory = () => {
+    if (loading) return;
+    if (!messages.length) return;
+    if (!window.confirm("确定清空当前对话记录吗？此操作不可撤销。")) return;
+    sentPrefillRef.current = true; // 清除后不再自动重发 prefill
+    setMessages([]);
+    setStageLabel(null);
+    setStreamText("");
+  };
+
   // 首页「带话过来」：进页面自动发送一次
   useEffect(() => {
     if (prefill && !sentPrefillRef.current) {
@@ -80,8 +90,17 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
           <h1 className="text-sm font-bold">IterTrip · 对话规划</h1>
         </div>
         <button
+          onClick={clearHistory}
+          disabled={loading || !messages.length}
+          className="ml-auto border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-[#F6E7E7] hover:text-[#B85C5C] disabled:opacity-35 disabled:cursor-not-allowed"
+          title="清空当前对话记录"
+          data-testid="clear-chat"
+        >
+          🗑 清除记录
+        </button>
+        <button
           onClick={onOpenSettings}
-          className="ml-auto border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft hover:text-moss"
+          className="border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft hover:text-moss"
           data-testid="settings-btn"
         >
           ⚙️ 设置
