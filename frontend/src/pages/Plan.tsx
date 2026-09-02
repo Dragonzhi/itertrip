@@ -100,6 +100,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         route: r.route || undefined,
         changed: !!(diff && diff.changed),
         changeSummary: diff && diff.changed ? diff.summary : undefined,
+        questions: r.questions,
       };
       setStreamText("");
       setChatMsgs((prev) => [...prev, reply]);

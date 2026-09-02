@@ -1,4 +1,5 @@
 import type { PlanRequest, RouteJSON } from "../types/route";
+import type { ClarifyQuestion } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
 
 /**
@@ -45,6 +46,8 @@ export interface ChatStreamEvent {
   intent?: "route_edit" | "chitchat";
   route?: RouteJSON | null;
   detail?: string;
+  /** Agent 式澄清问题（M17） */
+  questions?: ClarifyQuestion[];
 }
 
 /**
@@ -56,7 +59,7 @@ export async function chatStream(
   req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[] },
   settings: LlmSettings | null | undefined,
   onEvent?: (ev: ChatStreamEvent) => void,
-): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null }> {
+): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] }> {
   const resp = await fetch(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
@@ -73,7 +76,7 @@ export async function chatStream(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
-  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null } = {
+  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] } = {
     reply: "", intent: "chitchat", route: null,
   };
   let failed = false;
@@ -102,7 +105,7 @@ export async function chatStream(
       }
       onEvent?.(payload);
       if (event === "reply") {
-        final = { reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null };
+        final = { reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null, questions: payload.questions || undefined };
       }
     }
   }

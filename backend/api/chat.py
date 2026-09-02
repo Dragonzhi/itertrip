@@ -40,6 +40,21 @@ _SCHEMA_HINT = (
     '"hotel": {"name": str, "lat": float, "lng": float, "note": str, "prices": []} | null}], "summary": [str]}'
 )
 
+# Agent 式澄清（M17）：信息不足时输出结构化问题，而非直接生成。
+_QUESTIONS_HINT = (
+    '当用户信息明显不足（未给出关键要素：具体日期/天数/预算/风格/出行人数/酒店偏好，'
+    '或请求过于模糊无法排程）时，不要直接生成草稿，而是先向用户提 3-5 个最能影响路线的关键问题。'
+    '此时第二段 <<<JSON>>> 输出：'
+    '{"need_more_info": true, "questions": [{"key": str, "label": str, "type": "text|select|multi", '
+    '"placeholder": str, "options": [{"value": str, "label": str}]}], "reply": str}。'
+    'questions[] 说明：label 是给用户看的问题；type=text 用于填空（如具体日期、城市），'
+    'type=select 用于单选（如预算档位、风格），type=multi 用于多选（如偏好项目）；'
+    'options 需要时提供候选（如预算的 经济/中等/轻奢；风格的 亲子/美食/人文；偏好可从 美食/历史/自然/购物/亲子 选）。'
+    '只问真正影响路线编排的问题（日期、天数、大致预算、风格、人数、住城中心还是景区附近等），'
+    '不要问无关紧要或模型该自己推断的细节。reply 里用一两句话说明「规划前我想先确认几点」。'
+    '若用户信息已足够排程，则**不要**输出 need_more_info，直接按正常流程生成路线。'
+)
+
 SYSTEM_EXTRACT = (
     "你是旅行攻略结构化助手。用户会给你一段旅游攻略文字（可能来自小红书/公众号，"
     "含表情符号、口语、推广内容），或一句旅行需求。你的任务：提取/规划出结构化行程 JSON。"
@@ -54,7 +69,8 @@ SYSTEM_EXTRACT = (
     "4. 攻略中的营业时间/门票/贴士写进 time/ticket/note；transport 留空由用户补充\n"
     "5. 攻略提到住宿就填 hotel；没提则 hotel 为 null\n"
     "6. summary 提炼 2-4 条攻略里的关键建议（避坑/预约/交通等），不要泛泛而谈\n"
-    '7. 无法确定目的地或提取不到任何地点时，只输出 <<<REPLY>>> 段（后接一个具体的追问），不要输出 <<<JSON>>> 段'
+    '7. 无法确定目的地或提取不到任何地点时，只输出 <<<REPLY>>> 段（后接一个具体的追问），不要输出 <<<JSON>>> 段\n'
+    + _QUESTIONS_HINT
 )
 
 SYSTEM_EDIT = (
@@ -68,7 +84,11 @@ SYSTEM_EDIT = (
     "1. changed=true 时必须给出**完整** days 数组（未修改的天原样保留），禁止省略或输出差异片段\n"
     "2. 用户的明确要求优先；涉及时间冲突/动线明显不合理时可在 <<<REPLY>>> 里提醒，但仍按用户要求改\n"
     "3. 闲聊/咨询/与路线无关的请求：changed=false，days 给原样内容，reply 正常回答\n"
-    "4. 不增删天；单日地点建议不超过 6 个；不确定的坐标修改保持原值"
+    "4. 不增删天；单日地点建议不超过 6 个；不确定的坐标修改保持原值\n"
+    "5. 若用户的修改要求过于模糊（如只说「帮我优化」却没说要改什么、改哪里），"
+    "或缺少完成修改所需的关键信息时，先按下方澄清规则输出 need_more_info 问题，changed=false，"
+    "不要擅自猜测并大改路线。\n"
+    + _QUESTIONS_HINT
 )
 
 # ---------------- 请求模型 ----------------
@@ -258,7 +278,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 return
             if data.get("need_more_info"):
                 yield _sse("stage", {"stage": "done", "label": "完成"})
-                yield _sse("reply", {"reply": str(data.get("reply") or reply_text or "能再描述一下吗？"), "intent": "chitchat", "route": None})
+                yield _sse("reply", {
+                    "reply": str(data.get("reply") or reply_text or "能再描述一下吗？"),
+                    "intent": "chitchat",
+                    "route": None,
+                    "questions": data.get("questions") or [],
+                })
                 return
             route = RouteJSON.model_validate(data)
             # 坐标补全 + 阶段播报
@@ -290,7 +315,13 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             yield _sse("reply", {"reply": reply_text or "我在呢，想怎么改？", "intent": "chitchat", "route": None})
             return
         if not data.get("changed"):
-            yield _sse("reply", {"reply": str(data.get("reply") or reply_text or "好的。"), "intent": "chitchat", "route": None})
+            qs = data.get("questions") or []
+            yield _sse("reply", {
+                "reply": str(data.get("reply") or reply_text or "好的。"),
+                "intent": "chitchat",
+                "route": None,
+                "questions": qs if qs else None,
+            })
             return
         yield _sse("reply", {
             "reply": str(data.get("reply") or reply_text or "已更新路线。"),

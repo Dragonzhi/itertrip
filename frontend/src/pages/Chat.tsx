@@ -62,7 +62,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     };
     try {
       const r = await chatStream({ prompt: text, history }, settings, onEvent);
-      const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply || streamText };
+      const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply || streamText, questions: r.questions };
       setMessages((prev) => [...prev, reply]);
       if (r.route && r.route.days.length > 0) {
         onRoute(r.route, "chat");
