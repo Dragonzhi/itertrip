@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { RouteJSON } from "../types/route";
+import type { RouteJSON, Hotel, Place } from "../types/route";
 import { dayColor, dayPoints, emojiFor, mercY, routeArrowDeg, routeMidPoint } from "../mapCore";
+import type { MapSettings } from "../lib/settings";
 
 interface MapViewProps {
   route: RouteJSON | null;
@@ -18,17 +19,64 @@ interface MapViewProps {
   flashKeys?: string[];
   /** 地点交互（优化④）：peek=单击弹框不挪图；zoom=双击聚焦 setView；seq 防重复 */
   focus?: { key: string; seq: number; mode: "peek" | "zoom" } | null;
-  /** 视野平移补偿（优化②）：抽屉打开时把地图中心右移半个抽屉宽 */
+  /** 视野平移补偿（优化②）：保留 prop，但不再运行时 panBy（见文档） */
   viewOffset?: number;
+  /** 地图显示设置（M16）：源自 MapSettings，纯前端视图态 */
+  view: MapSettings;
+}
+
+/** 地点弹窗 HTML（showMeta=false 时只留地名）。 */
+function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
+  let html = `<div class="iter-popup"><div class="pp-name">${emoji} ${p.name || ""}</div>`;
+  if (showMeta) {
+    if (p.time) html += `<div class="pp-row">⏰ ${p.time}</div>`;
+    if (p.ticket) html += `<div class="pp-row">🎫 ${p.ticket}</div>`;
+    if (p.transport) html += `<div class="pp-row">🚗 ${p.transport}</div>`;
+    if (p.note) html += `<div class="pp-row">${p.note}</div>`;
+  }
+  return html + `</div>`;
+}
+
+/** 酒店弹窗 HTML（showMeta=false 时只留酒店名）。 */
+function hotelPopupHtml(h: Hotel, showMeta: boolean): string {
+  const best = (h.prices || []).length
+    ? (h.prices || []).reduce((a, b) => (a.price <= b.price ? a : b))
+    : null;
+  let html = `<div class="iter-popup"><div class="pp-name">🏨 ${h.name}</div>`;
+  if (showMeta) {
+    if (best) html += `<div class="pp-row">最低 ¥${best.price}（${best.platform}）</div>`;
+    if (h.note) html += `<div class="pp-row">${h.note}</div>`;
+  }
+  return html + `</div>`;
+}
+
+/** 箭头 scale 映射（M16）：按 arrowScale 生成 divIcon。 */
+function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
+  const s = scale || 1;
+  const size = Math.round(14 * s);
+  const bl = Math.round(9 * s);
+  const tb = Math.round(5 * s);
+  return L.divIcon({
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<div class="route-arrow-wrap" style="--rc:${color};transform:rotate(${deg.toFixed(2)}deg);width:${size}px;height:${size}px"><i class="route-arrow" style="border-top-width:${tb}px;border-bottom-width:${tb}px;border-left-width:${bl}px"></i></div>`,
+  });
 }
 
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
-export default function MapView({ route, activeDay, picking, onPick, onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0 }: MapViewProps) {
+export default function MapView({
+  route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
+  onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0, view,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const layersRef = useRef<L.LayerGroup | null>(null);
+  const layersRef = useRef<L.LayerGroup | null>(null);       // 标记层
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);   // 连线/箭头层（M16 拆分，避开 toggle 触发 fitBounds）
   const dayLinesRef = useRef<Map<number, L.Polyline>>(new Map());
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const amapRef = useRef<L.TileLayer | null>(null);
+  const osmRef = useRef<L.TileLayer | null>(null);
   const cbRef = useRef({ onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus });
   cbRef.current = { onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus };
 
@@ -43,35 +91,37 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
     const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors", minZoom: 3, maxZoom: 19,
     });
-    amap.addTo(map);
+    amapRef.current = amap;
+    osmRef.current = osm;
+    // 初始图层由设置面板控制（M16）：去掉 L.control.layers 双入口，按 view.mapSource 添加
+    (view.mapSource === "osm" ? osm : amap).addTo(map);
     L.control.attribution({ position: "bottomleft" }).addTo(map);
-    // 优化②：缩放/图层控件移到底左，避开左上 logo 与标题卡
-    L.control.layers({ 高德默认: amap, "OSM 标准": osm }, undefined, { position: "bottomleft" }).addTo(map);
     L.control.zoom({ position: "bottomleft" }).addTo(map);
     layersRef.current = L.layerGroup().addTo(map);
+    routeLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
       layersRef.current = null;
+      routeLayerRef.current = null;
       dayLinesRef.current.clear();
+      amapRef.current = null;
+      osmRef.current = null;
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 数据变化 → 重绘图层 + fitBounds
+  // 标记层（含 fitBounds）：仅依赖 route，切设置不重绘视野
   useEffect(() => {
     const map = mapRef.current;
     const layers = layersRef.current;
     if (!map || !layers) return;
     layers.clearLayers();
-    dayLinesRef.current.clear();
     markersRef.current.clear();
     if (!route) return;
     const bounds: L.LatLngExpression[] = [];
     const callbacks = cbRef.current;
-
     route.days.forEach((day, di) => {
-      const color = dayColor(di);
       (day.places || []).forEach((p, pi) => {
         if (p.lat == null || p.lng == null) return;
         const emoji = emojiFor(p);
@@ -85,15 +135,7 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
           }),
           title: p.name,
         }).addTo(layers);
-        m.bindPopup(
-          `<div class="iter-popup"><div class="pp-name">${emoji} ${p.name || ""}</div>` +
-            (p.time ? `<div class="pp-row">⏰ ${p.time}</div>` : "") +
-            (p.ticket ? `<div class="pp-row">🎫 ${p.ticket}</div>` : "") +
-            (p.transport ? `<div class="pp-row">🚗 ${p.transport}</div>` : "") +
-            (p.note ? `<div class="pp-row">${p.note}</div>` : "") +
-          `</div>`,
-          { className: "iter-popup", autoPan: false },
-        );
+        m.bindPopup(popupHtml(p, emoji, true), { className: "iter-popup", autoPan: false });
         m.on("click", () => callbacks.onPlaceClick(di, pi));
         m.on("dblclick", () => callbacks.onPlaceFocus?.(di, pi));
         markersRef.current.set("d" + di + "-p" + pi, m);
@@ -112,62 +154,90 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
           }),
           title: h.name,
         }).addTo(layers);
-        const prices = h.prices || [];
-        const best = prices.length ? prices.reduce((a, b) => (a.price <= b.price ? a : b)) : null;
-        hm.bindPopup(
-          `<div class="iter-popup"><div class="pp-name">🏨 ${h.name}</div>` +
-            (best ? `<div class="pp-row">最低 ¥${best.price}（${best.platform}）</div>` : "") +
-            (h.note ? `<div class="pp-row">${h.note}</div>` : "") +
-          `</div>`,
-          { className: "iter-popup", autoPan: false },
-        );
+        hm.bindPopup(hotelPopupHtml(h, true), { className: "iter-popup", autoPan: false });
         hm.on("click", () => callbacks.onHotelClick(di));
         hm.on("dblclick", () => callbacks.onHotelFocus?.(di));
         markersRef.current.set("d" + di + "-hotel", hm);
         bounds.push([h.lat, h.lng]);
       }
-
-      const pts = dayPoints(day);
-      if (pts.length >= 2) {
-        L.polyline(pts, { color: "#FFFFFF", weight: 6, opacity: 0.65, lineCap: "round", lineJoin: "round" }).addTo(layers);
-        const line = L.polyline(pts, { color, weight: 3, opacity: 0.9, lineCap: "round", lineJoin: "round", dashArray: "6 8" }).addTo(layers);
-        dayLinesRef.current.set(di, line);
-        if (di === activeDay) line.getElement()?.classList.add("route-flow");
-        for (let s = 0; s < pts.length - 1; s++) {
-          const a = pts[s];
-          const b = pts[s + 1];
-          if (Math.abs(b[1] - a[1]) < 1e-9 && Math.abs(mercY(b[0]) - mercY(a[0])) < 1e-9) continue;
-          const deg = routeArrowDeg(a, b);
-          const mid = routeMidPoint(a, b);
-          L.marker(mid, {
-            icon: L.divIcon({
-              className: "",
-              iconSize: [14, 14],
-              iconAnchor: [7, 7],
-              html: `<div class="route-arrow-wrap" style="--rc:${color};transform:rotate(${deg.toFixed(2)}deg)"><i class="route-arrow"></i></div>`,
-            }),
-            interactive: false,
-            zIndexOffset: -800,
-          }).addTo(layers);
-        }
-      }
     });
 
     if (bounds.length) map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [60, 60] });
-    // activeDay 故意不在依赖里：高亮由下方独立 effect 处理，避免重绘视野
   }, [route]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // activeDay 变化 → 只切流动动画，不动地图视野
+  // popup 详情刷新（M16 showMeta）：不重建 marker、不重绘视野
   useEffect(() => {
-    dayLinesRef.current.forEach((line, di) => {
-      const el = line.getElement?.();
-      if (!el) return;
-      if (di === activeDay) el.classList.add("route-flow");
-      else el.classList.remove("route-flow");
+    if (!route) return;
+    const show = view.showMeta;
+    route.days.forEach((day, di) => {
+      (day.places || []).forEach((p, pi) => {
+        const m = markersRef.current.get("d" + di + "-p" + pi);
+        if (m) m.setPopupContent(popupHtml(p, emojiFor(p), show));
+      });
+      const h = day.hotel;
+      if (h && h.name) {
+        const hm = markersRef.current.get("d" + di + "-hotel");
+        if (hm) hm.setPopupContent(hotelPopupHtml(h, show));
+      }
     });
-  }, [activeDay, route]);
+  }, [route, view.showMeta]);
 
-  // M14：flashKeys 变化 → 对应图钉闪烁（重绘后 DOM 重建，故跟随 route 依赖触发）
+  // 连线/箭头层（M16 拆分）：不调用 fitBounds，toggle 视野稳定
+  useEffect(() => {
+    const map = mapRef.current;
+    const routeLayer = routeLayerRef.current;
+    if (!map || !routeLayer) return;
+    routeLayer.clearLayers();
+    dayLinesRef.current.clear();
+    if (!route) return;
+    if (!view.showRoutes) return;   // 开关路线：隐藏所有连线/箭头（pin 仍在）
+
+    const stride = view.arrowDensity === "sparse" ? 3 : view.arrowDensity === "normal" ? 2 : 1;
+    const scale = view.arrowScale || 1;
+    const effectiveDay = activeDay >= 0 ? activeDay : -1;
+
+    route.days.forEach((day, di) => {
+      if (view.dayViewMode === "current" && effectiveDay >= 0 && di !== effectiveDay) return;
+      if (view.dayViewMode === "current" && effectiveDay < 0 && di !== 0) return; // 无选中天时兜底只画第 0 天
+      const color = dayColor(di);
+      const pts = dayPoints(day);
+      if (view.connectHotel && day.hotel && day.hotel.lat != null && day.hotel.lng != null) {
+        pts.push([day.hotel.lat, day.hotel.lng]);
+      }
+      if (pts.length < 2) return;
+      // 白色描边
+      const halo = L.polyline(pts, { color: "#FFFFFF", weight: 6, opacity: 0.65, lineCap: "round", lineJoin: "round" }).addTo(routeLayer);
+      const line = L.polyline(pts, { color, weight: 3, opacity: 0.9, lineCap: "round", lineJoin: "round", dashArray: "6 8" }).addTo(routeLayer);
+      dayLinesRef.current.set(di, line);
+      // 当天高亮（route-flow 动画），非当天淡化（dayViewMode=all）
+      const isActive = di === effectiveDay;
+      if (view.dayViewMode === "all") {
+        if (isActive) {
+          line.getElement()?.classList.add("route-flow");
+        } else {
+          (line.getElement() as SVGPathElement | undefined)?.setAttribute?.("opacity", "0.22");
+          (halo.getElement() as SVGPathElement | undefined)?.setAttribute?.("opacity", "0.16");
+        }
+      } else {
+        // current：只画了当天（若兜底画第 0 天则视为活动）
+        line.getElement()?.classList.add("route-flow");
+      }
+      for (let s = 0; s < pts.length - 1; s += stride) {
+        const a = pts[s];
+        const b = pts[s + 1];
+        if (Math.abs(b[1] - a[1]) < 1e-9 && Math.abs(mercY(b[0]) - mercY(a[0])) < 1e-9) continue;
+        const deg = routeArrowDeg(a, b);
+        const mid = routeMidPoint(a, b);
+        L.marker(mid, {
+          icon: arrowIcon(color, deg, scale),
+          interactive: false,
+          zIndexOffset: -800,
+        }).addTo(routeLayer);
+      }
+    });
+  }, [route, view.showRoutes, view.dayViewMode, view.connectHotel, view.arrowDensity, view.arrowScale, activeDay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // M14：flashKeys 变化 → 对应图钉闪烁
   useEffect(() => {
     if (!flashKeys || flashKeys.length === 0) return;
     const map = mapRef.current;
@@ -183,7 +253,6 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
         window.setTimeout(() => el.classList.remove("flash"), 6600);
       }
     });
-    // 第一个变化点平移入视野（不缩放，避免突兀）
     const firstEl = found.el;
     if (firstEl) {
       const m2 = (firstEl.getAttribute("data-pin-key") || "").match(/^d(\d+)-p(\d+)$/);
@@ -197,14 +266,13 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
     }
   }, [flashKeys, route]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 优化④：单击（peek）= 只弹框不挪图（消除抽动）；双击（zoom）= setView 聚焦
+  // 优化④：单击（peek）= 只弹框不挪图；双击（zoom）= setView 聚焦
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !focus) return;
     const marker = markersRef.current.get(focus.key);
     if (!marker) return;
     if (focus.mode === "zoom") {
-      // 双击聚焦：把地点放到屏幕正中心（不做右侧面板补偿，避免偏左）
       const latlng = marker.getLatLng();
       map.setView(latlng, Math.max(map.getZoom(), 14), { animate: true, duration: 0.5 });
       const pin = marker.getElement();
@@ -213,16 +281,29 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
         window.setTimeout(() => pin.classList.remove("flash"), 6600);
       }
     } else {
-      // peek：只弹详细框，地图保持不动
       marker.openPopup();
     }
   }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 抽屉开合不再自动 pan 地图（用户已明确要「双击后地点在正中心」）
-  // viewOffset 保留 prop 供 fitBounds 关注区域排除，但不再做运行时 panBy 补偿
+  // 地图源切换（M16）：由设置面板统一控制，不再有 L.control.layers 双入口
+  useEffect(() => {
+    const map = mapRef.current;
+    const amap = amapRef.current;
+    const osm = osmRef.current;
+    if (!map || !amap || !osm) return;
+    if (view.mapSource === "amap") {
+      if (map.hasLayer(osm)) map.removeLayer(osm);
+      if (!map.hasLayer(amap)) amap.addTo(map);
+    } else {
+      if (map.hasLayer(amap)) map.removeLayer(amap);
+      if (!map.hasLayer(osm)) osm.addTo(map);
+    }
+  }, [view.mapSource]);
+
+  // 抽屉开合不再自动 pan 地图
   void viewOffset;
 
-  // 选点模式：crosshair + 禁拖动/双击缩放，once click 回调坐标（移植自 enterPicking/exitPicking）
+  // 选点模式：crosshair + 禁拖动/双击缩放
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;

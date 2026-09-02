@@ -77,3 +77,57 @@ export function saveChatHistory(msgs: ChatMessage[]) {
     /* ignore */
   }
 }
+
+// ===== 地图显示设置（M16：右下角设置面板，纯前端视图态，不写入 route/后端）=====
+
+export type DayViewMode = "all" | "current";
+export type MapSource = "amap" | "osm";
+export type ArrowDensity = "dense" | "normal" | "sparse";
+
+export interface MapSettings {
+  /** 开关路线：显示/隐藏地图上所有连线与箭头 */
+  showRoutes: boolean;
+  /** 天视图模式：all=全部显示(当天高亮其余淡化) / current=只显示当天 */
+  dayViewMode: DayViewMode;
+  /** 是否把当天酒店坐标接入路线终点 */
+  connectHotel: boolean;
+  /** 地图源：高德 / OSM */
+  mapSource: MapSource;
+  /** 隐藏「AI 综合建议」块（时间线顶部 summary） */
+  showSummary: boolean;
+  /** 显示/隐藏价格、时间、门票、备注等 meta 标签 */
+  showMeta: boolean;
+  /** 箭头密度：dense=每段(现状) / normal=隔1段 / sparse=隔2段 */
+  arrowDensity: ArrowDensity;
+  /** 箭头大小：0.75 / 1 / 1.25 */
+  arrowScale: number;
+}
+
+export const DEFAULT_MAP: MapSettings = {
+  showRoutes: true,
+  dayViewMode: "all",
+  connectHotel: true,
+  mapSource: "amap",
+  showSummary: true,
+  showMeta: true,
+  arrowDensity: "dense",
+  arrowScale: 1,
+};
+
+export function loadMapSettings(): MapSettings {
+  try {
+    const raw = localStorage.getItem(PREFIX + "map");
+    if (!raw) return { ...DEFAULT_MAP };
+    return { ...DEFAULT_MAP, ...(JSON.parse(raw) as Partial<MapSettings>) };
+  } catch {
+    return { ...DEFAULT_MAP };
+  }
+}
+
+export function saveMapSettings(s: MapSettings) {
+  try {
+    localStorage.setItem(PREFIX + "map", JSON.stringify(s));
+  } catch {
+    /* 隐私模式等场景写不进就放弃，本次会话内存仍可用 */
+  }
+}

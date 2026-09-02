@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import MapView from "../components/MapView";
+import MapSettings from "../components/MapSettings";
 import Timeline from "../components/Timeline";
 import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../components/PlaceForm";
+import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../components/HotelForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
 import { exportHtml, chatStream, type ChatStreamEvent } from "../api/client";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import type { ChatMessage } from "../types/chat";
-import type { LlmSettings } from "../lib/settings";
+import { loadMapSettings, saveMapSettings, type MapSettings as MapSettingsType, type LlmSettings } from "../lib/settings";
 
 interface PlanProps {
   route: RouteJSON;
@@ -30,8 +32,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [panelOpen, setPanelOpen] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
-  const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } }>(null);
+  const [hotelForm, setHotelForm] = useState<{ target: { di: number }; hasCoord: boolean } | null>(null);
+  const [hotelDraft, setHotelDraft] = useState<HotelDraft>({ name: "", note: "", lat: 0, lng: 0 });
+  const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } } | { purpose: "repick-hotel"; target: { di: number } }>(null);
   const lastActiveDayRef = useRef(0);
+  /* M16：地图显示设置（纯前端视图态，持久化到 localStorage） */
+  const [mapView, setMapView] = useState<MapSettingsType>(() => loadMapSettings());
+  useEffect(() => { saveMapSettings(mapView); }, [mapView]);
 
   /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①） ---------- */
   const [chatOpen, setChatOpen] = useState(false);
@@ -183,6 +190,19 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setPicking(null);
     if (!p) return;
     const rounded = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+    if (p.purpose === "repick-hotel") {
+      const t = p.target;
+      mutate((r) => {
+        const h = r.days[t.di]?.hotel;
+        if (!h) return;
+        if (Math.abs(h.lat - rounded.lat) < 1e-9 && Math.abs(h.lng - rounded.lng) < 1e-9) return; // 点回原位不进历史
+        h.lat = rounded.lat;
+        h.lng = rounded.lng;
+      });
+      setHotelDraft((d) => ({ ...d, lat: rounded.lat, lng: rounded.lng }));
+      lastActiveDayRef.current = t.di;
+      return;
+    }
     if (p.purpose === "repick") {
       const t = p.target;
       mutate((r) => {
@@ -265,17 +285,60 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setForm(null);
   };
 
+  /* ---------- M16：酒店逐天自定义 ---------- */
+  const openHotelForm = (di: number) => {
+    const h = route.days[di]?.hotel;
+    if (!h) return;
+    lastActiveDayRef.current = di;
+    setHotelDraft({ name: h.name || "", note: h.note || "", lat: h.lat, lng: h.lng });
+    setHotelForm({ target: { di }, hasCoord: h.lat != null && (h.lat !== 0 || h.lng !== 0) });
+  };
+  const startHotelRepick = () => {
+    if (!hotelForm) return;
+    const t = hotelForm.target;
+    setHotelForm(null);
+    setPicking({ purpose: "repick-hotel", target: t });
+  };
+  const saveHotel = (scope: "day" | "all") => {
+    if (!hotelForm) return;
+    const d = { name: hotelDraft.name, note: hotelDraft.note, lat: hotelDraft.lat, lng: hotelDraft.lng };
+    if (!d.name.trim()) return;
+    const t = hotelForm.target;
+    mutate((r) => {
+      const base = r.days[t.di];
+      if (!base) return;
+      const apply = (hh: { name: string; note?: string; lat: number; lng: number }) => {
+        hh.name = d.name; hh.note = d.note;
+        hh.lat = d.lat; hh.lng = d.lng;
+      };
+      if (scope === "all") {
+        // 设为所有天默认酒店：复制到每一个有酒店（或所有）天
+        let any = false;
+        r.days.forEach((day) => {
+          if (day.hotel) { apply(day.hotel); any = true; }
+        });
+        if (!any && base.hotel) base.hotel.name = d.name; // 极端：天都为 null 时至少改当天
+        void any;
+      } else {
+        if (base.hotel) apply(base.hotel);
+      }
+    });
+    lastActiveDayRef.current = t.di;
+    setHotelForm(null);
+  };
+
   /* ---------- Esc：关表单 / 退选点 ---------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (form) { setForm(null); return; }
+        if (hotelForm) { setHotelForm(null); return; }
         if (picking) { setPicking(null); return; }
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [form, picking]);
+  }, [form, hotelForm, picking]);
 
   /* ---------- 导出 ---------- */
   const handleExportJson = () => {
@@ -299,7 +362,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       return !v;
     });
   };
-  const pickHint = picking ? (picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
+  const pickHint = picking ? (picking.purpose === "repick-hotel" ? PICK_HINT_REPICK_HOTEL : picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
   return (
     <div className="h-screen overflow-hidden">
@@ -315,6 +378,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         flashKeys={flashKeys}
         focus={focus}
         viewOffset={(chatOpen ? 380 : 0) + (panelOpen ? 400 : 0)}
+        view={mapView}
       />
 
       {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
@@ -489,6 +553,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             onDeletePlace={handleDelete}
             onEditPlace={openEditForm}
             onDropMove={handleDropMove}
+            onEditHotel={openHotelForm}
+            view={mapView}
           />
         </div>
         {/* 工具条 */}
@@ -537,6 +603,9 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         </div>
       </aside>
 
+      {/* M16：右下角地图显示设置 */}
+      <MapSettings value={mapView} onChange={(patch) => setMapView((v) => ({ ...v, ...patch }))} panelOpen={panelOpen} />
+
       {/* 新增/编辑表单 */}
       {form && (
         <PlaceForm
@@ -550,6 +619,21 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           onSave={saveForm}
           onCancel={() => setForm(null)}
           onStartRepick={startRepick}
+        />
+      )}
+
+      {/* M16：酒店逐天编辑表单 */}
+      {hotelForm && (
+        <HotelForm
+          mode="edit"
+          draft={hotelDraft}
+          hasCoord={hotelForm.hasCoord}
+          dayLabel={"D" + (route.days[hotelForm.target.di]?.day || hotelForm.target.di + 1) + " · 第 " + (hotelForm.target.di + 1) + " 天"}
+          picking={false}
+          onChange={(patch) => setHotelDraft((d) => ({ ...d, ...patch }))}
+          onSave={saveHotel}
+          onCancel={() => setHotelForm(null)}
+          onStartRepick={startHotelRepick}
         />
       )}
     </div>

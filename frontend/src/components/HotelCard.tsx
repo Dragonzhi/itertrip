@@ -8,10 +8,14 @@ interface HotelCardProps {
   onClick: () => void;
   /** 双击聚焦地图 */
   onFocus?: () => void;
+  /** 显示/隐藏价格、备注、建议等 meta 详情（M16） */
+  showMeta?: boolean;
+  /** 编辑酒店（M16：逐天自定义） */
+  onEdit?: () => void;
 }
 
 /** 酒店比价卡：最低价平台自动高亮 + 「最低」标签。 */
-export default function HotelCard({ hotel, active, onClick, onFocus, city }: HotelCardProps & { city?: string }) {
+export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit }: HotelCardProps & { city?: string }) {
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
@@ -26,25 +30,40 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city }: Hot
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base">🏨</span>
         <h3 className="text-sm font-bold flex-1">{hotel.name}</h3>
+        {onEdit && (
+          <button
+            type="button"
+            title="编辑酒店（改名 / 重定位置 / 应用到所有天）"
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="shrink-0 w-6 h-6 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none cursor-pointer hover:bg-moss-soft hover:text-moss"
+            data-testid="hotel-edit"
+          >
+            ✎
+          </button>
+        )}
       </div>
-      {hotel.note && <div className="text-xs text-ink-soft mb-2.5">{hotel.note}</div>}
-      <div className="mb-2">
-        <button
-          type="button"
-          disabled={searching}
-          onClick={async () => {
-            setSearching(true); setSearchErr(null);
-            try { setSearchResult(await searchHotel(hotel.name, city || "", "", "")); }
-            catch (e) { setSearchErr(e instanceof Error ? e.message : String(e)); }
-            finally { setSearching(false); }
-          }}
-          className="border border-line bg-white text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-moss-soft disabled:opacity-40"
-        >
-          {searching ? "搜索中…" : "🔍 搜索网络报价"}
-        </button>
-        {searchErr && <span className="text-[11px] text-[#B85C5C] ml-2">{searchErr}</span>}
-      </div>
-      <table className="w-full border-collapse text-[13px]">
+      {showMeta && <div className="space-y-0">{
+        <>
+        {hotel.note && <div className="text-xs text-ink-soft mb-2.5">{hotel.note}</div>}
+        <div className="mb-2">
+          <button
+            type="button"
+            disabled={searching}
+            onClick={async () => {
+              setSearching(true); setSearchErr(null);
+              try { setSearchResult(await searchHotel(hotel.name, city || "", "", "")); }
+              catch (e) { setSearchErr(e instanceof Error ? e.message : String(e)); }
+              finally { setSearching(false); }
+            }}
+            className="border border-line bg-white text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-moss-soft disabled:opacity-40"
+          >
+            {searching ? "搜索中…" : "🔍 搜索网络报价"}
+          </button>
+          {searchErr && <span className="text-[11px] text-[#B85C5C] ml-2">{searchErr}</span>}
+        </div>
+        </>}
+      </div>}
+      {showMeta && <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr>
             {["平台", "价格", "早餐", "备注"].map((th) => (
@@ -75,11 +94,11 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city }: Hot
             );
           })}
         </tbody>
-      </table>
-      {searchResult && (
+      </table>}
+      {showMeta && searchResult && (
         <div className="mt-2 text-[11px] text-ink-soft">🔍 {searchResult.note}</div>
       )}
-      {hotel.verdict && (
+      {showMeta && hotel.verdict && (
         <div className="mt-3.5 pt-2.5 border-t border-dashed border-line">
           <div className="text-xs font-bold text-gold mb-1">✦ 建议</div>
           <p className="text-[12.5px] leading-relaxed text-ink-soft">{hotel.verdict}</p>

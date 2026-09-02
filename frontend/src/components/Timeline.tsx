@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { RouteJSON } from "../types/route";
 import { dayColor, emojiFor } from "../mapCore";
+import type { MapSettings } from "../lib/settings";
 import HotelCard from "./HotelCard";
 
 interface TimelineProps {
@@ -16,13 +17,21 @@ interface TimelineProps {
   onPlaceFocus?: (di: number, pi: number) => void;
   /** 双击酒店 → 地图聚焦 */
   onHotelFocus?: (di: number) => void;
+  /** 编辑酒店（M16：逐天自定义） */
+  onEditHotel?: (di: number) => void;
+  /** 地图显示设置（M16）：showSummary/showMeta 控制展示 */
+  view?: MapSettings;
 }
 
 /** 时间线面板：按天分组、可折叠；点击条目与地图双向联动。 */
 export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onPlaceFocus, onHotelFocus,
+  onEditHotel,
+  view,
 }: TimelineProps) {
+  const showSummary = view?.showSummary !== false;
+  const showMeta = view?.showMeta !== false;
   const [closed, setClosed] = useState<Set<number>>(new Set());
   const dragRef = useRef<{ di: number; pi: number } | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
@@ -38,7 +47,7 @@ export default function Timeline({
 
   return (
     <div>
-      {route.summary && route.summary.length > 0 && (
+      {showSummary && route.summary && route.summary.length > 0 && (
         <div className="bg-moss text-[#F4FBF6] rounded-[14px] px-4 py-4 my-1.5 mb-5" data-testid="summary-block">
           <h2 className="text-sm font-bold mb-2">🧠 AI 综合建议</h2>
           <ul>
@@ -138,10 +147,10 @@ export default function Timeline({
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold">{p.name}</div>
                         <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">
-                          {p.time && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">{p.time}</span>}
-                          {p.ticket && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">🎫 {p.ticket}</span>}
-                          {p.transport && <div>🚗 {p.transport}</div>}
-                          {p.note && <div>{p.note}</div>}
+                          {showMeta && p.time && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">{p.time}</span>}
+                          {showMeta && p.ticket && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">🎫 {p.ticket}</span>}
+                          {showMeta && p.transport && <div>🚗 {p.transport}</div>}
+                          {showMeta && p.note && <div>{p.note}</div>}
                         </div>
                       </div>
                       {editing && (
@@ -169,7 +178,7 @@ export default function Timeline({
                 })}
 
                 {day.hotel && day.hotel.name && (
-                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} />
+                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} />
                 )}
               </div>
             )}
