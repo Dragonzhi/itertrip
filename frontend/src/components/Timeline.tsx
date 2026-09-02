@@ -12,12 +12,16 @@ interface TimelineProps {
   onDeletePlace?: (di: number, pi: number) => void;
   onEditPlace?: (di: number, pi: number) => void;
   onDropMove?: (srcDi: number, srcPi: number, dstDi: number, dstPi: number) => void;
+  /** 双击地点 → 地图聚焦（与单击弹框区分） */
+  onPlaceFocus?: (di: number, pi: number) => void;
+  /** 双击酒店 → 地图聚焦 */
+  onHotelFocus?: (di: number) => void;
 }
 
 /** 时间线面板：按天分组、可折叠；点击条目与地图双向联动。 */
 export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
-  editing = false, onDeletePlace, onEditPlace, onDropMove,
+  editing = false, onDeletePlace, onEditPlace, onDropMove, onPlaceFocus, onHotelFocus,
 }: TimelineProps) {
   const [closed, setClosed] = useState<Set<number>>(new Set());
   const dragRef = useRef<{ di: number; pi: number } | null>(null);
@@ -35,7 +39,7 @@ export default function Timeline({
   return (
     <div>
       {route.summary && route.summary.length > 0 && (
-        <div className="moss text-[#F4FBF6] rounded-[14px] px-4 py-4 my-1.5 mb-5">
+        <div className="bg-moss text-[#F4FBF6] rounded-[14px] px-4 py-4 my-1.5 mb-5" data-testid="summary-block">
           <h2 className="text-sm font-bold mb-2">🧠 AI 综合建议</h2>
           <ul>
             {route.summary.map((s, i) => (
@@ -110,7 +114,8 @@ export default function Timeline({
                     <div
                       key={key}
                       data-key={key}
-                      onClick={() => onPlaceClick(di, pi)}
+                      onClick={(e) => { e.stopPropagation(); onPlaceClick(di, pi); }}
+                      onDoubleClick={(e) => { e.preventDefault(); onPlaceFocus?.(di, pi); }}
                       draggable={editing}
                       onDragStart={(e) => {
                         if (!editing) return;
@@ -164,7 +169,7 @@ export default function Timeline({
                 })}
 
                 {day.hotel && day.hotel.name && (
-                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} />
+                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} />
                 )}
               </div>
             )}

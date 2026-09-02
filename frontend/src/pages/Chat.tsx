@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { chatTurn } from "../api/client";
+import { chatStream, type ChatStreamEvent } from "../api/client";
 import ChatPanel from "../components/ChatPanel";
 import { loadChatHistory, saveChatHistory, type LlmSettings } from "../lib/settings";
 import type { ChatMessage } from "../types/chat";
@@ -19,6 +19,9 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 export default function Chat({ onRoute, onOpenSettings, onBack, prefill, settings }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory());
   const [loading, setLoading] = useState(false);
+  /** 流式过程（优化①） */
+  const [stageLabel, setStageLabel] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
   const sentPrefillRef = useRef(false);
 
   useEffect(() => {
@@ -43,9 +46,13 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       .map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
+    const onEvent = (ev: ChatStreamEvent) => {
+      if (ev.event === "stage") setStageLabel(ev.label || null);
+      else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
+    };
     try {
-      const r = await chatTurn({ prompt: text, history }, settings);
-      const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply };
+      const r = await chatStream({ prompt: text, history }, settings, onEvent);
+      const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply || streamText };
       setMessages((prev) => [...prev, reply]);
       if (r.route && r.route.days.length > 0) {
         onRoute(r.route, "chat");
@@ -56,6 +63,8 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
         { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
       ]);
     } finally {
+      setStageLabel(null);
+      setStreamText("");
       setLoading(false);
     }
   }
@@ -79,7 +88,14 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
         </button>
       </header>
       <div className="flex-1 min-h-0 max-w-2xl w-full mx-auto">
-        <ChatPanel messages={messages} loading={loading} hasRoute={false} onSend={send} />
+        <ChatPanel
+          messages={messages}
+          loading={loading}
+          hasRoute={false}
+          onSend={send}
+          stageLabel={stageLabel}
+          streamText={streamText}
+        />
       </div>
     </div>
   );

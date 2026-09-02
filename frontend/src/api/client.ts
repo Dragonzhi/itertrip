@@ -35,33 +35,79 @@ export async function planTrip(
   return { route, source: resp.headers.get("X-IterTrip-Source") || "?" };
 }
 
-/** 对话入口（M13/M14 共用契约）：prompt 为空 = 只初始化。 */
-export interface ChatTurnRequest {
-  prompt: string;
+/** 对话流式事件（优化①）：stage=阶段播报 delta=回复增量 reply=终帧 error=流内错误 */
+export interface ChatStreamEvent {
+  event: "stage" | "delta" | "reply" | "error";
+  stage?: string;
+  label?: string;
+  text?: string;
+  reply?: string;
+  intent?: "route_edit" | "chitchat";
   route?: RouteJSON | null;
-  history?: { role: "user" | "assistant"; content: string }[];
+  detail?: string;
 }
 
-export interface ChatTurnResponse {
-  reply: string;
-  intent: "route_edit" | "chitchat";
-  route: RouteJSON | null;
-}
-
-export async function chatTurn(
-  req: ChatTurnRequest,
-  settings?: LlmSettings | null,
-): Promise<ChatTurnResponse> {
+/**
+ * 对话入口（SSE 流式）：prompt 为空 = 只初始化。
+ * onEvent 按序回调 stage/delta 事件；reply/error 只出现一次且为最后事件。
+ * 返回终帧数据（reply/error 合一的 dict）。
+ */
+export async function chatStream(
+  req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[] },
+  settings: LlmSettings | null | undefined,
+  onEvent?: (ev: ChatStreamEvent) => void,
+): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null }> {
   const resp = await fetch(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
     body: JSON.stringify(req),
   });
-  if (!resp.ok) {
+  if (!resp.ok || !resp.body) {
     const detail = await resp.text();
-    throw new Error(`对话失败 (${resp.status}): ${detail.slice(0, 200)}`);
+    let msg = detail;
+    try {
+      msg = String(JSON.parse(detail).detail || detail);
+    } catch { /* 保持原文 */ }
+    throw new Error(String(msg).slice(0, 200) || `对话失败 (${resp.status})`);
   }
-  return resp.json();
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null } = {
+    reply: "", intent: "chitchat", route: null,
+  };
+  let failed = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) !== -1) {
+      const raw = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      let event = "message";
+      const dataLines: string[] = [];
+      for (const line of raw.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+      }
+      if (!dataLines.length) continue;
+      let payload: ChatStreamEvent;
+      try {
+        payload = { event, ...(JSON.parse(dataLines.join("\n")) as object) } as ChatStreamEvent;
+      } catch { continue; }
+      if (event === "error") {
+        failed = true;
+        throw new Error(payload.detail || "对话失败");
+      }
+      onEvent?.(payload);
+      if (event === "reply") {
+        final = { reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null };
+      }
+    }
+  }
+  if (failed) throw new Error("对话失败");
+  return final;
 }
 
 export interface LlmTestResult {

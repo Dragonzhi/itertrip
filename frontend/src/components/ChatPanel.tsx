@@ -6,6 +6,9 @@ interface ChatPanelProps {
   loading: boolean;
   hasRoute: boolean;
   onSend: (text: string) => void;
+  /** 流式过程（优化①）：阶段播报 + 正在流出的回复文本 */
+  stageLabel?: string | null;
+  streamText?: string;
 }
 
 const EXAMPLES = [
@@ -15,13 +18,13 @@ const EXAMPLES = [
 ];
 
 /** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。 */
-export default function ChatPanel({ messages, loading, hasRoute, onSend }: ChatPanelProps) {
+export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText }: ChatPanelProps) {
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, loading]);
+  }, [messages.length, loading, streamText, stageLabel]);
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -80,7 +83,27 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend }: ChatP
             </div>
           </div>
         ))}
-        {loading && <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>}
+        {loading && (
+          <div className="space-y-1.5" data-testid="ai-streaming">
+            {stageLabel && (
+              <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
+                {stageLabel}
+              </div>
+            )}
+            {streamText && (
+              <div className="flex justify-start">
+                <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  {streamText}
+                  <span className="inline-block w-[2px] h-[14px] bg-moss align-middle ml-0.5 animate-pulse" />
+                </div>
+              </div>
+            )}
+            {!streamText && !stageLabel && (
+              <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
+            )}
+          </div>
+        )}
       </div>
       <form onSubmit={submit} className="border-t border-line bg-white p-2.5">
         <div className="flex gap-2 items-end">

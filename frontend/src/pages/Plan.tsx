@@ -4,7 +4,7 @@ import Timeline from "../components/Timeline";
 import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../components/PlaceForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
-import { exportHtml, chatTurn } from "../api/client";
+import { exportHtml, chatStream, type ChatStreamEvent } from "../api/client";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import type { ChatMessage } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
@@ -33,19 +33,37 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } }>(null);
   const lastActiveDayRef = useRef(0);
 
-  /* ---------- M14：对话抽屉 + AI 改路线 ---------- */
+  /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①） ---------- */
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  /** 流式过程：当前阶段播报 label + 正在流出的回复文本 */
+  const [stageLabel, setStageLabel] = useState<string | null>(null);
+  const [streamText, setStreamText] = useState("");
   const [flashKeys, setFlashKeys] = useState<string[]>([]);
+  /** 优化④：地点交互 {key, seq, mode}；peek=单击弹框，zoom=双击聚焦 */
+  const [focus, setFocus] = useState<{ key: string; seq: number; mode: "peek" | "zoom" } | null>(null);
+  /** 右侧工具条：导出二级菜单开合 */
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement | null>(null);
+
+  // 点击工具条外部关闭导出菜单
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [exportOpen]);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
   useEffect(() => {
     if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
-  }, [chatMsgs.length, aiBusy, chatOpen]);
+  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel]);
 
   const sendAiEdit = async (text: string) => {
     const t = text.trim();
@@ -58,17 +76,25 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setChatMsgs((prev) => [...prev, userMsg]);
     setChatInput("");
     setAiBusy(true);
+    setStageLabel(null);
+    setStreamText("");
+    const onEvent = (ev: ChatStreamEvent) => {
+      if (ev.event === "stage") setStageLabel(ev.label || null);
+      else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
+    };
     try {
-      const r = await chatTurn({ prompt: t, history, route }, settings);
+      const r = await chatStream({ prompt: t, history, route }, settings, onEvent);
+      setStageLabel(null);
       const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
       const reply: ChatMessage = {
         id: uid(),
         role: "assistant",
-        content: r.reply,
+        content: r.reply || streamText,
         route: r.route || undefined,
         changed: !!(diff && diff.changed),
         changeSummary: diff && diff.changed ? diff.summary : undefined,
       };
+      setStreamText("");
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
         mutate((draft) => {
@@ -83,6 +109,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         setFlashKeys(keys);
       }
     } catch (e) {
+      setStageLabel(null);
+      setStreamText("");
       setChatMsgs((prev) => [
         ...prev,
         { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
@@ -112,10 +140,21 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setActiveKey("d" + di + "-p" + pi);
     lastActiveDayRef.current = di;
     setPanelOpen(true);
+    // 优化④：单击只弹详细框，不挪地图（消除「整体抽动」）
+    setFocus({ key: "d" + di + "-p" + pi, seq: Date.now(), mode: "peek" });
+  };
+  const handlePlaceFocus = (di: number, pi: number) => {
+    setActiveKey("d" + di + "-p" + pi);
+    setFocus({ key: "d" + di + "-p" + pi, seq: Date.now(), mode: "zoom" });
   };
   const handleHotelClick = (di: number) => {
     setActiveKey("d" + di + "-hotel");
     setPanelOpen(true);
+    setFocus({ key: "d" + di + "-hotel", seq: Date.now(), mode: "peek" });
+  };
+  const handleHotelFocus = (di: number) => {
+    setActiveKey("d" + di + "-hotel");
+    setFocus({ key: "d" + di + "-hotel", seq: Date.now(), mode: "zoom" });
   };
 
   /* ---------- 编辑器：删除 / 拖拽移动 ---------- */
@@ -260,9 +299,6 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       return !v;
     });
   };
-  const chatBtnCls = chatOpen
-    ? "bg-moss text-white border-moss"
-    : "border-line bg-white text-moss hover:bg-moss-soft";
   const pickHint = picking ? (picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
   return (
@@ -274,11 +310,33 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         onPick={handlePick}
         onPlaceClick={handlePlaceClick}
         onHotelClick={handleHotelClick}
+        onPlaceFocus={handlePlaceFocus}
+        onHotelFocus={handleHotelFocus}
         flashKeys={flashKeys}
+        focus={focus}
+        viewOffset={(chatOpen ? 380 : 0) + (panelOpen ? 400 : 0)}
       />
 
-      {/* 顶部悬浮标题 */}
-      <div className="fixed top-3.5 left-3.5 right-3.5 z-[500] flex items-center gap-3 pointer-events-none">
+      {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
+      <button
+        onClick={toggleChat}
+        className={
+          "fixed top-1/2 -translate-y-1/2 z-[420] flex items-center justify-center w-[26px] h-[92px] rounded-r-[14px] rounded-l-none bg-moss text-white shadow-card transition-all duration-300 hover:bg-[#175740] hover:w-[30px] " +
+          (chatOpen ? "left-[380px]" : "left-0")
+        }
+        title={chatOpen ? "收起 AI 对话" : "打开 AI 对话（让 AI 改行程）"}
+        data-testid="chat-reentry"
+      >
+        <span className={"text-[15px] transition-transform duration-300 " + (chatOpen ? "rotate-180" : "")}>
+          {chatOpen ? "◂" : "▸"}
+        </span>
+      </button>
+
+      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡） */}
+      <div
+        className="fixed top-3.5 right-3.5 z-[500] flex items-center gap-3 pointer-events-none transition-[left] duration-300"
+        style={{ left: chatOpen ? 396 : 14 }}
+      >
         <div className="bg-white border border-line rounded-[14px] px-3.5 py-2 shadow-card flex items-center gap-2 pointer-events-auto">
           <span className="text-lg">🧭</span>
           <button onClick={onRestart} className="text-sm font-bold tracking-wide hover:text-moss" title="重新规划">
@@ -295,25 +353,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           </div>
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto">
-          <button
-            onClick={toggleChat}
-            className={"border rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card " + chatBtnCls}
-            title="让 AI 直接修改当前路线（改动可撤销）"
-            data-testid="chat-reentry"
-          >
-            💬 AI 改行程
-          </button>
           {source === "mock" && (
             <span className="bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
               mock 草稿
             </span>
           )}
-          <button onClick={handleExportJson} className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
-            ⤓ JSON
-          </button>
-          <button onClick={handleExportHtml} disabled={exporting} className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft disabled:opacity-40">
-            {exporting ? "导出中…" : "⤓ HTML"}
-          </button>
           <button onClick={() => setPanelOpen((v) => !v)} className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
             {panelOpen ? "▸ 收起" : "☰ 行程"}
           </button>
@@ -369,7 +413,27 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               </div>
             </div>
           ))}
-          {aiBusy && <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在调整路线…</div>}
+          {aiBusy && (
+            <div className="space-y-1.5" data-testid="ai-streaming">
+              {stageLabel && (
+                <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
+                  {stageLabel}
+                </div>
+              )}
+              {streamText && (
+                <div className="flex justify-start">
+                  <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+                    {streamText}
+                    <span className="inline-block w-[2px] h-[14px] bg-moss align-middle ml-0.5 animate-pulse" />
+                  </div>
+                </div>
+              )}
+              {!streamText && !stageLabel && (
+                <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
+              )}
+            </div>
+          )}
         </div>
         <form
           onSubmit={(e) => { e.preventDefault(); sendAiEdit(chatInput); }}
@@ -419,6 +483,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             activeKey={activeKey}
             onPlaceClick={handlePlaceClick}
             onHotelClick={handleHotelClick}
+            onPlaceFocus={handlePlaceFocus}
+            onHotelFocus={handleHotelFocus}
             editing
             onDeletePlace={handleDelete}
             onEditPlace={openEditForm}
@@ -438,6 +504,34 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             <button onClick={openAddFlow} className="bg-gold text-white border border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
               📍 添加地点
             </button>
+            {/* 导出二级菜单（优化②：JSON/HTML 收进右侧工具条） */}
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setExportOpen((v) => !v)}
+                className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft"
+                title="导出行程"
+                data-testid="export-trigger"
+              >
+                ⤓ 导出
+              </button>
+              {exportOpen && (
+                <div className="absolute bottom-[calc(100%+6px)] right-0 w-[150px] bg-white border border-line rounded-xl shadow-card p-1 z-[600] space-y-0.5">
+                  <button
+                    onClick={handleExportJson}
+                    className="w-full text-left px-3 py-2 text-[13px] font-semibold text-ink rounded-lg hover:bg-moss-soft hover:text-moss"
+                  >
+                    ⤓ 导出 JSON
+                  </button>
+                  <button
+                    onClick={handleExportHtml}
+                    disabled={exporting}
+                    className="w-full text-left px-3 py-2 text-[13px] font-semibold text-ink rounded-lg hover:bg-moss-soft hover:text-moss disabled:opacity-40"
+                  >
+                    {exporting ? "导出中…" : "⤓ 导出 HTML"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="mt-2 text-[11px] text-[#A8A298] text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div>

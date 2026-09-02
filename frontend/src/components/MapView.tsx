@@ -11,23 +11,31 @@ interface MapViewProps {
   onPick?: (lat: number, lng: number) => void;
   onPlaceClick: (di: number, pi: number) => void;
   onHotelClick: (di: number) => void;
+  /** 双击聚焦：单击已弹框，双击才 setView 聚焦 */
+  onPlaceFocus?: (di: number, pi: number) => void;
+  onHotelFocus?: (di: number) => void;
   /** 需要闪烁高亮的 pin key（"d{di}-p{pi}"），M14 对话改路线用 */
   flashKeys?: string[];
+  /** 地点交互（优化④）：peek=单击弹框不挪图；zoom=双击聚焦 setView；seq 防重复 */
+  focus?: { key: string; seq: number; mode: "peek" | "zoom" } | null;
+  /** 视野平移补偿（优化②）：抽屉打开时把地图中心右移半个抽屉宽 */
+  viewOffset?: number;
 }
 
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
-export default function MapView({ route, activeDay, picking, onPick, onPlaceClick, onHotelClick, flashKeys }: MapViewProps) {
+export default function MapView({ route, activeDay, picking, onPick, onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.LayerGroup | null>(null);
   const dayLinesRef = useRef<Map<number, L.Polyline>>(new Map());
-  const cbRef = useRef({ onPlaceClick, onHotelClick });
-  cbRef.current = { onPlaceClick, onHotelClick };
+  const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const cbRef = useRef({ onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus });
+  cbRef.current = { onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus };
 
   // 初始化（仅一次）
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false, minZoom: 3 }).setView([34.05, 108.94], 5);
+    const map = L.map(containerRef.current, { zoomControl: false, attributionControl: false, minZoom: 3 }).setView([34.05, 108.94], 5);
     const amap = L.tileLayer(
       "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
       { attribution: "&copy; 高德地图", subdomains: "1234", minZoom: 3, maxZoom: 18 },
@@ -37,7 +45,9 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
     });
     amap.addTo(map);
     L.control.attribution({ position: "bottomleft" }).addTo(map);
-    L.control.layers({ 高德默认: amap, "OSM 标准": osm }, undefined, { position: "topleft" }).addTo(map);
+    // 优化②：缩放/图层控件移到底左，避开左上 logo 与标题卡
+    L.control.layers({ 高德默认: amap, "OSM 标准": osm }, undefined, { position: "bottomleft" }).addTo(map);
+    L.control.zoom({ position: "bottomleft" }).addTo(map);
     layersRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
@@ -55,6 +65,7 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
     if (!map || !layers) return;
     layers.clearLayers();
     dayLinesRef.current.clear();
+    markersRef.current.clear();
     if (!route) return;
     const bounds: L.LatLngExpression[] = [];
     const callbacks = cbRef.current;
@@ -81,9 +92,11 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
             (p.transport ? `<div class="pp-row">🚗 ${p.transport}</div>` : "") +
             (p.note ? `<div class="pp-row">${p.note}</div>` : "") +
           `</div>`,
-          { className: "iter-popup" },
+          { className: "iter-popup", autoPan: false },
         );
         m.on("click", () => callbacks.onPlaceClick(di, pi));
+        m.on("dblclick", () => callbacks.onPlaceFocus?.(di, pi));
+        markersRef.current.set("d" + di + "-p" + pi, m);
         bounds.push([p.lat, p.lng]);
       });
 
@@ -106,8 +119,11 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
             (best ? `<div class="pp-row">最低 ¥${best.price}（${best.platform}）</div>` : "") +
             (h.note ? `<div class="pp-row">${h.note}</div>` : "") +
           `</div>`,
+          { className: "iter-popup", autoPan: false },
         );
         hm.on("click", () => callbacks.onHotelClick(di));
+        hm.on("dblclick", () => callbacks.onHotelFocus?.(di));
+        markersRef.current.set("d" + di + "-hotel", hm);
         bounds.push([h.lat, h.lng]);
       }
 
@@ -180,6 +196,31 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
       }
     }
   }, [flashKeys, route]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 优化④：单击（peek）= 只弹框不挪图（消除抽动）；双击（zoom）= setView 聚焦
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !focus) return;
+    const marker = markersRef.current.get(focus.key);
+    if (!marker) return;
+    if (focus.mode === "zoom") {
+      // 双击聚焦：把地点放到屏幕正中心（不做右侧面板补偿，避免偏左）
+      const latlng = marker.getLatLng();
+      map.setView(latlng, Math.max(map.getZoom(), 14), { animate: true, duration: 0.5 });
+      const pin = marker.getElement();
+      if (pin) {
+        pin.classList.add("flash");
+        window.setTimeout(() => pin.classList.remove("flash"), 6600);
+      }
+    } else {
+      // peek：只弹详细框，地图保持不动
+      marker.openPopup();
+    }
+  }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 抽屉开合不再自动 pan 地图（用户已明确要「双击后地点在正中心」）
+  // viewOffset 保留 prop 供 fitBounds 关注区域排除，但不再做运行时 panBy 补偿
+  void viewOffset;
 
   // 选点模式：crosshair + 禁拖动/双击缩放，once click 回调坐标（移植自 enterPicking/exitPicking）
   useEffect(() => {

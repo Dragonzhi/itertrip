@@ -6,10 +6,12 @@ interface HotelCardProps {
   hotel: Hotel;
   active: boolean;
   onClick: () => void;
+  /** 双击聚焦地图 */
+  onFocus?: () => void;
 }
 
 /** 酒店比价卡：最低价平台自动高亮 + 「最低」标签。 */
-export default function HotelCard({ hotel, active, onClick, city }: HotelCardProps & { city?: string }) {
+export default function HotelCard({ hotel, active, onClick, onFocus, city }: HotelCardProps & { city?: string }) {
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
@@ -18,6 +20,7 @@ export default function HotelCard({ hotel, active, onClick, city }: HotelCardPro
   return (
     <div
       onClick={onClick}
+      onDoubleClick={(e) => { e.preventDefault(); onFocus?.(); }}
       className={`bg-white border border-line rounded-[14px] p-3.5 mt-3 shadow-[0_2px_10px_rgba(43,43,40,0.05)] cursor-pointer transition-shadow ${active ? "ring-2 ring-gold/45" : ""}`}
     >
       <div className="flex items-center gap-2 mb-1">
