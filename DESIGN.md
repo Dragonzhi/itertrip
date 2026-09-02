@@ -112,8 +112,8 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
 | geocode 三级降级 + confidence | 攻略提取的店名补坐标，幻觉兜底链路 |
 | 自包含 HTML 导出（后端 builder + 模板） | 分享/带走能力，不变 |
 | C-1 单进程（API+前端同源） | 本地优先形态的载体 |
-| BYOK 设置面板 | 待建（M12） |
-| 对话 UI + 攻略提取 prompt + 对话改路线 | 待建（M13/M14 主战场） |
+| BYOK 设置面板 | **已建**（M12：设置弹窗/测试连接/localStorage，X-LLM-* 头贯通 plan/geocode/chat） |
+| 对话 UI + 攻略提取 prompt + 对话改路线 | M13 **已建**（/api/chat 双模式：提取+改路线同契约）；M14 剩 UI diff 高亮 |
 
 ---
 
@@ -125,9 +125,10 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
 - [x] M9：编辑器移植（探针 18/18 + DnD 4/4）
 - [x] M10：坐标补全 + 搜索（三级降级）
 - [x] M11：部署配置自动化 + C-1 单进程本地形态
-- [ ] M12：BYOK 设置面板（设置弹窗/测试连接/视觉能力探测/localStorage）
-- [ ] M13：对话 UI + 文本攻略提取（第一刀：贴文字 → 地图，主线闭环）
+- [x] M12：BYOK 设置面板（设置弹窗/测试连接/localStorage；视觉探测 UI 置灰随 M15 接入，/api/llm/test 已含探测）
+- [x] M13：对话 UI + 文本攻略提取（贴文字 → 地图主线闭环；探针 15/15）
 - [ ] M14：对话改路线（AI diff route → 即时重排 + 撤销集成）
+  - 后端契约已就绪：/api/chat 带 route 即进改路线模式（SYSTEM_EDIT 输出 {reply, changed, days}，整体 pydantic 校验 + 重试环）；前端只需接 ChatPanel→mutate 并做变化高亮（pin-key 通道已埋）
   - 难点提示：AI 改完的**变化可视化**比改路线本身更费工——新地点闪烁 / 移走的地点淡出 / 「我改了什么」的叙述。
   - 先行实验：在 UI 投入前，先用 prompt 实验确认模型能稳定输出「修改描述 + 完整 route JSON」的结构化格式。
 - [ ] M15：截图解析（VLM 直出 route JSON）

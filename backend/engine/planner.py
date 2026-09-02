@@ -34,15 +34,17 @@ JSON 结构：
 """
 
 
-def _llm_config() -> dict | None:
-    api_key = os.environ.get("ITERTRIP_LLM_API_KEY", "").strip()
+def _llm_config(overrides: dict | None = None) -> dict | None:
+    """解析 LLM 配置：请求头覆盖（BYOK，DESIGN.md §4.2）> 环境变量兜底；无 key 返回 None（走 mock）。"""
+    ov = overrides or {}
+    api_key = str(ov.get("api_key") or "").strip() or os.environ.get("ITERTRIP_LLM_API_KEY", "").strip()
     if not api_key:
         return None
-    return {
-        "api_key": api_key,
-        "base_url": os.environ.get("ITERTRIP_LLM_BASE_URL", "https://api.deepseek.com").rstrip("/"),
-        "model": os.environ.get("ITERTRIP_LLM_MODEL", "deepseek-chat"),
-    }
+    base_url = str(ov.get("base_url") or "").strip().rstrip("/") or os.environ.get(
+        "ITERTRIP_LLM_BASE_URL", "https://api.deepseek.com"
+    ).rstrip("/")
+    model = str(ov.get("model") or "").strip() or os.environ.get("ITERTRIP_LLM_MODEL", "deepseek-chat")
+    return {"api_key": api_key, "base_url": base_url, "model": model}
 
 
 def _extract_json(text: str) -> dict:
@@ -72,10 +74,10 @@ def _user_message(req: dict) -> str:
     return "\n".join(f"{k}：{v}" for k, v in rows)
 
 
-async def plan_with_llm(req: dict) -> RouteJSON:
-    cfg = _llm_config()
+async def plan_with_llm(req: dict, cfg: dict | None = None) -> RouteJSON:
+    cfg = cfg or _llm_config()
     if cfg is None:
-        raise RuntimeError("未配置 ITERTRIP_LLM_API_KEY")
+        raise RuntimeError("未配置 LLM（请求头/env 均无 key）")
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
             cfg["base_url"] + "/chat/completions",
@@ -167,14 +169,16 @@ def plan_mock(req: dict) -> RouteJSON:
     return RouteJSON.model_validate(route)
 
 
-async def _enrich_coordinates(route: RouteJSON, destination: str) -> int:
+async def _enrich_coordinates(
+    route: RouteJSON, destination: str, overrides: dict | None = None
+) -> int:
     """对缺失/无效坐标的地点做补全（Phase 4）；返回补全个数。补不到的由前端低置信度提示。"""
     filled = 0
     for day in route.days:
         for p in day.places:
             if p.lat is not None and p.lng is not None and (p.lat != 0 or p.lng != 0):
                 continue
-            result = await geocode(p.name, destination)
+            result = await geocode(p.name, destination, llm_overrides=overrides)
             if result["lat"] is not None:
                 p.lat = result["lat"]
                 p.lng = result["lng"]
@@ -182,18 +186,19 @@ async def _enrich_coordinates(route: RouteJSON, destination: str) -> int:
                 filled += 1
         h = day.hotel
         if h is not None and (h.lat == 0 and h.lng == 0):
-            result = await geocode(h.name, destination)
+            result = await geocode(h.name, destination, llm_overrides=overrides)
             if result["lat"] is not None:
                 h.lat = result["lat"]
                 h.lng = result["lng"]
     return filled
 
 
-async def plan(req: dict) -> tuple[RouteJSON, str]:
+async def plan(req: dict, overrides: dict | None = None) -> tuple[RouteJSON, str]:
     """统一入口。返回 (route, source)，source ∈ {"llm", "mock"}。"""
-    if _llm_config() is not None:
+    cfg = _llm_config(overrides)
+    if cfg is not None:
         try:
-            route = await plan_with_llm(req)
+            route = await plan_with_llm(req, cfg)
             source = "llm"
         except Exception as e:  # 降级不中断服务
             print(f"[planner] LLM 规划失败，降级 mock: {e}")
@@ -203,7 +208,7 @@ async def plan(req: dict) -> tuple[RouteJSON, str]:
         route = plan_mock(req)
         source = "mock"
     try:
-        filled = await _enrich_coordinates(route, route.trip.destination)
+        filled = await _enrich_coordinates(route, route.trip.destination, overrides)
         if filled:
             print(f"[planner] 坐标补全 {filled} 个地点")
     except Exception as e:

@@ -51,3 +51,17 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
   padding: 9px 4px; margin: 4px 0;
 }
 .place-item.dragging { opacity: 0.35; }
+
+/* ===== 对话改路线：变化高亮（DESIGN §7 M14 前置，M13 已接入 pin-key 通道）===== */
+@keyframes placeFlash {
+  0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.85); }
+  70% { box-shadow: 0 0 0 18px rgba(231, 76, 60, 0); }
+  100% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3); }
+}
+.iter-pin.flash { animation: placeFlash 2s ease-out 3; }
+
+@keyframes fadeRemoved {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.place-item.removed { animation: fadeRemoved 1.2s ease-out forwards; }

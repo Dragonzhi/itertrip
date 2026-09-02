@@ -13,12 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import export, geocode, plan, search
+from .api import chat, export, geocode, llm, plan, search
 
 app = FastAPI(
     title="IterTrip API",
     version="0.1.0",
-    description="AI 旅行规划系统 —— 规划引擎同时服务 Web 前端与 Hana Skill 两个入口",
+    description="把旅游攻略变成可以动手改、可以带走的地图 —— 独立 Web 应用（DESIGN.md v1.0）",
 )
 
 # CORS：生产用 ITERTRIP_CORS_ORIGINS 逗号分隔白名单；未配置时全放行（开发期/开放 API）
@@ -34,6 +34,8 @@ app.include_router(plan.router)
 app.include_router(geocode.router)
 app.include_router(search.router)
 app.include_router(export.router)
+app.include_router(chat.router)
+app.include_router(llm.router)
 
 
 @app.get("/api/health")

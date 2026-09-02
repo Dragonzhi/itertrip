@@ -47,11 +47,13 @@ def _valid_coord(lat: Any, lng: Any) -> bool:
     return -90 <= la <= 90 and -180 <= ln <= 180 and not (la == 0 and ln == 0)
 
 
-async def geocode_by_llm(name: str, city: str) -> tuple[float, float] | None:
+async def geocode_by_llm(
+    name: str, city: str, llm_overrides: dict | None = None
+) -> tuple[float, float] | None:
     """让 LLM 直接给出地名坐标；拿不到或不可信返回 None。"""
     from .planner import _llm_config  # 延迟导入避免 planner ↔ coordinates 循环引用
 
-    cfg = _llm_config()
+    cfg = _llm_config(llm_overrides)
     if cfg is None:
         return None
     prompt = (
@@ -108,13 +110,13 @@ async def geocode_by_search(name: str, city: str) -> tuple[float, float] | None:
         return None
 
 
-async def geocode(name: str, city: str = "") -> dict:
+async def geocode(name: str, city: str = "", llm_overrides: dict | None = None) -> dict:
     """单点 geocode：返回 {name, lat, lng, confidence}。
 
     confidence: high（LLM 确认/城市表命中）| low（搜索兜底/未命中给城市中心）
     """
     # 1. LLM 知识
-    llm = await geocode_by_llm(name, city)
+    llm = await geocode_by_llm(name, city, llm_overrides)
     if llm:
         return {"name": name, "lat": llm[0], "lng": llm[1], "confidence": "high"}
 

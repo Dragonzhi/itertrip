@@ -9,7 +9,11 @@ import { exportHtml } from "../api/client";
 interface PlanProps {
   route: RouteJSON;
   source: string;
+  /** 行程变化回传 App 层（localStorage 持久化用） */
+  onRouteChange?: (r: RouteJSON) => void;
   onRestart: () => void;
+  /** 回到对话屏，继续用 AI 改路线（M13/M14） */
+  onOpenChat: () => void;
 }
 
 type FormState =
@@ -17,7 +21,7 @@ type FormState =
   | { mode: "edit"; draft: PlaceDraft; target: { di: number; pi: number }; hasCoord: boolean };
 
 /** 规划页：全屏地图 + 时间线 + 交互编辑器（拖拽/删除/新增/编辑/撤销重做/双导出）。 */
-export default function Plan({ route: initialRoute, source, onRestart }: PlanProps) {
+export default function Plan({ route: initialRoute, source, onRouteChange, onRestart, onOpenChat }: PlanProps) {
   const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -34,6 +38,12 @@ export default function Plan({ route: initialRoute, source, onRestart }: PlanPro
 
   const trip = route.trip;
   const metas = [trip.destination, trip.dates, trip.budget, trip.travelers].filter(Boolean);
+
+  // 行程任何变更回传 App 层持久化（route 引用即快照）
+  useEffect(() => {
+    onRouteChange?.(route);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route]);
 
   /* ---------- 双向联动 ---------- */
   const handlePlaceClick = (di: number, pi: number) => {
@@ -212,6 +222,14 @@ export default function Plan({ route: initialRoute, source, onRestart }: PlanPro
           </div>
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto">
+          <button
+            onClick={onOpenChat}
+            className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft"
+            title="回到对话框，让 AI 继续修改路线"
+            data-testid="chat-reentry"
+          >
+            💬 对话
+          </button>
           {source === "mock" && (
             <span className="bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
               mock 草稿
