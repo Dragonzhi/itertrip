@@ -11,10 +11,12 @@ interface MapViewProps {
   onPick?: (lat: number, lng: number) => void;
   onPlaceClick: (di: number, pi: number) => void;
   onHotelClick: (di: number) => void;
+  /** 需要闪烁高亮的 pin key（"d{di}-p{pi}"），M14 对话改路线用 */
+  flashKeys?: string[];
 }
 
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
-export default function MapView({ route, activeDay, picking, onPick, onPlaceClick, onHotelClick }: MapViewProps) {
+export default function MapView({ route, activeDay, picking, onPick, onPlaceClick, onHotelClick, flashKeys }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.LayerGroup | null>(null);
@@ -65,7 +67,7 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
         const m = L.marker([p.lat, p.lng], {
           icon: L.divIcon({
             className: "",
-            html: `<div class="iter-pin day-${di + 1}"><span class="e">${emoji}</span></div>`,
+            html: `<div class="iter-pin day-${di + 1}" data-pin-key="d${di}-p${pi}"><span class="e">${emoji}</span></div>`,
             iconSize: [30, 30],
             iconAnchor: [15, 27],
             popupAnchor: [0, -24],
@@ -148,6 +150,36 @@ export default function MapView({ route, activeDay, picking, onPick, onPlaceClic
       else el.classList.remove("route-flow");
     });
   }, [activeDay, route]);
+
+  // M14：flashKeys 变化 → 对应图钉闪烁（重绘后 DOM 重建，故跟随 route 依赖触发）
+  useEffect(() => {
+    if (!flashKeys || flashKeys.length === 0) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const pins = map.getContainer().querySelectorAll("[data-pin-key]");
+    const targets = new Set(flashKeys);
+    const found: { el: Element | null } = { el: null };
+    pins.forEach((el) => {
+      const k = el.getAttribute("data-pin-key") || "";
+      if (targets.has(k)) {
+        el.classList.add("flash");
+        if (!found.el) found.el = el;
+        window.setTimeout(() => el.classList.remove("flash"), 6600);
+      }
+    });
+    // 第一个变化点平移入视野（不缩放，避免突兀）
+    const firstEl = found.el;
+    if (firstEl) {
+      const m2 = (firstEl.getAttribute("data-pin-key") || "").match(/^d(\d+)-p(\d+)$/);
+      if (m2) {
+        const day = route?.days[Number(m2[1])];
+        const place = day?.places?.[Number(m2[2])];
+        if (place && place.lat != null && place.lng != null) {
+          map.panTo([place.lat, place.lng], { animate: true, duration: 0.8 });
+        }
+      }
+    }
+  }, [flashKeys, route]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 选点模式：crosshair + 禁拖动/双击缩放，once click 回调坐标（移植自 enterPicking/exitPicking）
   useEffect(() => {

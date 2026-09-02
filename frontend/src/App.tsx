@@ -82,7 +82,7 @@ export default function App() {
           source={screen.source}
           onRouteChange={setRoute}
           onRestart={backToIndex}
-          onOpenChat={() => openChat()}
+          settings={settings}
         />
         {showSettings && (
           <SettingsPanel

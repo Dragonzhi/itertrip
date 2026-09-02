@@ -4,7 +4,10 @@ import Timeline from "../components/Timeline";
 import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../components/PlaceForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
-import { exportHtml } from "../api/client";
+import { exportHtml, chatTurn } from "../api/client";
+import { diffRoute, type RouteDiff } from "../lib/routeDiff";
+import type { ChatMessage } from "../types/chat";
+import type { LlmSettings } from "../lib/settings";
 
 interface PlanProps {
   route: RouteJSON;
@@ -12,8 +15,8 @@ interface PlanProps {
   /** 行程变化回传 App 层（localStorage 持久化用） */
   onRouteChange?: (r: RouteJSON) => void;
   onRestart: () => void;
-  /** 回到对话屏，继续用 AI 改路线（M13/M14） */
-  onOpenChat: () => void;
+  /** BYOK 设置（对话改路线请求用） */
+  settings: LlmSettings;
 }
 
 type FormState =
@@ -21,7 +24,7 @@ type FormState =
   | { mode: "edit"; draft: PlaceDraft; target: { di: number; pi: number }; hasCoord: boolean };
 
 /** 规划页：全屏地图 + 时间线 + 交互编辑器（拖拽/删除/新增/编辑/撤销重做/双导出）。 */
-export default function Plan({ route: initialRoute, source, onRouteChange, onRestart, onOpenChat }: PlanProps) {
+export default function Plan({ route: initialRoute, source, onRouteChange, onRestart, settings }: PlanProps) {
   const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -29,6 +32,65 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [form, setForm] = useState<FormState | null>(null);
   const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } }>(null);
   const lastActiveDayRef = useRef(0);
+
+  /* ---------- M14：对话抽屉 + AI 改路线 ---------- */
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [flashKeys, setFlashKeys] = useState<string[]>([]);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+  useEffect(() => {
+    if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
+  }, [chatMsgs.length, aiBusy, chatOpen]);
+
+  const sendAiEdit = async (text: string) => {
+    const t = text.trim();
+    if (!t || aiBusy) return;
+    const userMsg: ChatMessage = { id: uid(), role: "user", content: t };
+    const history = chatMsgs
+      .filter((m) => !m.error)
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
+    setChatMsgs((prev) => [...prev, userMsg]);
+    setChatInput("");
+    setAiBusy(true);
+    try {
+      const r = await chatTurn({ prompt: t, history, route }, settings);
+      const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
+      const reply: ChatMessage = {
+        id: uid(),
+        role: "assistant",
+        content: r.reply,
+        route: r.route || undefined,
+        changed: !!(diff && diff.changed),
+        changeSummary: diff && diff.changed ? diff.summary : undefined,
+      };
+      setChatMsgs((prev) => [...prev, reply]);
+      if (r.route && diff && diff.changed) {
+        mutate((draft) => {
+          draft.days = r.route!.days;
+          draft.trip = r.route!.trip;
+          draft.summary = r.route!.summary;
+        }); // 同一历史栈：AI 改动可撤销
+        const keys: string[] = [
+          ...diff.added.map((a) => "d" + a.di + "-p" + a.pi),
+          ...diff.moved.map((m) => "d" + m.toDi + "-p" + m.toPi),
+        ];
+        setFlashKeys(keys);
+      }
+    } catch (e) {
+      setChatMsgs((prev) => [
+        ...prev,
+        { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
+      ]);
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const activeDay = useMemo(() => {
     if (!activeKey) return -1;
@@ -191,6 +253,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   };
 
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
+  const toggleChat = () => {
+    setChatOpen((v) => {
+      if (!v) setTimeout(() => chatInputRef.current?.focus(), 320);
+      else setFlashKeys([]);
+      return !v;
+    });
+  };
+  const chatBtnCls = chatOpen
+    ? "bg-moss text-white border-moss"
+    : "border-line bg-white text-moss hover:bg-moss-soft";
   const pickHint = picking ? (picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
   return (
@@ -202,6 +274,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         onPick={handlePick}
         onPlaceClick={handlePlaceClick}
         onHotelClick={handleHotelClick}
+        flashKeys={flashKeys}
       />
 
       {/* 顶部悬浮标题 */}
@@ -223,12 +296,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto">
           <button
-            onClick={onOpenChat}
-            className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft"
-            title="回到对话框，让 AI 继续修改路线"
+            onClick={toggleChat}
+            className={"border rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card " + chatBtnCls}
+            title="让 AI 直接修改当前路线（改动可撤销）"
             data-testid="chat-reentry"
           >
-            💬 对话
+            💬 AI 改行程
           </button>
           {source === "mock" && (
             <span className="bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
@@ -247,6 +320,87 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         </div>
       </div>
 
+      {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈） */}
+      <aside
+        className={`fixed top-0 left-0 bottom-0 w-[380px] max-w-[calc(100vw-96px)] bg-cream z-[400] shadow-[10px_0_40px_rgba(43,43,40,0.15)] border-r border-line flex flex-col transition-transform duration-300 ${
+          chatOpen ? "translate-x-0" : "-translate-x-[calc(100%+2px)]"
+        }`}
+        data-testid="ai-drawer"
+        aria-hidden={!chatOpen}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
+          <span className="text-lg">🤖</span>
+          <h2 className="text-sm font-bold flex-1">AI 改行程</h2>
+          <span className="text-[10px] text-ink-soft">改动可撤销 · 地图实时更新</span>
+          <button onClick={toggleChat} className="text-ink-soft hover:text-ink leading-none" aria-label="关闭对话抽屉">✕</button>
+        </div>
+        <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 min-h-0">
+          {chatMsgs.length === 0 && !aiBusy && (
+            <div className="text-center pt-8 px-3">
+              <div className="text-3xl mb-2">🪄</div>
+              <p className="text-sm font-bold mb-1">让 AI 动手改</p>
+              <p className="text-xs text-ink-soft leading-relaxed">
+                例如：「第二天太赶，博物馆挪到第一天下午」「加一个 Day3 晚上的去处」。
+                <br />
+                改完地图会高亮变化处，撤销按钮随时反悔。
+              </p>
+            </div>
+          )}
+          {chatMsgs.map((m) => (
+            <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div
+                className={
+                  m.role === "user"
+                    ? "max-w-[85%] bg-moss text-white rounded-2xl rounded-br-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words"
+                    : "max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words" + (m.error ? " border-[#E0C3C3] bg-[#FDF4F4]" : "")
+                }
+              >
+                {m.content}
+                {m.changeSummary && m.changeSummary.length > 0 && (
+                  <ul className="mt-1.5 pt-1.5 border-t border-line/60 space-y-0.5" data-testid="change-summary">
+                    {m.changeSummary.map((s, i) => (
+                      <li key={i} className="text-xs text-moss font-medium">✓ {s}</li>
+                    ))}
+                  </ul>
+                )}
+                {m.role === "assistant" && m.changed && (
+                  <div className="text-[10px] text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
+                )}
+              </div>
+            </div>
+          ))}
+          {aiBusy && <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在调整路线…</div>}
+        </div>
+        <form
+          onSubmit={(e) => { e.preventDefault(); sendAiEdit(chatInput); }}
+          className="border-t border-line bg-white p-2.5"
+        >
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={chatInputRef}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendAiEdit(chatInput);
+                }
+              }}
+              rows={2}
+              placeholder="告诉 AI 怎么改，例如「第二天加点美食」…"
+              className="flex-1 resize-none border border-line rounded-xl px-3 py-2 text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            />
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || aiBusy}
+              className="bg-moss text-white rounded-xl px-3.5 py-2.5 text-[13px] font-bold hover:bg-[#175740] disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              发送
+            </button>
+          </div>
+        </form>
+      </aside>
+
       {/* 选点提示条 */}
       {pickHint && (
         <div className="fixed top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-white px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
@@ -256,6 +410,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
       {/* 右侧滑出面板 */}
       <aside
+        data-testid="timeline-panel"
         className={`fixed top-0 right-0 bottom-0 w-[400px] max-w-[calc(100vw-96px)] bg-cream z-[400] shadow-[-10px_0_40px_rgba(43,43,40,0.15)] border-l border-line flex flex-col transition-transform duration-300 ${panelOpen ? "translate-x-0" : "translate-x-[calc(100%+2px)]"}`}
       >
         <div className="flex-1 overflow-y-auto px-[18px] pb-10 pt-2">

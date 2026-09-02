@@ -113,7 +113,7 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
 | 自包含 HTML 导出（后端 builder + 模板） | 分享/带走能力，不变 |
 | C-1 单进程（API+前端同源） | 本地优先形态的载体 |
 | BYOK 设置面板 | **已建**（M12：设置弹窗/测试连接/localStorage，X-LLM-* 头贯通 plan/geocode/chat） |
-| 对话 UI + 攻略提取 prompt + 对话改路线 | M13 **已建**（/api/chat 双模式：提取+改路线同契约）；M14 剩 UI diff 高亮 |
+| 对话 UI + 攻略提取 prompt + 对话改路线 | M13 **已建**（/api/chat 双模式）；M14 **已建**（页内抽屉 + diff 高亮 + 撤销集成） |
 
 ---
 
@@ -127,8 +127,8 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
 - [x] M11：部署配置自动化 + C-1 单进程本地形态
 - [x] M12：BYOK 设置面板（设置弹窗/测试连接/localStorage；视觉探测 UI 置灰随 M15 接入，/api/llm/test 已含探测）
 - [x] M13：对话 UI + 文本攻略提取（贴文字 → 地图主线闭环；探针 15/15）
-- [ ] M14：对话改路线（AI diff route → 即时重排 + 撤销集成）
-  - 后端契约已就绪：/api/chat 带 route 即进改路线模式（SYSTEM_EDIT 输出 {reply, changed, days}，整体 pydantic 校验 + 重试环）；前端只需接 ChatPanel→mutate 并做变化高亮（pin-key 通道已埋）
+- [x] M14：对话改路线（规划页内嵌 AI 抽屉；前端 diff 叙述 + 新/移位点闪烁高亮 + 同一撤销栈；探针 12/12）
+  - 落地要点：routeDiff.ts 同名配对 diff（added/removed/moved）；MapView data-pin-key 通道 + flash 动画 + panTo；useTripHistory 改同步快照（修复异步回调丢历史帧）
   - 难点提示：AI 改完的**变化可视化**比改路线本身更费工——新地点闪烁 / 移走的地点淡出 / 「我改了什么」的叙述。
   - 先行实验：在 UI 投入前，先用 prompt 实验确认模型能稳定输出「修改描述 + 完整 route JSON」的结构化格式。
 - [ ] M15：截图解析（VLM 直出 route JSON）
