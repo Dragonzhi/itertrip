@@ -22,6 +22,8 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
   /** 流式过程（优化①） */
   const [stageLabel, setStageLabel] = useState<string | null>(null);
   const [streamText, setStreamText] = useState("");
+  /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
+  const [streamThinking, setStreamThinking] = useState("");
   const sentPrefillRef = useRef(false);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     setMessages([]);
     setStageLabel(null);
     setStreamText("");
+    setStreamThinking("");
   };
 
   // 首页「带话过来」：进页面自动发送一次
@@ -58,6 +61,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     setLoading(true);
     const onEvent = (ev: ChatStreamEvent) => {
       if (ev.event === "stage") setStageLabel(ev.label || null);
+      else if (ev.event === "thinking") setStreamThinking((prev) => prev + (ev.thinking || ""));
       else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
     };
     try {
@@ -75,6 +79,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     } finally {
       setStageLabel(null);
       setStreamText("");
+      setStreamThinking("");
       setLoading(false);
     }
   }
@@ -114,6 +119,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
           onSend={send}
           stageLabel={stageLabel}
           streamText={streamText}
+          streamThinking={streamThinking}
         />
       </div>
     </div>

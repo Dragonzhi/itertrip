@@ -38,10 +38,12 @@ export async function planTrip(
 
 /** 对话流式事件（优化①）：stage=阶段播报 delta=回复增量 reply=终帧 error=流内错误 */
 export interface ChatStreamEvent {
-  event: "stage" | "delta" | "reply" | "error";
+  event: "stage" | "thinking" | "delta" | "reply" | "error";
   stage?: string;
   label?: string;
   text?: string;
+  /** 推理模型思考链增量（实时滚动，淡色小字展示，不混入正文） */
+  thinking?: string;
   reply?: string;
   intent?: "route_edit" | "chitchat";
   route?: RouteJSON | null;

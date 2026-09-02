@@ -4,6 +4,7 @@
     输入  { prompt: str, history: [{role, content}], route: RouteJSON | null }
     输出  text/event-stream：
         event: stage    data: {"stage": "understand|retry|geocode|done", "label": str}
+        event: thinking data: {"thinking": str}    # 推理模型思考链增量（前端淡色小字实时滚动）
         event: delta    data: {"text": str}        # <<<REPLY>>> 段的增量（客户端追加）
         event: reply    data: {"reply": str, "intent": "route_edit|chitchat", "route": ...|null}
         event: error    data: {"detail": str}      # 流开始后的错误（预检失败仍是 HTTP 400）
@@ -19,6 +20,7 @@
 护栏（DESIGN.md §4.3）：解析/校验失败带错误重试一次；history 只保留最近 8 轮。
 """
 
+import asyncio
 import json
 
 import httpx
@@ -28,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..engine.schema import RouteJSON
 from .deps import llm_overrides
+from ..engine._llmutil import endpoint as _endpoint, non_stream_parts as _non_stream_parts
 
 router = APIRouter()
 
@@ -108,33 +111,108 @@ class ChatRequest(BaseModel):
 # ---------------- LLM 流式调用 ----------------
 
 
+def _extract_delta(chunk: dict) -> tuple[str, str]:
+    """从流式 chunk 提取文本，返回 (thinking, content) 两部分（各自累计）。
+
+    - delta.reasoning_content  -> thinking（思考链，走 thinking 事件）
+    - delta.content            -> content（正文，走 delta 事件）
+    二者分离：思考链不再混入正文气泡。
+    """
+    delta = None
+    if isinstance(chunk, dict):
+        delta = chunk.get("delta")  # 兼容非标准：顶层直接带 delta
+        if not delta:
+            try:
+                delta = chunk["choices"][0].get("delta", {})
+            except (KeyError, IndexError, TypeError):
+                delta = None
+    if not isinstance(delta, dict):
+        return ("", "")
+    thinking = delta.get("reasoning_content") or ""
+    content = delta.get("content") or ""
+    return (thinking, content)
+
+
 async def _stream_llm(cfg: dict, system: str, user_text: str, history: list[HistoryItem]):
-    """流式调用 LLM，逐段 yield 文本 delta。"""
+    """调用 LLM 并 yield 文本增量。
+
+    优先 SSE 流式；若端点忽略 stream（返回普通 JSON 而非 SSE，常见于部分免费/聚合网关），
+    自动回退到一次性非流式响应。兼容 content / reasoning_content 两种取文本方式。
+    """
     messages: list[dict] = [{"role": "system", "content": system}]
     for h in history[-8:]:  # 护栏：只保留最近 8 轮
         messages.append({"role": h.role, "content": h.content})
     messages.append({"role": "user", "content": user_text})
+
+    payload = {"model": cfg["model"], "messages": messages, "temperature": 0.4, "stream": True}
+
     async with httpx.AsyncClient(timeout=180) as client:
-        async with client.stream(
-            "POST",
-            cfg["base_url"] + "/chat/completions",
-            headers={"Authorization": "Bearer " + cfg["api_key"]},
-            json={"model": cfg["model"], "messages": messages, "temperature": 0.4, "stream": True},
-        ) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    return
+        try:
+            async with client.stream(
+                "POST",
+                _endpoint(cfg["base_url"]) + "/chat/completions",
+                headers={"Authorization": "Bearer " + cfg["api_key"]},
+                json=payload,
+            ) as resp:
+                resp.raise_for_status()
+                got_any = False
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        got_any = True
+                        return
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    thinking, content = _extract_delta(chunk)
+                    if thinking:
+                        got_any = True
+                        yield ("thinking", thinking)
+                    if content:
+                        got_any = True
+                        yield ("content", content)
+                # 流结束但一行 data 都没有 → 端点可能忽略了 stream，回退非流式
+                if not got_any:
+                    nresp = await client.post(
+                        _endpoint(cfg["base_url"]) + "/chat/completions",
+                        headers={"Authorization": "Bearer " + cfg["api_key"]},
+                        json={**payload, "stream": False},
+                    )
+                    nresp.raise_for_status()
+                    raw = nresp.text
+                    try:
+                        thinking, content = _non_stream_parts(json.loads(raw))
+                    except json.JSONDecodeError:
+                        # 响应体不是合法 JSON（部分免费网关透传上游 HTML/错误页）。
+                        # 把原始体当文本交给调用方，失败信息能落到 reply 而非静默兜底。
+                        content, thinking = raw, ""
+                    if thinking:
+                        yield ("thinking", thinking)
+                    if content:
+                        yield ("content", content)
+        except httpx.HTTPStatusError as e:
+            # 流式通路报 4xx/5xx（部分网关不支持 stream），回退一次非流式
+            if e.response is not None and e.response.status_code in (400, 404, 405, 422):
+                nresp = await client.post(
+                    _endpoint(cfg["base_url"]) + "/chat/completions",
+                    headers={"Authorization": "Bearer " + cfg["api_key"]},
+                    json={**payload, "stream": False},
+                )
+                nresp.raise_for_status()
+                raw = nresp.text
                 try:
-                    chunk = json.loads(data)
-                    piece = chunk["choices"][0]["delta"].get("content")
-                    if piece:
-                        yield piece
-                except (json.JSONDecodeError, KeyError, IndexError):
-                    continue
+                    thinking, content = _non_stream_parts(json.loads(raw))
+                except json.JSONDecodeError:
+                    content, thinking = raw, ""
+                if thinking:
+                    yield ("thinking", thinking)
+                if content:
+                    yield ("content", content)
+                return
+            raise
 
 
 def _extract_json(text: str) -> dict:
@@ -160,6 +238,24 @@ def _split_reply_json(full: str) -> tuple[str, str | None]:
     if "<<<REPLY>>>" in full:
         return full.replace("<<<REPLY>>>", "").strip(), None
     return full.strip(), None
+
+
+def _visible_reply(full: str) -> str:
+    """从当前累计的 content 里提取「应显示给用户的纯净正文段」。
+
+    兼容模型是否输出 <<<REPLY>>>/<<<JSON>>> 标记：
+    - 有 <<<REPLY>>>/<<<JSON>>>：取二者之间的人工叙述段
+    - 只有 <<<JSON>>>：取其前的人工叙述段
+    - 无任何标记：全文（去掉思考链标记后）当叙述
+    实时下发用，保证正文能边生成边滚动。
+    """
+    if "<<<JSON>>>" in full:
+        head = full.split("<<<JSON>>>", 1)[0]
+    else:
+        head = full
+    if "<<<REPLY>>>" in head:
+        head = head.split("<<<REPLY>>>", 1)[1]
+    return head
 
 
 async def _resolve_cfg(request: Request) -> tuple[dict, bool]:
@@ -226,23 +322,76 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             )
             full = ""
             sent = 0
+            # 阶段轮播文案：让「正在读取攻略并规划路线…」动起来，覆盖模型首个 token 前的等待窗口。
+            # 后台真实调用模型，主流程并发轮播前置步骤；一旦收到真实内容（thinking/delta）即用真实内容接管。
+            _STEPS = (
+                ["正在理解你的需求…", "正在提取景点…", "正在排行程…", "正在生成路线…"]
+                if not edit_mode
+                else ["正在分析当前路线…", "正在理解你的改动…", "正在调整行程…"]
+            )
+            queue: asyncio.Queue = asyncio.Queue()
+
+            async def _producer():
+                try:
+                    async for kind, piece in _stream_llm(cfg, system, payload, req.history):
+                        await queue.put((kind, piece, False))
+                except Exception as e:  # noqa: BLE001
+                    await queue.put(("__error__", str(e), True))
+                finally:
+                    await queue.put(("__done__", "", True))
+
+            producer_task = asyncio.create_task(_producer())
             try:
-                async for piece in _stream_llm(cfg, system, payload, req.history):
+                step_i = 0
+                started = False
+                while True:
+                    try:
+                        kind, piece, is_terminal = await asyncio.wait_for(queue.get(), timeout=0.9)
+                    except asyncio.TimeoutError:
+                        # 超时未拿到内容 → 播放下一个前置步骤（等待窗口轮播）
+                        if not started and step_i < len(_STEPS):
+                            yield _sse("stage", {"stage": "thinking-steps", "label": _STEPS[step_i]})
+                            step_i += 1
+                        continue
+                    if is_terminal:
+                        if kind == "__error__":
+                            raise RuntimeError(piece)
+                        break
+                    started = True
+                    if kind == "thinking":
+                        # 思考链实时下发到 thinking 通道（前端淡色小字滚动，不混入正文）
+                        yield _sse("thinking", {"thinking": piece})
+                        continue
                     full += piece
-                    # <<<REPLY>>> 段增量实时下发（JSON 段不吐，避免刷屏）
-                    if "<<<JSON>>>" not in full and "<<<REPLY>>>" in full:
-                        text = full.split("<<<REPLY>>>", 1)[1]
-                        if len(text) > sent:
-                            yield _sse("delta", {"text": text[sent:]})
-                            sent = len(text)
+                    # 实时下发纯净正文段（增量），兼容模型是否输出 <<<REPLY>>>/<<<JSON>>> 标记。
+                    # 用 _visible_reply 实时算「该给用户看的叙述」，避免依赖标记存在才能滚动。
+                    visible = _visible_reply(full)
+                    if len(visible) > sent:
+                        yield _sse("delta", {"text": visible[sent:]})
+                        sent = len(visible)
             except Exception as e:
                 yield _sse("error", {"detail": f"LLM 调用失败：{_short_err(e)}"})
                 return
+            finally:
+                producer_task.cancel()
 
             reply_text, json_part = _split_reply_json(full)
             if not json_part:
-                data = None
-                break  # 模型只给了叙述段（追问/闲聊），合法路径
+                # 无 <<<JSON>>> 标记：可能模型没遵协议，直接把 JSON 混在正文里（免费模型常见）。
+                # 先尝试从全文兜底提取 JSON；挖到了就当作结构化结果，挖不到才当纯叙述（追问/闲聊）。
+                try:
+                    data = _extract_json(full)
+                    # reply 只保留 JSON 起点之前的纯叙述，避免把结构化 JSON 带进 reply 气泡
+                    js = full.find("{")
+                    if js > 0:
+                        clean = full[:js].strip()
+                        if clean:
+                            reply_text = clean
+                    parse_err = ""
+                    break
+                except (ValueError, json.JSONDecodeError):
+                    data = None
+                    break  # 纯叙述/追问/闲聊，合法路径
             try:
                 data = _extract_json(json_part)
                 if edit_mode:

@@ -9,6 +9,8 @@ interface ChatPanelProps {
   /** 流式过程（优化①）：阶段播报 + 正在流出的回复文本 */
   stageLabel?: string | null;
   streamText?: string;
+  /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
+  streamThinking?: string;
 }
 
 const EXAMPLES = [
@@ -185,13 +187,13 @@ function ClarifyCard({
 }
 
 /** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。 */
-export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText }: ChatPanelProps) {
+export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking }: ChatPanelProps) {
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, loading, streamText, stageLabel]);
+  }, [messages.length, loading, streamText, stageLabel, streamThinking]);
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -263,6 +265,11 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
                 {stageLabel}
               </div>
             )}
+            {streamThinking && (
+              <div className="max-w-[90%] text-[11px] text-ink-soft/70 leading-relaxed whitespace-pre-wrap break-words font-mono bg-cream/60 border border-line/40 rounded-xl px-2.5 py-1.5" data-testid="thinking-stream">
+                <span className="text-[10px] text-ink-soft/50 mr-1">🤔</span>{streamThinking}
+              </div>
+            )}
             {streamText && (
               <div className="flex justify-start">
                 <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
@@ -271,7 +278,7 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
                 </div>
               </div>
             )}
-            {!streamText && !stageLabel && (
+            {!streamText && !stageLabel && !streamThinking && (
               <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
             )}
           </div>

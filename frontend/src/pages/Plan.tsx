@@ -48,6 +48,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   /** 流式过程：当前阶段播报 label + 正在流出的回复文本 */
   const [stageLabel, setStageLabel] = useState<string | null>(null);
   const [streamText, setStreamText] = useState("");
+  /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
+  const [streamThinking, setStreamThinking] = useState("");
   const [flashKeys, setFlashKeys] = useState<string[]>([]);
   /** 优化④：地点交互 {key, seq, mode}；peek=单击弹框，zoom=双击聚焦 */
   const [focus, setFocus] = useState<{ key: string; seq: number; mode: "peek" | "zoom" } | null>(null);
@@ -70,7 +72,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
   useEffect(() => {
     if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
-  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel]);
+  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel, streamThinking]);
 
   const sendAiEdit = async (text: string) => {
     const t = text.trim();
@@ -85,8 +87,10 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setAiBusy(true);
     setStageLabel(null);
     setStreamText("");
+    setStreamThinking("");
     const onEvent = (ev: ChatStreamEvent) => {
       if (ev.event === "stage") setStageLabel(ev.label || null);
+      else if (ev.event === "thinking") setStreamThinking((prev) => prev + (ev.thinking || ""));
       else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
     };
     try {
@@ -103,6 +107,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         questions: r.questions,
       };
       setStreamText("");
+      setStreamThinking("");
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
         mutate((draft) => {
@@ -119,6 +124,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     } catch (e) {
       setStageLabel(null);
       setStreamText("");
+      setStreamThinking("");
       setChatMsgs((prev) => [
         ...prev,
         { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
@@ -486,6 +492,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   {stageLabel}
                 </div>
               )}
+              {streamThinking && (
+                <div className="max-w-[90%] text-[11px] text-ink-soft/70 leading-relaxed whitespace-pre-wrap break-words font-mono bg-cream/60 border border-line/40 rounded-xl px-2.5 py-1.5" data-testid="thinking-stream">
+                  <span className="text-[10px] text-ink-soft/50 mr-1">🤔</span>{streamThinking}
+                </div>
+              )}
               {streamText && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words">
@@ -494,7 +505,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   </div>
                 </div>
               )}
-              {!streamText && !stageLabel && (
+              {!streamText && !stageLabel && !streamThinking && (
                 <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
               )}
             </div>

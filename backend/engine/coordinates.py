@@ -16,6 +16,8 @@ import os
 import re
 from typing import Any
 
+from ._llmutil import endpoint
+
 import httpx
 
 # 高置信度：知名城市中心（供城市级兜底）
@@ -64,7 +66,7 @@ async def geocode_by_llm(
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                cfg["base_url"] + "/chat/completions",
+                endpoint(cfg["base_url"]) + "/chat/completions",
                 headers={"Authorization": "Bearer " + cfg["api_key"]},
                 json={
                     "model": cfg["model"],

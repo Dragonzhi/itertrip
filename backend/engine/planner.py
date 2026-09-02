@@ -16,6 +16,7 @@ import os
 import httpx
 
 from .coordinates import geocode
+from ._llmutil import endpoint
 from .schema import RouteJSON
 
 SYSTEM_PROMPT = """你是专业旅行规划师。根据用户需求生成行程 JSON。
@@ -80,7 +81,7 @@ async def plan_with_llm(req: dict, cfg: dict | None = None) -> RouteJSON:
         raise RuntimeError("未配置 LLM（请求头/env 均无 key）")
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(
-            cfg["base_url"] + "/chat/completions",
+            endpoint(cfg["base_url"]) + "/chat/completions",
             headers={"Authorization": "Bearer " + cfg["api_key"]},
             json={
                 "model": cfg["model"],

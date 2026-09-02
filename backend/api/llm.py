@@ -12,10 +12,13 @@
 结果 source：user（请求头 BYOK）| env（服务端环境变量兜底）| none（两者皆无）。
 """
 
+import json
+
 from fastapi import APIRouter, Request
 import httpx
 
 from .deps import llm_overrides
+from ..engine._llmutil import endpoint, non_stream_text
 
 router = APIRouter()
 
@@ -53,7 +56,7 @@ async def _post(cfg: dict, payload: dict) -> tuple[int, str]:
     """返回 (status, body)；HTTP 层异常向上抛。"""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            cfg["base_url"] + "/chat/completions",
+            endpoint(cfg["base_url"]) + "/chat/completions",
             headers={"Authorization": "Bearer " + cfg["api_key"]},
             json=payload,
         )
@@ -68,7 +71,18 @@ async def _text_probe_max_tokens(cfg: dict) -> int:
             {"model": cfg["model"], "messages": [{"role": "user", "content": "Hi"}], "max_tokens": mt},
         )
         if 200 <= status < 300:
-            return mt
+            # 必须真的是 OpenAI ChatCompletion（含 choices[0].message）。
+            # 否则可能是错路径命中了 SPA 首页（如 New API 少了 /v1），返回 HTML 却 200。
+            try:
+                oj = json.loads(body)
+                if oj.get("choices"):
+                    return mt
+            except json.JSONDecodeError:
+                pass
+            raise RuntimeError(
+                "接口返回的 JSON 不含 choices（可能 Base URL 少了 /v1 或指向了非 API 路径）。"
+                "请确认形如 https://host/v1 或 https://host（后端会自动补 /v1）。"
+            )
         if status == 400 and not _is_max_tokens_param_error(status, body):
             raise RuntimeError(body[:200])
         # 401/404/429 等直接抛，保留原始信息给 _short_error
