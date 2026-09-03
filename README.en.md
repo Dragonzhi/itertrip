@@ -29,7 +29,7 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-Open http://127.0.0.1:8787 → fill in your LLM API key in Settings (OpenAI-compatible, multimodal recommended) → start chatting.
+Open http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → fill in your LLM API key in Settings (OpenAI-compatible, multimodal recommended) → start chatting.
 
 Works without a key: a built-in mock router lets you try the full flow.
 

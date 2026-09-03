@@ -21,8 +21,8 @@ powershell -ExecutionPolicy Bypass -File start.ps1          # 首次自动构建
 powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码后强制重建
 ```
 
-- 本机访问：`http://127.0.0.1:8787`
-- 手机真机（同一 Wi-Fi）：启动时打印的 `http://<局域网IP>:8787`
+- 本机访问：`http://127.0.0.1:8100`
+- 手机真机（同一 Wi-Fi）：启动时打印的 `http://<局域网IP>:8100`
 - 接入真实 LLM：先设 `ITERTRIP_LLM_API_KEY` 再运行脚本
 
 原理：`backend/main.py` 检测到 `frontend/dist` 时自动挂载静态资源并 SPA 回退，单进程 = API + Web 应用。这也意味着任何能跑 Python 容器的平台（含 Hugging Face Spaces）都能用现有 `Dockerfile` 直接部署整站——不需要前后端分离部署。
@@ -65,7 +65,7 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
 
 ```bash
 # 后端
-.venv\Scripts\python.exe -m uvicorn backend.main:app --port 8787
+.venv\Scripts\python.exe -m uvicorn backend.main:app --port 8100
 
 # 前端（另开终端）
 cd frontend

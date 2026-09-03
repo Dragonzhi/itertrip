@@ -1,8 +1,8 @@
 # IterTrip 单进程整站一键启动（C-1 方案）
-# 用法:  powershell -ExecutionPolicy Bypass -File start.ps1 [-Rebuild] [-Port 8787]
+# 用法:  powershell -ExecutionPolicy Bypass -File start.ps1 [-Rebuild] [-Port 8100]
 param(
     [switch]$Rebuild,     # 强制重新构建前端
-    [int]$Port = 8787
+    [int]$Port = 8100
 )
 
 $ErrorActionPreference = "Stop"

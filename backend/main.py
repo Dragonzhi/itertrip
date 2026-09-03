@@ -2,7 +2,7 @@
 
 启动：uvicorn backend.main:app --reload
 单进程整站（C-1）：先 `npm run build` 生成 frontend/dist，再启动本服务，
-http://127.0.0.1:8787/ 即完整 Web 应用（API + 前端同源，无 CORS）。
+http://127.0.0.1:8100/ 即完整 Web 应用（API + 前端同源，无 CORS）。
 """
 
 import os
@@ -51,14 +51,21 @@ _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _DIST.is_dir() and (_DIST / "index.html").is_file():
     assets = _DIST / "assets"
     if assets.is_dir():
+        # 子路径 /itertrip/assets/** 由 Nginx 剥前缀后以 /assets 到达，需同时挂载 /itertrip/assets 兼容直连
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
+        app.mount("/itertrip/assets", StaticFiles(directory=assets), name="assets-itertrip")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
         """非 API 路径一律回退 index.html；带扩展名的静态资源找不到时返回 404。"""
-        if full_path.startswith("api/"):
+        # 兼容子路径：剥掉 itertrip/ 前缀再判定
+        stripped = full_path.removeprefix("itertrip/").removeprefix("itertrip")
+        if stripped.startswith("api/") or full_path.startswith("api/"):
             return FileResponse(_DIST / "index.html", status_code=404)  # 保险：API 404 不回 SPA
-        candidate = _DIST / full_path
+        # 子路径直连时 index.html 仍在 _DIST 根
+        candidate = _DIST / stripped if stripped else _DIST / full_path
+        if stripped and (_DIST / stripped).is_file():
+            return FileResponse(_DIST / stripped)
         if full_path and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(_DIST / "index.html")
