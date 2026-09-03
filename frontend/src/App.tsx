@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Admin from "./pages/Admin";
 import Chat from "./pages/Chat";
 import Index from "./pages/Index";
 import Plan from "./pages/Plan";
@@ -14,8 +15,14 @@ import type { RouteJSON } from "./types/route";
 
 type Screen = { name: "index" } | { name: "chat"; prefill?: string } | { name: "plan"; source: string };
 
+/** 后台路由：/admin 或 /itertrip/admin（兼容子路径部署），与 hash 无关。 */
+const isAdminRoute = () => /\/admin\/?$/.test(location.pathname);
+
 /** 应用根组件：首页 ↔ 对话页 ↔ 规划页；route 持久化于 localStorage，刷新可恢复。 */
 export default function App() {
+  if (isAdminRoute()) {
+    return <Admin />;
+  }
   const [settings, setSettings] = useState<LlmSettings>(() => loadSettings());
   const [screen, setScreen] = useState<Screen>(() =>
     loadCurrentRoute() ? { name: "plan", source: "restored" } : { name: "index" },

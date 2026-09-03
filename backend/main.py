@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import chat, export, geocode, llm, plan, search
+from .api import admin, chat, export, geocode, llm, plan, search
 
 app = FastAPI(
     title="IterTrip API",
@@ -36,6 +36,7 @@ app.include_router(search.router)
 app.include_router(export.router)
 app.include_router(chat.router)
 app.include_router(llm.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

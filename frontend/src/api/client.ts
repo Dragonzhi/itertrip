@@ -190,3 +190,70 @@ export async function searchHotel(
   if (!resp.ok) throw new Error("search 失败 (" + resp.status + ")");
   return resp.json();
 }
+/** ---------- 后台管理（M-Admin-1） ---------- */
+
+export interface AdminProviderView {
+  name: string;
+  base_url: string;
+  api_key_masked: string;
+  has_key: boolean;
+  model: string;
+  enabled: boolean;
+}
+
+export interface AdminStatus {
+  provider: AdminProviderView;
+  active_source: "env" | "admin" | "free" | "none";
+  active_model: string;
+}
+
+export interface AdminTestResult {
+  ok: boolean;
+  model: string;
+  vision: boolean;
+  message: string;
+}
+
+function adminHeaders(token: string): Record<string, string> {
+  return { "Content-Type": "application/json", "X-Admin-Token": token };
+}
+
+async function adminFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+  const resp = await fetch(API_BASE + path, {
+    ...init,
+    headers: { ...adminHeaders(token), ...(init?.headers || {}) },
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(String(detail.detail || resp.statusText).slice(0, 200));
+  }
+  return resp.json() as Promise<T>;
+}
+
+export function getAdminStatus(token: string): Promise<AdminStatus> {
+  return adminFetch<AdminStatus>(token, "/api/admin/provider");
+}
+
+export function saveAdminProvider(
+  token: string,
+  body: { name: string; base_url: string; api_key: string; model: string; enabled: boolean },
+): Promise<AdminStatus> {
+  return adminFetch<AdminStatus>(token, "/api/admin/provider", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteAdminProvider(token: string): Promise<AdminStatus> {
+  return adminFetch<AdminStatus>(token, "/api/admin/provider", { method: "DELETE" });
+}
+
+export function testAdminProvider(
+  token: string,
+  body: { base_url: string; api_key: string; model: string },
+): Promise<AdminTestResult> {
+  return adminFetch<AdminTestResult>(token, "/api/admin/provider/test", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}

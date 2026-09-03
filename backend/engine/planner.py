@@ -45,7 +45,13 @@ def _llm_config(overrides: dict | None = None) -> dict | None:
     ov = overrides or {}
     api_key = str(ov.get("api_key") or "").strip() or os.environ.get("ITERTRIP_LLM_API_KEY", "").strip()
     if not api_key:
-        # 用户没配 key → 尝试内置免费供应商（key 来自服务器上的 .env，不入 Git）
+        # 后台管理配置（admin_config.json，可热更新）优先于 .env 免费供应商
+        from .admin_config import get_provider as get_admin_provider
+
+        admin = get_admin_provider()
+        if admin:
+            return admin
+        # 都没配 → 尝试内置免费供应商（key 来自服务器上的 .env，不入 Git）
         return default_provider()
     base_url = str(ov.get("base_url") or "").strip().rstrip("/") or os.environ.get(
         "ITERTRIP_LLM_BASE_URL", "https://api.deepseek.com"

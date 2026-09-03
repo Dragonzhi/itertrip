@@ -16,6 +16,7 @@ venv/
 *.key
 .secrets
 config.local.json
+admin_config.json
 
 # ---------- 构建产物 ----------
 # examples/ 下的 HTML 是已提交的展示示例，保留在 git 里；
