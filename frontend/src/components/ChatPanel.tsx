@@ -161,8 +161,10 @@ export function ClarifyCard({
   const [values, setValues] = useState<Record<string, string | Set<string>>>({});
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
   const [multiCustomInputs, setMultiCustomInputs] = useState<Record<string, string>>({});
+  const [answered, setAnswered] = useState(false);
   const answeredRef = useRef<Set<string>>(new Set<string>());
-  if (answeredRef.current.has(msgId)) return null; // 已提交收起
+  // answered via either ref (survives remounts within same component instance) or state (triggers re-render)
+  if (answered || answeredRef.current.has(msgId)) return null; // 已提交收起，不再占位
 
   const setVal = (key: string, v: string | Set<string>) => setValues((prev) => ({ ...prev, [key]: v }));
 
@@ -207,12 +209,13 @@ export function ClarifyCard({
 
   const submitAnswer = () => {
     answeredRef.current.add(msgId);
+    setAnswered(true);
     const ans = buildAnswer();
     onSend(ans ? "好的，以下是我的选择：" + ans : "没什么特别偏好，按合理的默认来规划即可。");
   };
 
   return (
-    <div className="mt-2 pt-2 border-t border-line/60" data-testid="clarify-questions">
+    <div className="w-full bg-white border border-line rounded-[14px] px-3.5 py-2.5 shadow-sm mt-1.5" data-testid="clarify-questions">
       <div className="flex items-center gap-1.5 text-xs text-moss font-medium mb-1.5">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss" />
         规划前想先确认几点…
@@ -259,7 +262,7 @@ export function ClarifyCard({
         </button>
         <button
           type="button"
-          onClick={() => { answeredRef.current.add(msgId); onSend("按合理默认来规划即可。"); }}
+          onClick={() => { answeredRef.current.add(msgId); setAnswered(true); onSend("按合理默认来规划即可。"); }}
           disabled={disabled}
           data-testid="clarify-skip"
           className="border border-line bg-white text-ink-soft rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft"
@@ -336,7 +339,7 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
               )}
             </div>
             {m.role === "assistant" && m.questions && m.questions.length > 0 && (
-              <div className="w-full max-w-[90%] bg-white border border-line rounded-[14px] px-3.5 py-2.5 mt-1.5 shadow-sm">
+              <div className="w-full max-w-[90%]">
                 <ClarifyCard questions={m.questions} msgId={m.id} disabled={loading} onSend={onSend} />
               </div>
             )}

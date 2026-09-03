@@ -465,7 +465,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </div>
           )}
           {chatMsgs.map((m) => (
-            <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+            <div key={m.id} className={m.role === "user" ? "flex flex-col items-end" : "flex flex-col items-start"}>
               <div
                 className={
                   m.role === "user"
@@ -486,7 +486,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                 )}
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
-                <div className="w-full max-w-[90%] mt-1.5 bg-white border border-line rounded-xl px-3 py-2 shadow-sm">
+                <div className="w-full max-w-[90%]">
                   <ClarifyCard questions={m.questions} msgId={m.id} disabled={aiBusy} onSend={sendAiEdit} />
                 </div>
               )}
