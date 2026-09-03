@@ -54,8 +54,8 @@ export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, ha
         </button>
         {!hasModel && (
           <p className="text-[11px] text-gold bg-gold-soft rounded-lg px-3 py-2 leading-relaxed">
-            未配置模型也能体验（内置演示模式，生成 mock 草稿路线）。
-            想要真实 AI 规划，请先
+            当前使用内置免费供应商（真实 AI 规划，无需配置）。
+            想用你自己的模型，可
             <button onClick={onOpenSettings} className="underline font-semibold mx-0.5">
               配置模型
             </button>

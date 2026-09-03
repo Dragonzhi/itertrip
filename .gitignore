@@ -12,6 +12,7 @@ venv/
 # ---------- 敏感信息（API key / 密钥）----------
 .env
 .env.*
+!.env.example
 *.key
 .secrets
 config.local.json

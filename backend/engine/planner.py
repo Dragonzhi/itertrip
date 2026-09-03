@@ -36,11 +36,17 @@ JSON 结构：
 
 
 def _llm_config(overrides: dict | None = None) -> dict | None:
-    """解析 LLM 配置：请求头覆盖（BYOK，DESIGN.md §4.2）> 环境变量兜底；无 key 返回 None（走 mock）。"""
+    """解析 LLM 配置：请求头覆盖（BYOK）> 环境变量 > 内置免费供应商（.env 配置）。
+
+    都没配置 → 返回 None（调用方降级 mock 演示模式）。
+    """
+    from ._llmutil import default_provider
+
     ov = overrides or {}
     api_key = str(ov.get("api_key") or "").strip() or os.environ.get("ITERTRIP_LLM_API_KEY", "").strip()
     if not api_key:
-        return None
+        # 用户没配 key → 尝试内置免费供应商（key 来自服务器上的 .env，不入 Git）
+        return default_provider()
     base_url = str(ov.get("base_url") or "").strip().rstrip("/") or os.environ.get(
         "ITERTRIP_LLM_BASE_URL", "https://api.deepseek.com"
     ).rstrip("/")

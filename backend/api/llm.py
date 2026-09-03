@@ -101,9 +101,12 @@ async def test_llm(request: Request) -> dict:
     cfg = overrides
     if cfg is None or not cfg.get("api_key"):
         from ..engine.planner import _llm_config
+        from ..engine._llmutil import default_provider
 
         cfg = _llm_config()
-        source = "env" if cfg else "none"
+        # 区分环境变量配置与 .env 免费供应商（两者 key 不同）
+        free = default_provider()
+        source = "default" if cfg and free and cfg.get("api_key") == free["api_key"] else "env"
     if cfg is None:
         return {
             "ok": False,

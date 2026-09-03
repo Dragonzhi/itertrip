@@ -136,13 +136,14 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
         </div>
 
         <div className="border-t border-line pt-3 text-[11px] text-ink-soft leading-relaxed">
-          未配置时：若本机后端设置了 ITERTRIP_LLM_* 环境变量则使用之；两者皆无则进入
-          <b>内置演示模式</b>（mock 草稿，无需 key 即可体验完整编辑流程）。
+          未配置时：若本机后端设置了 ITERTRIP_LLM_* 环境变量则使用之；两者皆无则使用
+          <b>内置免费供应商</b>（openrouter/free，无需 key 即可用真实 AI）。
           <span className="block mt-1">
             提示：模型名与 Base URL 必须匹配（纯文本模型如 deepseek-chat 无视觉能力，会显示「不支持图片输入」；
             DeepSeek 官方暂无 VLM，推荐通义千问-VL / 智谱 GLM-4V / GPT-4o 等）。
           </span>
           {test.source === "env" && <span className="block mt-1 text-moss">当前测试使用的是服务端环境变量配置。</span>}
+          {test.source === "default" && <span className="block mt-1 text-moss">当前测试使用的是内置免费供应商（openrouter/free）。</span>}
         </div>
       </div>
     </div>

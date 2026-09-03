@@ -255,6 +255,12 @@ def _visible_reply(full: str) -> str:
         head = full
     if "<<<REPLY>>>" in head:
         head = head.split("<<<REPLY>>>", 1)[1]
+    # 流式期间避免标记前缀闪现：若尾部是标记的不完整前缀（如 "<<<REP"），先扣住不发，
+    # 等标记凑齐或被后续字符否定后再下发。
+    for mark in ("<<<REPLY>>>", "<<<JSON>>>"):
+        for k in range(len(mark) - 1, 0, -1):
+            if head.endswith(mark[:k]):
+                return head[:-k]
     return head
 
 
@@ -267,9 +273,10 @@ async def _resolve_cfg(request: Request) -> tuple[dict, bool]:
 
     cfg = _llm_config()
     if cfg is None:
+        # BYOK / 环境变量 / .env 免费供应商都没配置 → 明确提示（服务器放一份 .env 即可用免费源）
         raise HTTPException(
             status_code=400,
-            detail="未配置 LLM：请在右上角「模型设置」填入 API Key，或设置 ITERTRIP_LLM_API_KEY 环境变量",
+            detail="未配置 LLM：请在「模型设置」填入 API Key，或在服务器 .env 配置 ITERTRIP_FREE_API_KEY",
         )
     return cfg, False
 

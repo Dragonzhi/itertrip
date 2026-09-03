@@ -1,4 +1,57 @@
-"""LLM 端点共享工具：URL 规范化 + 非流式响应文本提取。"""
+"""LLM 端点共享工具：URL 规范化 + 非流式响应文本提取 + 默认供应商配置。
+
+默认供应商的 key 不写入代码（避免随 Git 泄露）：
+    优先读环境变量，其次读项目根目录 .env 文件（.gitignore 已忽略，不入库）。
+    都没配 → DEFAULT_PROVIDER 为 None，回落 mock 演示模式。
+"""
+
+import os
+from pathlib import Path
+
+_DEFAULT_KEY_ENV = "ITERTRIP_FREE_API_KEY"
+_DEFAULT_BASE_ENV = "ITERTRIP_FREE_BASE_URL"
+_DEFAULT_MODEL_ENV = "ITERTRIP_FREE_MODEL"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
+
+
+def _read_env_file() -> dict:
+    """极简 .env 解析（KEY=VALUE 每行一条，# 开头为注释），零第三方依赖。"""
+    out: dict = {}
+    try:
+        for raw in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            out[k.strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass  # .env 不存在 = 没配置，静默跳过
+    return out
+
+
+def _free_provider() -> dict | None:
+    """内置免费供应商配置：env 优先于 .env 文件；key 缺失视为未配置（返回 None）。"""
+    env_file = _read_env_file()
+    api_key = os.environ.get(_DEFAULT_KEY_ENV, "").strip() or env_file.get(_DEFAULT_KEY_ENV, "")
+    if not api_key:
+        return None
+    base_url = (
+        os.environ.get(_DEFAULT_BASE_ENV, "").strip()
+        or env_file.get(_DEFAULT_BASE_ENV, "")
+        or "https://api.dragonzhi.xyz"
+    ).rstrip("/")
+    model = (
+        os.environ.get(_DEFAULT_MODEL_ENV, "").strip()
+        or env_file.get(_DEFAULT_MODEL_ENV, "")
+        or "openrouter/free"
+    )
+    return {"api_key": api_key, "base_url": base_url, "model": model}
+
+
+def default_provider() -> dict | None:
+    """对外入口：内置默认免费供应商（可能为 None = 未配置，走 mock 演示模式）。"""
+    return _free_provider()
 
 import re as _re
 

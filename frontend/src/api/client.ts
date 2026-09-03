@@ -117,7 +117,7 @@ export async function chatStream(
 
 export interface LlmTestResult {
   ok: boolean;
-  source: "user" | "env" | "none";
+  source: "user" | "env" | "default" | "none";
   model: string;
   vision: boolean;
   message: string;
