@@ -6,6 +6,8 @@ export interface RouteDiff {
   added: { di: number; pi: number; name: string }[];
   /** 被移除的地点（旧路线有、新路线无；di 为旧路线中的天索引） */
   removed: { di: number; pi: number; name: string }[];
+  /** 坐标被修正的地点（同名同位但 lat/lng 变了） */
+  coordFixed: { di: number; pi: number; name: string }[];
   /** 位置变化的地点（同名匹配后位置不同） */
   moved: { name: string; fromDi: number; toDi: number; toPi: number }[];
   /** 天主题变化 */
@@ -84,7 +86,27 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
     }
   }
 
+  const coordFixed: RouteDiff["coordFixed"] = [];
+  // 检测坐标变化（同名地点保留但 lat/lng 变了）
+  for (const [k, newPos] of newFlat) {
+    const oldPos = oldFlat.get(k) || [];
+    const n = Math.min(newPos.length, oldPos.length);
+    for (let i = 0; i < n; i++) {
+      const o = oldPos[i];
+      const w = newPos[i];
+      const op = oldRoute.days[o.di]?.places[o.pi];
+      const wp = newRoute.days[w.di]?.places[w.pi];
+      if (!op || !wp) continue;
+      const latChanged = Math.abs((op.lat || 0) - (wp.lat || 0)) > 1e-6;
+      const lngChanged = Math.abs((op.lng || 0) - (wp.lng || 0)) > 1e-6;
+      if ((latChanged || lngChanged) && o.di === w.di && o.pi === w.pi) {
+        coordFixed.push({ di: w.di, pi: w.pi, name: wp.name.trim() });
+      }
+    }
+  }
+
   const summary: string[] = [];
+  for (const n of coordFixed) summary.push("修正了「" + n.name + "」的坐标");
   for (const m of moved) {
     if (m.fromDi === m.toDi) {
       summary.push("「" + m.name + "」在第 " + (m.toDi + 1) + " 天内调整了顺序");
@@ -99,9 +121,10 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
   return {
     added,
     removed,
+    coordFixed,
     moved,
     themeChanged,
-    changed: added.length + removed.length + moved.length > 0 || themeChanged,
+    changed: added.length + removed.length + moved.length > 0 || themeChanged || coordFixed.length > 0,
     summary,
   };
 }

@@ -48,11 +48,13 @@ _QUESTIONS_HINT = (
     '当用户信息明显不足（未给出关键要素：具体日期/天数/预算/风格/出行人数/酒店偏好，'
     '或请求过于模糊无法排程）时，不要直接生成草稿，而是先向用户提 3-5 个最能影响路线的关键问题。'
     '此时第二段 <<<JSON>>> 输出：'
-    '{"need_more_info": true, "questions": [{"key": str, "label": str, "type": "text|select|multi", '
+    '{"need_more_info": true, "questions": [{"key": str, "label": str, "type": "text|select|multi|date", '
     '"placeholder": str, "options": [{"value": str, "label": str}]}], "reply": str}。'
-    'questions[] 说明：label 是给用户看的问题；type=text 用于填空（如具体日期、城市），'
+    'questions[] 说明：label 是给用户看的问题；type=text 用于填空（如城市），'
+    'type=date 用于日期/时间（无需 options，placeholder 形如 2026-10-03，前端会渲染日历）；'
     'type=select 用于单选（如预算档位、风格），type=multi 用于多选（如偏好项目）；'
     'options 需要时提供候选（如预算的 经济/中等/轻奢；风格的 亲子/美食/人文；偏好可从 美食/历史/自然/购物/亲子 选）。'
+    '时间/日期类问题必须用 type=date，不要用 text；不要为 select/multi 额外输出“自定义”选项，前端会统一注入。'
     '只问真正影响路线编排的问题（日期、天数、大致预算、风格、人数、住城中心还是景区附近等），'
     '不要问无关紧要或模型该自己推断的细节。reply 里用一两句话说明「规划前我想先确认几点」。'
     '若用户信息已足够排程，则**不要**输出 need_more_info，直接按正常流程生成路线。'
@@ -91,6 +93,7 @@ SYSTEM_EDIT = (
     "5. 若用户的修改要求过于模糊（如只说「帮我优化」却没说要改什么、改哪里），"
     "或缺少完成修改所需的关键信息时，先按下方澄清规则输出 need_more_info 问题，changed=false，"
     "不要擅自猜测并大改路线。\n"
+    "6. 坐标修正类要求（用户说某个地点位置不对、在非洲、在海里等）必须满足：changed 只能为 true（禁止 changed=false 的口头道歉），且 days 里对应地点的 lat/lng 必须改成你确信的真实坐标（WGS84），禁止原样返回或填 0；也要在 reply 里用一句话说明新坐标的大致方位（如“已修正到海口水巷口附近 20.03,110.32”）。\n"
     + _QUESTIONS_HINT
 )
 
@@ -355,9 +358,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     try:
                         kind, piece, is_terminal = await asyncio.wait_for(queue.get(), timeout=0.9)
                     except asyncio.TimeoutError:
-                        # 超时未拿到内容 → 播放下一个前置步骤（等待窗口轮播）
-                        if not started and step_i < len(_STEPS):
-                            yield _sse("stage", {"stage": "thinking-steps", "label": _STEPS[step_i]})
+                        # 超时未拿到内容 → 轮播前置步骤，保持界面有动效。
+                        # 修复前：到最后一个 label 后停更，界面看似卡死在“规划路线”；
+                        # 修复后：循环播放，保证无思维链的慢模型等待期也有持续反馈。
+                        if not started:
+                            label = _STEPS[step_i % len(_STEPS)]
+                            yield _sse("stage", {"stage": "thinking-steps", "label": label})
                             step_i += 1
                         continue
                     if is_terminal:
@@ -471,6 +477,48 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             yield _sse("reply", {"reply": reply_text or "我在呢，想怎么改？", "intent": "chitchat", "route": None})
             return
         if not data.get("changed"):
+            # 坐标修正请求被模型以 changed=false 口头道歉糊弄时，自动用后端 geocode 兜底真改坐标
+            coord_hint = any(k in req.prompt for k in ("坐标", "位置不对", "非洲", "海里", "错", "不对", "偏"))
+            if coord_hint:
+                try:
+                    from ..engine.planner import _enrich_coordinates
+                    from ..engine.schema import RouteJSON as _RJ
+                    _tmp = _RJ.model_validate(req.route)
+                    need_fix = [p for d in _tmp.days for p in d.places if p.name and p.name.strip() and p.name.strip() in req.prompt]
+                    # 也支持“水巷口辣汤饭的位置不对”这类包含名称的提示：只要 prompt 里出现该地名就纳入
+                    if not need_fix:
+                        for d in _tmp.days:
+                            for p in d.places:
+                                if p.name and p.name.strip() and p.name.strip() in req.prompt:
+                                    need_fix.append(p)
+                    # 兜底：用户只说“位置不对”未点名，修正所有可疑坐标（0,0 或远离目的地的异常点）
+                    if not need_fix and coord_hint:
+                        for d in _tmp.days:
+                            for p in d.places:
+                                if p.lat == 0 and p.lng == 0:
+                                    need_fix.append(p)
+                                elif p.lat is not None and (p.lat < -30 or p.lat > 60 or p.lng < 70 or p.lng > 140):
+                                    # 粗略判定“在非洲”等离谱坐标（中国境内大致 18-54N, 73-135E）
+                                    need_fix.append(p)
+                    fixed = 0
+                    for p in need_fix:
+                        # 强制重算一次坐标（即使已有坐标也以 LLM/geocode 为准纠正）
+                        from ..engine.coordinates import geocode as _geocode
+                        res = await _geocode(p.name, _tmp.trip.destination, llm_overrides=cfg if is_user_key else None)
+                        if res["lat"] is not None:
+                            p.lat = res["lat"]
+                            p.lng = res["lng"]
+                            fixed += 1
+                    if fixed:
+                        route_obj = _tmp
+                        yield _sse("reply", {
+                            "reply": str(data.get("reply") or reply_text or "已修正坐标。") + f"（已通过坐标服务修正 {fixed} 个地点）",
+                            "intent": "route_edit",
+                            "route": route_obj.model_dump(),
+                        })
+                        return
+                except Exception as _e:
+                    print(f"[chat] 坐标修正兜底失败: {_e}")
             qs = data.get("questions") or []
             yield _sse("reply", {
                 "reply": str(data.get("reply") or reply_text or "好的。"),
@@ -479,6 +527,37 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 "questions": qs if qs else None,
             })
             return
+        # changed=true：若仍有 0,0 坐标，尝试后端补全
+        try:
+            from ..engine.planner import _enrich_coordinates
+            from ..engine.schema import RouteJSON as _RJ2
+            _route_obj = _RJ2.model_validate(data["__route"])
+            miss = sum(1 for d in _route_obj.days for p in d.places if p.lat == 0 and p.lng == 0)
+            if miss:
+                filled = await _enrich_coordinates(_route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None)
+                if filled:
+                    data["__route"] = _route_obj.model_dump()
+        except Exception as _e2:
+            print(f"[chat] 改路线坐标补全失败(忽略): {_e2}")
+        # 口头说改但坐标未动的二次校验：若 changed=true 且用户提及某地名但该地坐标未变，强制 geocode 纠正
+        try:
+            from ..engine.coordinates import geocode as _geocode2
+            from ..engine.schema import RouteJSON as _RJ3
+            _new = _RJ3.model_validate(data["__route"])
+            _old = _RJ3.model_validate(req.route)
+            old_map = {p.name: (p.lat, p.lng) for d in _old.days for p in d.places}
+            for d in _new.days:
+                for p in d.places:
+                    if p.name and p.name in req.prompt:
+                        o = old_map.get(p.name)
+                        if o and abs(o[0] - p.lat) < 1e-6 and abs(o[1] - p.lng) < 1e-6:
+                            res = await _geocode2(p.name, _new.trip.destination, llm_overrides=cfg if is_user_key else None)
+                            if res["lat"] is not None:
+                                p.lat = res["lat"]
+                                p.lng = res["lng"]
+            data["__route"] = _new.model_dump()
+        except Exception as _e3:
+            print(f"[chat] 坐标二次校验失败(忽略): {_e3}")
         yield _sse("reply", {
             "reply": str(data.get("reply") or reply_text or "已更新路线。"),
             "intent": "route_edit",

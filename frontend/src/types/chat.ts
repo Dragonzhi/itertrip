@@ -2,11 +2,13 @@ export type ChatRole = "user" | "assistant";
 
 export type ChatIntent = "route_edit" | "chitchat";
 
+export type ClarifyQuestionType = "text" | "select" | "multi" | "date";
+
 /** Agent 式澄清问题（M17）：AI 信息不足时向用户提问。 */
 export interface ClarifyQuestion {
   key: string;
   label: string;
-  type: "text" | "select" | "multi";
+  type: ClarifyQuestionType;
   placeholder?: string;
   options?: { value: string; label: string }[];
 }

@@ -7,6 +7,8 @@ import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../component
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
 import { exportHtml, chatStream, type ChatStreamEvent } from "../api/client";
+import { ClarifyCard } from "../components/ChatPanel";
+import ThinkingBlock from "../components/ThinkingBlock";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import type { ChatMessage } from "../types/chat";
 import { loadMapSettings, saveMapSettings, type MapSettings as MapSettingsType, type LlmSettings } from "../lib/settings";
@@ -118,6 +120,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         const keys: string[] = [
           ...diff.added.map((a) => "d" + a.di + "-p" + a.pi),
           ...diff.moved.map((m) => "d" + m.toDi + "-p" + m.toPi),
+          ...diff.coordFixed.map((c) => "d" + c.di + "-p" + c.pi),
         ];
         setFlashKeys(keys);
       }
@@ -482,6 +485,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   <div className="text-[10px] text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}
               </div>
+              {m.role === "assistant" && m.questions && m.questions.length > 0 && (
+                <div className="w-full max-w-[90%] mt-1.5 bg-white border border-line rounded-xl px-3 py-2 shadow-sm">
+                  <ClarifyCard questions={m.questions} msgId={m.id} disabled={aiBusy} onSend={sendAiEdit} />
+                </div>
+              )}
             </div>
           ))}
           {aiBusy && (
@@ -492,11 +500,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   {stageLabel}
                 </div>
               )}
-              {streamThinking && (
-                <div className="max-w-[90%] text-[11px] text-ink-soft/70 leading-relaxed whitespace-pre-wrap break-words font-mono bg-cream/60 border border-line/40 rounded-xl px-2.5 py-1.5" data-testid="thinking-stream">
-                  <span className="text-[10px] text-ink-soft/50 mr-1">🤔</span>{streamThinking}
-                </div>
-              )}
+              {streamThinking && <ThinkingBlock text={streamThinking} />}
               {streamText && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words">
