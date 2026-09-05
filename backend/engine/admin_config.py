@@ -102,9 +102,27 @@ def save_provider(fields: dict) -> dict:
 
 
 def clear_provider() -> dict:
-    """清空后台配置（恢复为未配置态）。"""
-    _save({"provider": {"name": "", "base_url": "", "api_key": "", "model": "", "enabled": False}})
+    """清空后台配置（恢复为未配置态，含高德 key）。"""
+    _save({"provider": {"name": "", "base_url": "", "api_key": "", "model": "", "enabled": False}, "amap_key": ""})
     return view()
+
+
+def get_amap_key() -> str:
+    """返回后台保存的高德 Web 服务 key（未配置返回空串）。"""
+    return str(_load().get("amap_key") or "").strip()
+
+
+def amap_view() -> dict:
+    """高德 key 的脱敏视图。"""
+    key = get_amap_key()
+    return {"amap_key_masked": mask_key(key), "has_amap_key": bool(key)}
+
+
+def save_amap_key(key: str) -> None:
+    """覆写保存高德 key（空串 = 清除）。"""
+    data = _load()
+    data["amap_key"] = (key or "").strip()
+    _save(data)
 
 
 def admin_token() -> str:

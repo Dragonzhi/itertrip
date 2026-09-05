@@ -317,8 +317,9 @@ RouteJSON
 | `ITERTRIP_FREE_API_KEY` | 空 | 内置免费演示源 key（优先级④；仅存在于服务器 .env，不入 Git） |
 | `ITERTRIP_FREE_BASE_URL` | `https://api.dragonzhi.xyz` | 免费源地址 |
 | `ITERTRIP_FREE_MODEL` | `openrouter/free` | 免费源模型 |
-| `ITERTRIP_SEARCH_API_KEY` | 空 | 可选，Tavily 兼容搜索 key（坐标兜底级 2 + 酒店搜索级 2） |
+| `ITERTRIP_SEARCH_API_KEY` | 空 | 可选，Tavily 兼容搜索 key（坐标兜底级 3 + 酒店搜索级 2） |
 | `ITERTRIP_SEARCH_BASE_URL` | `https://api.tavily.com` | 搜索地址 |
+| `ITERTRIP_AMAP_KEY` | 空 | 可选，高德 Web 服务 key（坐标兜底级 2：POI 店名级搜索，[申请地址](https://lbs.amap.com/)）；也可在后台界面配置，环境变量优先 |
 | `ITERTRIP_ROLLINGO_BASE_URL` | 空 | 可选，RollingGo 酒店价格源 |
 | `ITERTRIP_ADMIN_TOKEN` | 空 | 后台管理 token；**未配置 = 后台整体关闭（403/503）** |
 | `ITERTRIP_CORS_ORIGINS` | 空（全放行） | 逗号分隔白名单，生产建议配置 |
@@ -326,11 +327,14 @@ RouteJSON
 ### 7.2 后台配置文件 `admin_config.json`（项目根目录，.gitignore 忽略，可热更新）
 
 ```json
-{ "provider": { "name": "", "base_url": "", "api_key": "", "model": "", "enabled": false } }
+{ "provider": { "name": "", "base_url": "", "api_key": "", "model": "", "enabled": false }, "amap_key": "" }
 ```
 
-安全约束：api_key 只在后端明文存于此文件；对外接口一律脱敏（`sk-***1234`）；
-PUT 时 api_key 留空 = 保留原 key；token 比较用常量时间函数防时序侧信道。
+- **保存即覆写本地文件**（整体 JSON 重写）；所有读取都重新 load 文件，无缓存，热更新即时生效；
+- `amap_key`：高德 Web 服务 key，也可在后台界面配置；key 解析优先级 `ITERTRIP_AMAP_KEY` 环境变量 > 后台配置；
+- 安全约束：api_key / amap_key 只在后端明文存于此文件；对外接口一律脱敏（`sk-***1234`）；
+  PUT 时 key 留空 = 保留原值；token 比较用常量时间函数防时序侧信道；
+- **主界面入口**：首页页脚有低调「后台」链接（灰字虚线下划线）→ Token 认证页（也支持 `/admin?admin_token=<值>` 免输登录）。
 
 ### 7.3 关键运行参数（代码内常量）
 

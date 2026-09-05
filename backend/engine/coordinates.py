@@ -93,9 +93,14 @@ async def geocode_by_llm(
 async def geocode_by_amap(name: str, city: str) -> tuple[float, float] | None:
     """高德 POI 搜索兜底（GCJ-02 直出，无需转换）；未配 key 或无结果返回 None。
 
+    key 来源：ITERTRIP_AMAP_KEY 环境变量 > 后台管理配置 amap_key（admin_config.json）。
     匹配校验：首个 POI 名称与查询名互相包含（或前 4 字重合）→ 视为命中。
     """
     key = os.environ.get("ITERTRIP_AMAP_KEY", "").strip()
+    if not key:
+        from . import admin_config  # 延迟导入，保持 coordinates 可独立测试
+
+        key = admin_config.get_amap_key()
     if not key:
         return None
     try:

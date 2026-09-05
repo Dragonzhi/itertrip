@@ -64,7 +64,16 @@ export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, ha
         )}
       </div>
 
-      <p className="text-[11px] text-[#A8A298]">价格由用户手动提供 · 数据只存本机浏览器</p>
+      <p className="text-[11px] text-[#A8A298]">
+        价格由用户手动提供 · 数据只存本机浏览器
+        <a
+          href={(import.meta.env.BASE_URL || "/").replace(/\/+$/, "") + "/admin"}
+          className="ml-2 underline decoration-dotted underline-offset-2 hover:text-moss"
+          title="服务端 AI 服务管理"
+        >
+          后台
+        </a>
+      </p>
     </div>
   );
 }

@@ -52,7 +52,9 @@ export default function Admin() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [enabled, setEnabled] = useState(false);
+  const [amapKey, setAmapKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [showAmap, setShowAmap] = useState(false);
 
   const [test, setTest] = useState<TestState>({ status: "idle", message: "" });
   const [saving, setSaving] = useState(false);
@@ -132,10 +134,18 @@ export default function Admin() {
     setSaving(true);
     setSavedMsg("");
     try {
-      const s = await saveAdminProvider(token, { name, base_url: baseUrl, api_key: apiKey, model, enabled });
+      const s = await saveAdminProvider(token, {
+        name,
+        base_url: baseUrl,
+        api_key: apiKey,
+        model,
+        enabled,
+        amap_key: amapKey,
+      });
       setStatus(s);
       setApiKey("");
-      setSavedMsg("已保存");
+      setAmapKey("");
+      setSavedMsg("已保存（配置已写入服务器 admin_config.json）");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -156,6 +166,7 @@ export default function Admin() {
       setApiKey("");
       setModel("");
       setEnabled(false);
+      setAmapKey("");
       setConfirmingClear(false);
       setSavedMsg("已清空后台配置");
     } catch (e) {
@@ -258,6 +269,32 @@ export default function Admin() {
                     className={inputCls}
                     spellCheck={false}
                   />
+                </label>
+
+                <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
+                  高德 Web 服务 Key（坐标 POI 兜底，可选）
+                  <div className="flex gap-2">
+                    <input
+                      type={showAmap ? "text" : "password"}
+                      value={amapKey}
+                      onChange={(e) => setAmapKey(e.target.value)}
+                      placeholder={
+                        status.amap.has_amap_key
+                          ? "已配置（" + status.amap.amap_key_masked + "），留空保持不变"
+                          : "在高德开放平台申请，用于店名级坐标兜底"
+                      }
+                      className={inputCls + " flex-1"}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAmap((v) => !v)}
+                      className="border border-line rounded-lg px-2.5 text-xs text-ink-soft hover:bg-moss-soft"
+                    >
+                      {showAmap ? "隐藏" : "显示"}
+                    </button>
+                  </div>
                 </label>
 
                 <label className="flex items-center gap-2 text-sm text-ink">

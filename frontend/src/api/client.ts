@@ -201,8 +201,14 @@ export interface AdminProviderView {
   enabled: boolean;
 }
 
+export interface AdminAmapView {
+  amap_key_masked: string;
+  has_amap_key: boolean;
+}
+
 export interface AdminStatus {
   provider: AdminProviderView;
+  amap: AdminAmapView;
   active_source: "env" | "admin" | "free" | "none";
   active_model: string;
 }
@@ -236,7 +242,7 @@ export function getAdminStatus(token: string): Promise<AdminStatus> {
 
 export function saveAdminProvider(
   token: string,
-  body: { name: string; base_url: string; api_key: string; model: string; enabled: boolean },
+  body: { name: string; base_url: string; api_key: string; model: string; enabled: boolean; amap_key?: string },
 ): Promise<AdminStatus> {
   return adminFetch<AdminStatus>(token, "/api/admin/provider", {
     method: "PUT",

@@ -51,6 +51,7 @@ def _status() -> dict:
     cfg, source = admin_config.resolve_active()
     return {
         "provider": admin_config.view(),
+        "amap": admin_config.amap_view(),
         "active_source": source,
         "active_model": (cfg or {}).get("model", ""),
     }
@@ -66,6 +67,9 @@ async def get_provider(request: Request) -> dict:
 async def put_provider(body: ProviderIn, request: Request) -> dict:
     _require_admin(request)
     admin_config.save_provider(body.model_dump())
+    amap = body.amap_key.strip()
+    if amap:  # 留空 = 保留原 key
+        admin_config.save_amap_key(amap)
     return _status()
 
 
