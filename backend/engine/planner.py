@@ -7,6 +7,10 @@
     ITERTRIP_LLM_API_KEY   必填才走 LLM；缺省直接 mock
     ITERTRIP_LLM_BASE_URL  默认 https://api.deepseek.com
     ITERTRIP_LLM_MODEL     默认 deepseek-chat
+    ITERTRIP_AMAP_KEY      可选，高德 Web 服务 key（坐标补全 POI 兜底）
+
+坐标系约定：LLM 生成/mock 的坐标按 WGS84 处理，plan() 出口统一转 GCJ-02
+（与高德瓦片显示一致）；route JSON 内存储/流转的坐标均为 GCJ-02（见 engine/geo.py）。
 """
 
 import copy
@@ -17,7 +21,12 @@ import httpx
 
 from .coordinates import geocode
 from ._llmutil import endpoint
+from .geo import haversine_km, wgs84_to_gcj02
 from .schema import RouteJSON
+
+# 离谱坐标检测：偏离行程中位数中心 > 100km 视为可疑；重定位结果与原值差 > 10km 才替换
+_OUTLIER_KM = 100.0
+_OUTLIER_REPLACE_KM = 10.0
 
 SYSTEM_PROMPT = """你是专业旅行规划师。根据用户需求生成行程 JSON。
 只输出 JSON 本身，不要输出任何解释文字或 markdown 代码块标记。
@@ -185,8 +194,43 @@ def plan_mock(req: dict) -> RouteJSON:
 async def _enrich_coordinates(
     route: RouteJSON, destination: str, overrides: dict | None = None
 ) -> int:
-    """对缺失/无效坐标的地点做补全（Phase 4）；返回补全个数。补不到的由前端低置信度提示。"""
+    """对缺失/无效/离谱坐标的地点做补全；返回处理个数。补不到的由前端低置信度提示。
+
+    两阶段（输入坐标均已为 GCJ-02）：
+    ① 离谱检测：有效坐标点中位数为基准，偏离 > 100km 的视为可疑 → 强制重新 geocode；
+       新坐标与原值差 > 10km 才替换，否则保留原值并追加「坐标待确认」标注
+       （防误杀：跨城行程中合法远点 + LLM 坚持原坐标的知名远景点）。
+    ② 缺失补全：lat/lng 缺失或 (0,0) 的地点/酒店走 geocode 三级降级补全。
+    """
     filled = 0
+    valid = [
+        (p.lat, p.lng)
+        for d in route.days for p in d.places
+        if p.lat and p.lng and not (p.lat == 0 and p.lng == 0)
+    ]
+    if len(valid) >= 2:
+        from statistics import median
+
+        mlat, mlng = median(v[0] for v in valid), median(v[1] for v in valid)
+        for d in route.days:
+            for p in d.places:
+                if not (p.lat and p.lng):
+                    continue  # 缺失交给阶段②
+                if haversine_km(p.lat, p.lng, mlat, mlng) <= _OUTLIER_KM:
+                    continue
+                result = await geocode(p.name, destination, llm_overrides=overrides)
+                if result["lat"] is None:
+                    p.note = (p.note or "") + "【坐标待确认】"
+                    continue
+                new_lat, new_lng = result["lat"], result["lng"]
+                if haversine_km(new_lat, new_lng, p.lat, p.lng) > _OUTLIER_REPLACE_KM:
+                    p.lat, p.lng = new_lat, new_lng
+                    if result["confidence"] != "high":
+                        p.note = (p.note or "") + "【坐标待确认】"
+                    filled += 1
+                else:
+                    # 重新定位结果与原值接近 → 原坐标大概率没错（合法远点/知名地标），仅标注
+                    p.note = (p.note or "") + "【坐标待确认】"
     for day in route.days:
         for p in day.places:
             if p.lat is not None and p.lng is not None and (p.lat != 0 or p.lng != 0):
@@ -220,6 +264,13 @@ async def plan(req: dict, overrides: dict | None = None) -> tuple[RouteJSON, str
     else:
         route = plan_mock(req)
         source = "mock"
+    # 新生成的坐标（LLM 知识/mock 样本池）按 WGS84 处理 → 统一转 GCJ-02（0,0 占位不动）
+    for d in route.days:
+        for p in d.places:
+            if p.lat and p.lng:
+                p.lat, p.lng = wgs84_to_gcj02(p.lat, p.lng)
+        if d.hotel is not None and d.hotel.lat and d.hotel.lng:
+            d.hotel.lat, d.hotel.lng = wgs84_to_gcj02(d.hotel.lat, d.hotel.lng)
     try:
         filled = await _enrich_coordinates(route, route.trip.destination, overrides)
         if filled:

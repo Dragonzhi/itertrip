@@ -527,6 +527,30 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 "questions": qs if qs else None,
             })
             return
+        # changed=true：先把 LLM 新写/改动的坐标从 WGS84 转 GCJ-02（全链路统一 GCJ-02）。
+        # 与旧路线同名同值的坐标是回显的 GCJ-02，跳过以防双重偏移；差异坐标才视为 WGS84 转换。
+        try:
+            from ..engine.schema import RouteJSON as _RJ0
+
+            _new = _RJ0.model_validate(data["__route"])
+            _old_days = _RJ0.model_validate(req.route).days
+            _old_map = {p.name: (p.lat, p.lng) for d in _old_days for p in d.places}
+            _old_hotel = {d.hotel.name: (d.hotel.lat, d.hotel.lng) for d in _old_days if d.hotel}
+            for d in _new.days:
+                for p in d.places:
+                    o = _old_map.get(p.name)
+                    echoed = o is not None and o[0] is not None and abs(o[0] - p.lat) < 1e-6 and abs(o[1] - p.lng) < 1e-6
+                    if not echoed and p.lat and p.lng:
+                        p.lat, p.lng = wgs84_to_gcj02(p.lat, p.lng)
+                h = d.hotel
+                if h is not None and h.lat and h.lng:
+                    oh = _old_hotel.get(h.name)
+                    echoed_h = oh is not None and oh[0] is not None and abs(oh[0] - h.lat) < 1e-6 and abs(oh[1] - h.lng) < 1e-6
+                    if not echoed_h:
+                        h.lat, h.lng = wgs84_to_gcj02(h.lat, h.lng)
+            data["__route"] = _new.model_dump()
+        except Exception as _e0:
+            print(f"[chat] 新坐标 GCJ-02 转换失败(忽略): {_e0}")
         # changed=true：若仍有 0,0 坐标，尝试后端补全
         try:
             from ..engine.planner import _enrich_coordinates
