@@ -1,6 +1,8 @@
 """坐标补全引擎（Phase 4 + 2026-09 准确性增强）。
 
 降级链（全链路输出统一 GCJ-02，与高德瓦片显示一致）：
+0. **坐标实体记忆**（M18，需 ITERTRIP_MEMORY_ENABLED=1 + 请求带 X-Traveler-Id）：
+   用户在地图上手动改过的同名同城地点 = ground truth，命中即返回 confidence=high，不再问 LLM
 1. 优先 LLM 已知知识——LLM 对知名地标坐标的记忆是可靠且零成本的（WGS84 → 转 GCJ-02）
 2. 次选高德 POI 搜索（店名级精度，中国 POI 覆盖最好；直接返回 GCJ-02）
 3. 再选 web_search 取坐标（Tavily 兼容，境内外通用；文本坐标按 WGS84 → 转 GCJ-02）
@@ -20,7 +22,7 @@ from typing import Any
 
 import httpx
 
-from ._llmutil import endpoint
+from ._llmutil import endpoint, env_value
 from .geo import wgs84_to_gcj02
 
 # 高置信度：知名城市中心（WGS84，供城市级兜底；返回前统一转 GCJ-02）
@@ -96,7 +98,7 @@ async def geocode_by_amap(name: str, city: str) -> tuple[float, float] | None:
     key 来源：ITERTRIP_AMAP_KEY 环境变量 > 后台管理配置 amap_key（admin_config.json）。
     匹配校验：首个 POI 名称与查询名互相包含（或前 4 字重合）→ 视为命中。
     """
-    key = os.environ.get("ITERTRIP_AMAP_KEY", "").strip()
+    key = env_value("ITERTRIP_AMAP_KEY")
     if not key:
         from . import admin_config  # 延迟导入，保持 coordinates 可独立测试
 
@@ -161,11 +163,21 @@ async def geocode_by_search(name: str, city: str) -> tuple[float, float] | None:
         return None
 
 
-async def geocode(name: str, city: str = "", llm_overrides: dict | None = None) -> dict:
+async def geocode(name: str, city: str = "", llm_overrides: dict | None = None, traveler: str = "") -> dict:
     """单点 geocode：返回 {name, lat, lng, confidence}（lat/lng 统一 GCJ-02）。
 
-    confidence: high（LLM 确认 / 高德 POI 名称命中）| low（搜索兜底 / 模糊 POI / 城市中心）
+    confidence: high（记忆库真值 / LLM 确认 / 高德 POI 名称命中）| low（搜索兜底 / 城市中心）| none
+    traveler 非空且记忆库开启时，先查坐标实体记忆（M18 第 0 级，检索增强 geocode）。
     """
+    # 0. 坐标实体记忆：用户手改过的坐标是 ground truth，优先于任何模型猜测
+    if traveler:
+        from . import memory_store
+
+        if memory_store.enabled():
+            mem = memory_store.find_entity(traveler, name, city)
+            if mem:
+                return {"name": name, "lat": mem["lat"], "lng": mem["lng"], "confidence": "high", "source": "memory"}
+
     # 1. LLM 知识
     llm = await geocode_by_llm(name, city, llm_overrides)
     if llm:

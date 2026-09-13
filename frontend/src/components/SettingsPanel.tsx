@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { testLlm } from "../api/client";
+import { clearMemory, memoryStats, testLlm, type MemoryStats } from "../api/client";
 import type { LlmSettings } from "../lib/settings";
 
 interface SettingsPanelProps {
@@ -18,6 +18,14 @@ interface TestState {
 export default function SettingsPanel({ settings, onChange, onClose }: SettingsPanelProps) {
   const [test, setTest] = useState<TestState>({ status: "idle", message: "" });
   const [showKey, setShowKey] = useState(false);
+  /** M18 旅行记忆：当前匿名档案的条数 + 清空入口 */
+  const [mem, setMem] = useState<MemoryStats | null>(null);
+  const [memBusy, setMemBusy] = useState(false);
+  const [memMsg, setMemMsg] = useState("");
+
+  useEffect(() => {
+    memoryStats().then(setMem).catch(() => setMem(null));
+  }, []);
 
   // Esc 关闭（表单内 Escape 不触发地图逻辑，独立处理）
   useEffect(() => {
@@ -50,6 +58,28 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
 
   const inputCls =
     "border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss";
+
+  const handleClearMemory = async () => {
+    if (memBusy) return;
+    if (!window.confirm("清空本机档案的全部旅行记忆？此操作不可撤销（只清空本机生成的匿名档案，不影响他人）。")) return;
+    setMemBusy(true);
+    setMemMsg("");
+    try {
+      const r = await clearMemory();
+      setMemMsg(`已清空 ${r.deleted} 条`);
+      setMem(await memoryStats());
+    } catch (e) {
+      setMemMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMemBusy(false);
+    }
+  };
+
+  const memText = mem === null
+    ? "读取中…"
+    : !mem.enabled
+      ? "服务器未开启"
+      : `${mem.total} 条${mem.cities.length ? " · " + mem.cities.join("/") : ""}`;
 
   return (
     <div className="fixed inset-0 z-[700] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -133,6 +163,33 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
               {test.message}
             </span>
           )}
+        </div>
+
+        <div className="border-t border-line pt-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-ink-soft">🧠 旅行记忆</span>
+            <span className="text-[11px] text-ink-soft" data-testid="memory-count">{memText}</span>
+          </div>
+          <p className="text-[11px] text-ink-soft leading-relaxed">
+            开启后，你提取过的攻略会按「匿名档案」存进服务器记忆库，下次聊到同一目的地时
+            AI 会引用旧攻略回答；你在地图上手动改过的地点坐标也会被记住，之后同名地点直接定位、不再猜。
+            记忆只与浏览器本地生成的随机 id 关联，可随时清空。
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearMemory}
+              disabled={memBusy || !mem?.enabled || !mem.total}
+              className="border border-line bg-white text-moss rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+              data-testid="memory-clear"
+            >
+              {memBusy ? "清空中…" : "清空我的记忆"}
+            </button>
+            {memMsg && <span className="text-[11px] text-ink-soft" data-testid="memory-msg">{memMsg}</span>}
+            {mem?.enabled && mem.embed_model && (
+              <span className="text-[11px] text-ink-soft">embedding: {mem.embed_provider} / {mem.embed_model}</span>
+            )}
+          </div>
         </div>
 
         <div className="border-t border-line pt-3 text-[11px] text-ink-soft leading-relaxed">

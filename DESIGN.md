@@ -100,6 +100,22 @@ AI 修改前在对话里说明「我改了什么」，地图高亮变化处。
 1. 截图提取完成后，原图从后续轮次上下文丢弃（只留结构化结果），防 token 膨胀
 2. JSON 校验失败 → 带错误重试一次（pydantic 校验即修复环地基）
 3. 对话历史裁剪：只保留最近 N 轮 + 当前 route 快照，不无限累积
+4. 记忆检索注入硬上限：top-k ≤ 6 条且总字数 ≤ 1200（见 §4.4）
+
+### 4.4 长期记忆与检索增强（M18，opt-in）
+
+对话代理的**长期记忆**：RAG 是实现手段，产品叙事是「攻略库越用越懂你」。
+
+- **落点 A 攻略记忆库**：每次成功提取的攻略按**实体级**切分（`place_card` 地点原子事实 /
+  `trip_summary` 整篇级）→ 本地 embedding（bge-small-zh ONNX）→ SQLite 单文件（`memory.sqlite`）；
+  下次对话提到同一目的地时检索 top-k，拼【记忆参考】块注入 user payload，模型**带 [n] 引用**回答
+- **落点 B 坐标实体记忆**：用户在地图上手动确定/修改的坐标即 ground truth，入 `place_entity`；
+  geocode 降级链**第 0 级**命中同名同城即直接返回 confidence=high（省一次 LLM 调用，消灭小店坐标幻觉）
+- **检索实现**：SQL 预过滤（档案 + 城市 + chunk 类型）后候选集内暴力余弦。单用户几百条量级 <1ms，
+  引入 sqlite-vec/FAISS 的编译与兼容成本不值（代码留 `VectorIndex` 接口位，是 YAGNI 自觉）
+- **隐私**：默认关闭（`ITERTRIP_MEMORY_ENABLED=0`）；开启后按匿名档案（前端随机 id，请求头
+  `X-Traveler-Id`）隔离，不同档案互不可见；设置面板可一键清空自己的全部记忆。攻略原文由
+  「只在本机浏览器」变为「进服务器库存」，所以必须显式 opt-in
 
 ---
 
@@ -143,7 +159,10 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
 - [x] M17：Agent 式澄清问答（need_more_info + 结构化 questions[]，type 含 text/select/multi/date，前端澄清卡 + 日历/自定义选项）
 - [x] 管理后台（M-Admin-1）：/admin 免费服务配置热更新 + 探测 + token 鉴权 + key 脱敏
 - [x] 体验与导入导出补全：流式等待计时 + 分时段提示 + 思考链强制展开；HTML 导出根因修复（中文文件名 RFC 5987 双写）+ 导出副本坐标清洗（无「非洲点」）；首页导入（JSON / 导出 HTML 往返）
-- [ ] M16：可选上云（HF Spaces / 国内 VPS，用现有 Dockerfile）
+- [x] M16：上云（已在自有腾讯云服务器完成自部署验证：C-1 单进程 + Nginx 子路径 + `.env` 配置）
+- [x] M18：旅行记忆库（RAG，opt-in）：攻略实体级切分 → 本地 embedding（bge-small-zh ONNX）→
+      SQLite 单文件向量检索（城市元数据预过滤）→ 带引用注入；坐标实体记忆作 geocode 第 0 级；
+      匿名档案隔离 + 设置面板一键清空
 
 ## 8. 边界（明确不做）
 

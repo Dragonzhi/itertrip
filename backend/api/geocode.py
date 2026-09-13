@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from ..engine.coordinates import geocode
-from .deps import llm_overrides
+from .deps import llm_overrides, traveler_id
 
 router = APIRouter()
 
@@ -16,4 +16,4 @@ class GeocodeRequest(BaseModel):
 
 @router.post("/api/geocode")
 async def geocode_route(req: GeocodeRequest, request: Request) -> dict:
-    return await geocode(req.name, req.city, llm_overrides(request))
+    return await geocode(req.name, req.city, llm_overrides(request), traveler_id(request))

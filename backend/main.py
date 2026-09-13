@@ -5,7 +5,6 @@
 http://127.0.0.1:8100/ 即完整 Web 应用（API + 前端同源，无 CORS）。
 """
 
-import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import admin, chat, export, geocode, llm, plan, search
+from .api import admin, chat, export, geocode, llm, memory, plan, search
+from .engine._llmutil import env_value
 
 app = FastAPI(
     title="IterTrip API",
@@ -22,7 +22,8 @@ app = FastAPI(
 )
 
 # CORS：生产用 ITERTRIP_CORS_ORIGINS 逗号分隔白名单；未配置时全放行（开发期/开放 API）
-_cors = os.environ.get("ITERTRIP_CORS_ORIGINS", "").strip()
+# 读取口径：进程环境变量 > 项目根 .env（与 ITERTRIP_FREE_* 一致，写在 .env 里同样生效）
+_cors = env_value("ITERTRIP_CORS_ORIGINS").strip()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors.split(",") if o.strip()] or ["*"],
@@ -37,6 +38,7 @@ app.include_router(export.router)
 app.include_router(chat.router)
 app.include_router(llm.router)
 app.include_router(admin.router)
+app.include_router(memory.router)
 
 
 @app.get("/api/health")

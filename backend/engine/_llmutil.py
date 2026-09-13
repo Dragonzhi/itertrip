@@ -53,6 +53,17 @@ def default_provider() -> dict | None:
     """对外入口：内置默认免费供应商（可能为 None = 未配置，走 mock 演示模式）。"""
     return _free_provider()
 
+
+def env_value(name: str, default: str = "") -> str:
+    """读取服务端配置：进程环境变量优先，其次项目根 .env 文件（与免费供应商同一口径）。
+
+    .env 每次读取都重新解析（无缓存），因此改 .env 后重启进程即生效，无需 export。
+    """
+    v = os.environ.get(name, "").strip()
+    if v:
+        return v
+    return (_read_env_file().get(name, "") or "").strip() or default
+
 import re as _re
 
 _VERSION_RE = _re.compile(r"/v\d+$")

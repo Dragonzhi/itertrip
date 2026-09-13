@@ -1,6 +1,7 @@
 import type { PlanRequest, RouteJSON } from "../types/route";
 import type { ClarifyQuestion } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
+import { memoryHeaders } from "../lib/memory";
 
 /**
  * API 基地址：开发留空走 Vite 代理；生产构建时注入 VITE_API_BASE。
@@ -25,7 +26,7 @@ export async function planTrip(
 ): Promise<{ route: RouteJSON; source: string }> {
   const resp = await fetch(API_BASE + "/api/plan", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
+    headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify(req),
   });
   if (!resp.ok) {
@@ -64,7 +65,7 @@ export async function chatStream(
 ): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] }> {
   const resp = await fetch(API_BASE + "/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
+    headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify(req),
   });
   if (!resp.ok || !resp.body) {
@@ -164,7 +165,7 @@ export async function geocode(
 ): Promise<{ lat: number | null; lng: number | null; confidence: string }> {
   const resp = await fetch(API_BASE + "/api/geocode", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
+    headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify({ name, city }),
   });
   if (!resp.ok) throw new Error("geocode 失败 (" + resp.status + ")");
@@ -265,4 +266,42 @@ export function testAdminProvider(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** ---------- M18 旅行记忆库 ---------- */
+
+export interface MemoryStats {
+  enabled: boolean;
+  total: number;
+  by_kind: Record<string, number>;
+  cities: string[];
+  embed_provider?: string;
+  embed_model?: string;
+  reason?: string;
+}
+
+/** 当前匿名档案的记忆统计（设置面板展示条数/城市）。 */
+export async function memoryStats(): Promise<MemoryStats> {
+  const resp = await fetch(API_BASE + "/api/memory/stats", { headers: { ...memoryHeaders() } });
+  if (!resp.ok) throw new Error("记忆统计失败 (" + resp.status + ")");
+  return resp.json();
+}
+
+/** 清空当前匿名档案的全部记忆（不影响其他档案）。 */
+export async function clearMemory(): Promise<{ ok: boolean; deleted: number }> {
+  const resp = await fetch(API_BASE + "/api/memory/all", { method: "DELETE", headers: { ...memoryHeaders() } });
+  if (!resp.ok) throw new Error("清空记忆失败 (" + resp.status + ")");
+  return resp.json();
+}
+
+/**
+ * 坐标真值回传（M18）：编辑器里手动确定的位置 = ground truth，后续同名地点 geocode 直接命中。
+ * fire-and-forget：任何失败都静默（不影响编辑操作本身），故不返回 Promise（void）。
+ */
+export function reportPlaceEntity(name: string, city: string, lat: number, lng: number): void {
+  void fetch(API_BASE + "/api/memory/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...memoryHeaders() },
+    body: JSON.stringify({ name, city, lat, lng, source: "user_pin" }),
+  }).catch(() => { /* 静默：记忆是增强能力 */ });
 }

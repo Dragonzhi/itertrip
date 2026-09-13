@@ -17,6 +17,10 @@ venv/
 .secrets
 config.local.json
 admin_config.json
+# M18 记忆库单文件（含用户攻略原文，绝不入库）
+memory.sqlite
+memory.sqlite-wal
+memory.sqlite-shm
 
 # ---------- 构建产物 ----------
 # examples/ 下的 HTML 是已提交的展示示例，保留在 git 里；

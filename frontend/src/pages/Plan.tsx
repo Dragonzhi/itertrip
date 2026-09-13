@@ -6,7 +6,7 @@ import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../
 import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../components/HotelForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
-import { exportHtml, chatStream, type ChatStreamEvent } from "../api/client";
+import { exportHtml, chatStream, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
 import { useElapsed } from "../hooks/useElapsed";
@@ -149,6 +149,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const trip = route.trip;
   const metas = [trip.destination, trip.dates, trip.budget, trip.travelers].filter(Boolean);
 
+  /**
+   * M18：用户在地图上手动确定/修改的位置就是坐标真值，回传记忆库（实体记忆）。
+   * fire-and-forget：静默失败，绝不影响编辑操作；后续任何攻略出现同名同城地点可直接命中。
+   */
+  const reportCoord = (name: string, lat: number, lng: number) => {
+    const n = (name || "").trim();
+    if (!n || !lat || !lng) return;
+    reportPlaceEntity(n, trip.destination, lat, lng);
+  };
+
   // 行程任何变更回传 App 层持久化（route 引用即快照）
   useEffect(() => {
     onRouteChange?.(route);
@@ -214,6 +224,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       });
       setHotelDraft((d) => ({ ...d, lat: rounded.lat, lng: rounded.lng }));
       lastActiveDayRef.current = t.di;
+      reportCoord(route.days[t.di]?.hotel?.name || "", rounded.lat, rounded.lng);
       return;
     }
     if (p.purpose === "repick") {
@@ -226,6 +237,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         place.lng = rounded.lng;
       });
       lastActiveDayRef.current = t.di;
+      reportCoord(route.days[t.di]?.places[t.pi]?.name || "", rounded.lat, rounded.lng);
       return;
     }
     // add：带坐标打开新增表单
@@ -270,6 +282,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     if (!d.name.trim()) return;
     if (form.mode === "edit") {
       const t = form.target;
+      const prev = route.days[t.di]?.places[t.pi];
+      const posChanged = !!prev && ((prev.lat ?? 0) !== d.lat || (prev.lng ?? 0) !== d.lng);
       mutate((r) => {
         const p = r.days[t.di]?.places[t.pi];
         if (!p) return;
@@ -284,6 +298,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         p.transport = d.transport; p.ticket = d.ticket; p.note = d.note;
         if (!posSame) { p.lat = d.lat; p.lng = d.lng; }   // 无坐标地点不得写入 0,0
       });
+      if (posChanged) reportCoord(d.name, d.lat, d.lng);  // M18：手改坐标 = 真值
       lastActiveDayRef.current = form.target.di;
     } else {
       const di = form.dayIdx;
@@ -293,6 +308,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           time: d.time, transport: d.transport, ticket: d.ticket, note: d.note,
         });
       });
+      reportCoord(d.name.trim(), d.lat, d.lng);  // M18：地图选点新增 = 真值
       lastActiveDayRef.current = di;
     }
     setForm(null);

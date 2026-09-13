@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.0 · 2026-09-05 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.1 · 2026-09-06 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -64,10 +64,12 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
 | C | **坐标代理（Geocode Agent）** | `backend/engine/coordinates.py` | 给缺失/可疑坐标的地点补全经纬度 | 否 | LLM 知识 → 搜索兜底 → 城市中心表 → none |
 | D | **探测代理（Probe Agent）** | `backend/api/llm.py` | 测试 BYOK 连通性、鉴权、模型名、视觉（看图）能力 | 否 | max_tokens 逐档降级重试 |
 | E | **Mock 规划器（Mock Agent）** | `backend/engine/planner.py`（`plan_mock`） | 无 key/调用失败时的确定性演示降级，产出标注「mock 占位」的草稿 | 否 | —（本身即降级终点） |
-| F | **搜索服务（Search Service）** | `backend/api/search.py` | 酒店价格参考（best-effort，非 LLM 驱动） | 否 | RollingGo → Tavily → 返回空报价+提示 |
+| F | **记忆服务（Memory Store，M18）** | `backend/engine/memory_{store,embed,ingest}.py` + `backend/api/memory.py` | 攻略实体级切分 → embedding → SQLite 向量检索（供 A 注入）+ 坐标实体真值表（供 C 第 0 级） | 否 | 未开启 / 缺依赖 / 出错 → 全部 no-op，主线不受影响 |
+| G | **搜索服务（Search Service）** | `backend/api/search.py` | 酒店价格参考（best-effort，非 LLM 驱动） | 否 | RollingGo → Tavily → 返回空报价+提示 |
 
-> 说明：E/F 严格说不算"智能体"——Mock 是确定性代码，Search 是数据抓取服务；但它们在调用链路中
-> 与代理同构（同样的输入输出契约与降级位置），故一并列出。
+> 说明：E/F/G 严格说不算"智能体"——Mock 是确定性代码，Search 是数据抓取服务，Memory 是存储 + 检索组件；
+> 但它们在调用链路中与代理同构（同样的输入输出契约与降级位置），故一并列出。
+> F 让 A 拥有了**跨会话长期记忆**（RAG），并给 C 加了一层「用户手改为真值」的检索增强。
 
 **非代理但密切协作的前端组件**：
 
@@ -103,6 +105,10 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
 5. **截图解析（M15）**：`/api/chat` 接受 `images[]`（data URL，≤4 张、单张解码后 ≤4MB，仅提取模式）；
    user 消息由 `build_user_content` 组成 OpenAI 多模态数组，一次调用直出 route JSON，不做图→文中转；
    网关 4xx 拒图且错误体含视觉字样 → 错误消息带 `[vision-unsupported]` 标记，前端据此回写 `vision=false` 置灰入口。
+6. **长期记忆检索（M18）**：提取模式启动前按 prompt 检索该档案的历史攻略片段（top-k ≤6 / ≤1200 字），
+   拼【记忆参考】块注入 user payload 尾部，要求模型**带 [n] 引用**且不得凭记忆编造；命中时先播报
+   `stage: memory`。路线成功产出后，把本次攻略切分入库（**后台任务**，不占用本次响应时间）。
+   编辑模式不注入（上下文已含完整 route，收益低、膨胀风险高）。
 
 **调用参数**：`temperature=0.4`，`stream=true`，超时 180s，对话历史仅保留**最近 8 轮**（上下文护栏）。
 
@@ -128,11 +134,15 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
 
 | 级别 | 策略 | 置信度 | 说明 |
 |------|------|--------|------|
+| 0 | **坐标实体记忆**（M18，需记忆库开启 + 请求头 `X-Traveler-Id`） | `high`（附 `source: memory`） | 用户在编辑器里**手动改过/地图选点**的同名同城地点即 ground truth；命中直接返回 GCJ-02，**不再调用 LLM**（省一次调用 + 消灭小店坐标幻觉） |
 | 1 | LLM 已知知识（`geocode_by_llm`，temperature=0） | `high` | 知名地标坐标记忆可靠且零成本；不确定时模型输出 `not_found`；WGS84 → 转 GCJ-02 |
 | 2 | 高德 POI 搜索（`geocode_by_amap`，需 `ITERTRIP_AMAP_KEY`） | `high`（名称互相包含/前 4 字重合） | 店名级精度，中国 POI 覆盖最好；直接返回 GCJ-02；名称不相关的首个 POI 视为未命中 |
 | 3 | Web 搜索兜底（`geocode_by_search`，Tavily 兼容） | `low` | 搜「地名 城市 经纬度 坐标」，正则从结果文本抓坐标对；按 WGS84 → 转 GCJ-02 |
 | 4 | 内置城市中心表（`_CITY_CENTER`，12 个热门城市硬编码） | `low` | 城市级兜底，至少落在正确城市；返回前转 GCJ-02 |
 | 5 | 彻底失败 | `none` | lat/lng 返回 null，前端提示确认 |
+
+> 第 0 级只由**用户手改**写入（`source=user_pin`）。LLM/高德给出的 `high` 结果**不**自动入库——
+> 否则幻觉坐标会被固化成「真值」，反而污染后续所有规划（设计取舍见 M18_MEMORY_PLAN.md §6）。
 
 **坐标系约定（v1.1 起）**：route JSON 内 lat/lng 统一存 **GCJ-02**，与高德瓦片（网页地图 + 导出模板主源）显示一致。
 LLM 生成/mock 的坐标视为 WGS84，在进入 route 前经 `engine/geo.py` 的 `wgs84_to_gcj02` 转换一次；
@@ -165,7 +175,37 @@ LLM 生成/mock 的坐标视为 WGS84，在进入 route 前经 `engine/geo.py` �
 - 其他城市：生成占位坐标 + 显式标注「【mock 占位】坐标与名称均为草稿，请在编辑器中修改」；
 - summary 明确提示当前处于 mock 模式。
 
-### 4.F 搜索服务（酒店价格，可选能力）
+### 4.F 记忆服务（Memory Store，M18 · RAG）
+
+**入口**：`POST /api/memory/feedback`、`GET /api/memory/stats`、`DELETE /api/memory/all`
+（`backend/api/memory.py`）；并作为 A（检索注入 / 入库）与 C（第 0 级）的**内部下游**自动参与。
+
+**三种 chunk**（`engine/memory_ingest.py`：旅游攻略天然有语义单元，故按**实体级**切分，不做定长滑窗）：
+
+| kind | 内容 | 用途 |
+|------|------|------|
+| `place_card` | 单地点原子事实：名称 + 备注 + 时间 + 门票 + 所属天主题 | 语义检索主粒度 |
+| `trip_summary` | 整篇攻略级：标题 + 目的地 + 天数 + summary[] | 回答「上次那篇整体怎么排的」 |
+| `place_entity` | 坐标真值：名称 + 城市 + lat/lng + source=user_pin | geocode 第 0 级精确命中（不参与语义检索） |
+
+**存储**（`engine/memory_store.py`）：`memory.sqlite` 单文件（项目根，gitignore；`ITERTRIP_MEMORY_DB` 可改），
+WAL 模式；检索 = SQL 预过滤（档案 + 城市 + kind）后候选集内暴力余弦 top-k，留 `VectorIndex` 接口位。
+
+**embedding**（`engine/memory_embed.py`）：`local`（默认，fastembed ONNX `BAAI/bge-small-zh-v1.5`，
+512 维，懒加载；未安装依赖时报错可读）/ `api`（OpenAI 兼容 `/embeddings`）。
+
+**注入格式**（拼在提取模式 user payload 尾部）：
+
+```
+【记忆参考】这位旅行者过往攻略的相关片段（仅供引用，不是本次必含内容；冲突以本次为准）：
+[1]《成都 3 日》· 人民公园：鹤鸣茶社喝盖碗茶 · D1 上午（2026-09）
+使用规则：与当前需求相关才提及，引用必须带 [n]；不得凭记忆编造本次攻略没有的内容。
+```
+
+**护栏与降级**：top-k ≤6 且总字数 ≤1200；库为空时连 query embedding 都不算（首轮零额外开销）；
+缺 fastembed / 库损坏 / 未开开关 → 打印日志后静默跳过，**绝不影响主线对话**；入库走后台任务，不拖慢响应。
+
+### 4.G 搜索服务（酒店价格，可选能力）
 
 `POST /api/search`：三级数据源策略——RollingGo 公开 API（`ITERTRIP_ROLLINGO_BASE_URL`）→
 Tavily 兼容搜索（正则抽取 ¥100-99999 区间价格）→ 返回空报价 + 提示用户手动填写。
@@ -200,14 +240,19 @@ Tavily 兼容搜索（正则抽取 ¥100-99999 区间价格）→ 返回空报�
 用户输入
    ├─ 首页表单 ──→ 【B 规划代理】 ──触发──→ 【C 坐标代理】（批量补全）
    ├─ 首页对话 ──→ 【A 对话代理·提取模式】 ──触发──→ 【C 坐标代理】
-   │                    │
+   │                    │  ↑ 检索注入【记忆参考】
+   │                    │  └─ 成功产出攻略 ──→ 【F 记忆服务】切分入库（后台任务）
    │                    └─ 信息不足 → 输出 questions[] → 前端澄清卡 → 用户补答 → 再入 A
    └─ 规划页对话 ─→ 【A 对话代理·修改模式】
                         │
                         ├─ changed=true ─→ 前端 diffRoute → 撤销栈 push → 地图闪烁高亮
                         └─ changed=false + 坐标类措辞 ─→ 后端强制调【C 坐标代理】真改坐标
 
+编辑器手动改点/地图选点 ──→ 【F 记忆服务·place_entity】（POST /api/memory/feedback，fire-and-forget）
+                             └─ 之后同名同城地点 geocode 命中【C 第 0 级】，不再问 LLM
+
 设置面板/后台 ──→ 【D 探测代理】（只读探测，不改任何行程数据）
+设置面板 ──→ GET /api/memory/stats（条数/城市）· DELETE /api/memory/all（清空自己的记忆）
 ```
 
 ### 5.3 双段输出协议（A/B 与 LLM 之间的"握手格式"）
@@ -275,7 +320,7 @@ RouteJSON
 
 | event | data 内容 | 语义 |
 |-------|----------|------|
-| `stage` | `{stage: understand\|retry\|geocode\|done\|thinking-steps, label}` | 阶段播报（驱动前端状态文案） |
+| `stage` | `{stage: understand\|memory\|retry\|geocode\|done\|thinking-steps, label}` | 阶段播报（驱动前端状态文案）；`memory` = 已检索到历史攻略并注入（M18） |
 | `thinking` | `{thinking}` | 推理模型思考链增量（前端淡色小字滚动，不混入正文） |
 | `delta` | `{text}` | 回复正文增量（已剥离协议标记，可直接追加渲染） |
 | `reply` | `{reply, intent: route_edit\|chitchat, route, questions?}` | **终帧**：完整回复 + 新路线/澄清问题 |
@@ -291,6 +336,7 @@ RouteJSON
 | `itertrip:route` | 当前行程快照 | 刷新后回填恢复 |
 | `itertrip:chat` | 对话历史（最近 30 条，剔除 route 快照） | 发请求时仅回传最近 8 条 |
 | `itertrip:map` | 地图显示设置（M16，纯视图态） | 不写入 route/后端 |
+| `itertrip:tid` | 匿名档案 id（M18 记忆库 namespace） | `crypto.randomUUID()` 随机生成，不含身份信息；随 `X-Traveler-Id` 头发送 |
 
 ### 6.4 REST 端点一览
 
@@ -298,12 +344,15 @@ RouteJSON
 |------|------|------|------|
 | `/api/plan` | POST | 表单 → 路线（`X-IterTrip-Source` 头标明 llm/mock） | B/E |
 | `/api/chat` | POST | 统一对话（SSE） | A |
-| `/api/geocode` | POST | 单点名称 → 坐标 + confidence | C |
-| `/api/search` | POST | 酒店价格参考 | F |
+| `/api/geocode` | POST | 单点名称 → 坐标 + confidence（记忆库开启时先查实体记忆） | C/F |
+| `/api/search` | POST | 酒店价格参考 | G |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
 | `/api/export` | POST | route → 自包含 HTML 下载（导出副本自动清洗：无坐标/(0,0) 地点与无效酒店剔除，名单写入 summary；保证导出成功且无「非洲点」） | —（确定性构建） |
 | `/api/admin/provider` | GET/PUT/DELETE | 后台供应商配置（key 脱敏返回） | — |
 | `/api/admin/provider/test` | POST | 后台配置实时探测 | D |
+| `/api/memory/feedback` | POST | 编辑器改点上报坐标真值（place_entity 入库；记忆关闭/无档案 → no-op） | F |
+| `/api/memory/stats` | GET | 当前匿名档案的记忆条数/类型/城市（设置面板展示） | F |
+| `/api/memory/all` | DELETE | 清空**当前档案**的全部记忆（不跨档案） | F |
 | `/api/health` | GET | 健康检查 | — |
 
 ---
@@ -325,7 +374,16 @@ RouteJSON
 | `ITERTRIP_AMAP_KEY` | 空 | 可选，高德 Web 服务 key（坐标兜底级 2：POI 店名级搜索，[申请地址](https://lbs.amap.com/)）；也可在后台界面配置，环境变量优先 |
 | `ITERTRIP_ROLLINGO_BASE_URL` | 空 | 可选，RollingGo 酒店价格源 |
 | `ITERTRIP_ADMIN_TOKEN` | 空 | 后台管理 token；**未配置 = 后台整体关闭（403/503）** |
+| `ITERTRIP_MEMORY_ENABLED` | 空（关闭） | 记忆库总开关（`1/true/yes/on` 开启）；关闭时记忆端点全 no-op、geocode 跳过第 0 级 |
+| `ITERTRIP_EMBED_PROVIDER` | `local` | `local`=fastembed 本地 ONNX；`api`=OpenAI 兼容 `/embeddings` |
+| `ITERTRIP_EMBED_MODEL` | `BAAI/bge-small-zh-v1.5` | embedding 模型名（512 维） |
+| `ITERTRIP_EMBED_BASE_URL` / `ITERTRIP_EMBED_API_KEY` | 空 | provider=api 时必填 |
+| `ITERTRIP_MEMORY_DB` | `<项目根>/memory.sqlite` | 记忆库单文件路径（容器部署可指向持久卷） |
+| `HF_ENDPOINT` | 空 | 本地模型下载镜像（国内建议 `https://hf-mirror.com`；设了会自动关 Xet 协议） |
 | `ITERTRIP_CORS_ORIGINS` | 空（全放行） | 逗号分隔白名单，生产建议配置 |
+
+> 读取口径：`ITERTRIP_CORS_ORIGINS` / `ITERTRIP_AMAP_KEY` / 记忆库系列与 `ITERTRIP_FREE_*`、`ITERTRIP_ADMIN_TOKEN`
+> 一致——**进程环境变量优先，其次项目根 `.env`**（`engine/_llmutil.env_value`，每次读取都重新解析文件）。
 
 ### 7.2 后台配置文件 `admin_config.json`（项目根目录，.gitignore 忽略，可热更新）
 
@@ -352,6 +410,8 @@ RouteJSON
 | localStorage 对话留存 | 30 条 | `settings.saveChatHistory` |
 | 表单天数范围 | 1–30 天 | `plan.PlanRequest` |
 | max_tokens 探测档位 | 512→256→128→32 | `llm._text_probe_max_tokens` |
+| 记忆检索 top-k / 注入字数上限 | 6 条 / 1200 字 | `memory_ingest._TOP_K` / `_MAX_CHARS` |
+| 记忆检索/入库超时 | 30s / 180s（入库为后台任务） | `chat._memory_reference` / `_memory_ingest_bg` |
 
 ---
 
@@ -393,6 +453,15 @@ RouteJSON
 服务器无任何 LLM 配置时：表单规划走【E Mock】生成成都样本行程（`X-IterTrip-Source: mock`）；
 对话则返回 400 提示配置方法——保证"断网可演示、无 key 可联调"。
 
+### 用例 7：长期记忆（M18，需开启记忆库）
+
+1. 首次贴一段成都攻略 → 【A】正常出路线；响应发完后【F】把「地点卡 + 整篇摘要」切分入库（后台任务，用户无感）；
+2. 隔天再问「上次那家喝盖碗茶的茶馆在哪个公园？」→ 【A】先检索该档案历史攻略，命中则播报
+   `stage: memory`（「参考了 N 条你过往的攻略记忆…」），模型回答**带 [n] 引用**（例：「人民公园的鹤鸣茶社 [1][2]」）；
+3. 你在编辑器里把「水巷口辣汤饭」拖到正确位置 → 前端 fire-and-forget 上报
+   `POST /api/memory/feedback` → 之后任何攻略再出现该店名，【C】第 0 级直接命中（`source=memory`），不再问 LLM；
+4. 设置面板「🧠 旅行记忆」显示条数/城市，可一键 `DELETE /api/memory/all` 清空（只清本机档案）。
+
 ---
 
 ## 9. 限制与约束
@@ -408,6 +477,8 @@ RouteJSON
 | 链接解析不支持 | 平台链接解析是 v1 后 best-effort 扩展，当前需用户粘贴文字/截图 |
 | 坐标可靠性 | 依赖 LLM 记忆（知名地标可靠，小店可能幻觉）→ 高德 POI 兜底（需 key）+ 离谱检测 + 置信度标注 + 用户确认；离谱检测针对中国境内外粗判（18-54N, 73-135E） |
 | 上下文护栏 | 历史仅 8 轮 + 当前 route 快照；无 route 时历史对提取模式作用有限 |
+| 长期记忆（M18，默认关闭） | opt-in：`ITERTRIP_MEMORY_ENABLED=1` + 装 `fastembed`（或 provider=api）才生效；按匿名档案隔离、可一键清空；注入 ≤6 条/≤1200 字；检索/入库异常只记日志不影响主线；不跨档案共享（隐私红线） |
+| 坐标真值只由用户写入 | 实体记忆仅接受编辑器手改动点（`user_pin`）；LLM/高德结果不入库，防幻觉坐标被固化成「真值」 |
 | 重试预算 | JSON 解析失败仅重试 1 次；第二次失败直接终止并报错 |
 | 价格中立 | prices 不由 AI 抓取（schema 主动清洗幻觉报价），搜索源 best-effort 不作保证 |
 | 管理后台 | 未配置 `ITERTRIP_ADMIN_TOKEN` 即整体关闭；单 provider 无多 key 轮换 |
@@ -422,7 +493,7 @@ RouteJSON
 
 以下按 DESIGN.md §7/§9 整理，均属"已完成/规划中/待反馈"三档：
 
-**已完成（M12–M15 + M17）**
+**已完成（M12–M15 + M17 + M18）**
 
 - [x] BYOK 设置面板 + 连通/视觉探测（M12，探测代理上线）
 - [x] 对话提取模式（M13）、对话改路线 + diff 可视化 + 同栈撤销（M14）
@@ -433,9 +504,14 @@ RouteJSON
 - [x] 等待体验与导入导出补全：流式期间计时（⏱ Ns）+ 分时段提示文案 + 思考链流式强制展开；
       HTML 导出失败可见（catch + 后端 detail 透出）+ 导出副本坐标清洗；首页新增导入
       （支持 .json 与导出的自包含 .html，括号状态机提取内嵌 TRIP）
+- [x] 上云（M16 事实完成）：自有腾讯云服务器已跑通 C-1 单进程 + 子路径部署
+- [x] **旅行记忆库（M18，RAG）**：攻略实体级切分 → 本地 embedding（bge-small-zh ONNX）→
+      SQLite 单文件向量检索（城市元数据预过滤）→ 带 [n] 引用注入提取模式；坐标实体记忆作
+      geocode 第 0 级（用户手改 = 真值，`source=memory`）；匿名档案隔离 + 设置面板一键清空；
+      默认关闭（`ITERTRIP_MEMORY_ENABLED=0`），缺依赖/出错全程静默降级
 
 **近期规划**
-- [ ] **M16 可选上云**：HF Spaces / 国内 VPS（Dockerfile 已就绪）；届时需复核 CORS 白名单与后台 token
+- [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
 
 **v1 后扩展（待用户反馈决定）**
 
@@ -448,4 +524,4 @@ RouteJSON
 
 ---
 
-*本文档基于代码实测编写（2026-09-05，对应 main 分支）。若提示词、参数或协议调整，请同步更新本文件。*
+*本文档基于代码实测编写（2026-09-06，对应 main 分支；M18 记忆库已实测端到端跑通）。若提示词、参数或协议调整，请同步更新本文件。*

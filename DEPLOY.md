@@ -25,6 +25,10 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
 - 手机真机（同一 Wi-Fi）：启动时打印的 `http://<局域网IP>:8100`
 - 接入真实 LLM：三选一——① 设置面板填自己的 key（BYOK）；② `.env` 配 `ITERTRIP_FREE_API_KEY`（内置免费源，访客零配置用真实 AI）；③ env 设 `ITERTRIP_LLM_*`
 - 管理后台：`.env` 配 `ITERTRIP_ADMIN_TOKEN` 后访问 `/admin?admin_token=<值>`（在线换 key/模型/启停，热更新无需重启）
+- 旅行记忆库（M18，可选）：`.env` 设 `ITERTRIP_MEMORY_ENABLED=1`，先装本地 embedding 依赖
+  `pip install fastembed`（约几十 MB）；首次运行会从 HuggingFace 拉约 100MB 模型，**国内服务器**再追加
+  `HF_ENDPOINT=https://hf-mirror.com`（代码检测到该变量会自动关闭 HF 的 Xet 协议，否则镜像下会 401）。
+  不想要本地模型可改用 `ITERTRIP_EMBED_PROVIDER=api` + 一个 OpenAI 兼容 `/embeddings` 服务
 
 原理：`backend/main.py` 检测到 `frontend/dist` 时自动挂载静态资源并 SPA 回退，单进程 = API + Web 应用。这也意味着任何能跑 Python 容器的平台（含 Hugging Face Spaces）都能用现有 `Dockerfile` 直接部署整站——不需要前后端分离部署。
 
@@ -44,6 +48,9 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
    | `ITERTRIP_AMAP_KEY` | 可选 | 高德 Web 服务 key，坐标 POI 店名级兜底 |
    | `ITERTRIP_FREE_API_KEY` | 可选 | 内置免费源（访客零配置用真实 AI；配 Base/Model 可换网关） |
    | `ITERTRIP_ADMIN_TOKEN` | 可选 | 管理后台 token；配置后 `/admin` 可在线管理免费源 |
+   | `ITERTRIP_MEMORY_ENABLED` | 可选 | 旅行记忆库总开关（默认 0 关闭）；开启需装 `fastembed` |
+   | `ITERTRIP_EMBED_PROVIDER` | 可选 | `local`（默认，本地 ONNX）/ `api`（OpenAI 兼容 /embeddings） |
+   | `HF_ENDPOINT` | 可选 | `https://hf-mirror.com`：国内拉本地 embedding 模型用镜像 |
    | `ITERTRIP_CORS_ORIGINS` | 推荐 | 前端域名，如 `https://itertrip.vercel.app`（逗号分隔多个） |
 4. **Settings → Networking → Generate Domain**，得到形如 `https://xxx.up.railway.app` 的地址
 5. 验证：浏览器打开 `https://xxx.up.railway.app/api/health` 应返回 `{"status":"ok",...}`
@@ -90,11 +97,20 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 | `ITERTRIP_SEARCH_API_KEY` | 后端 | 搜索兜底（geocode + 抓价） |
 | `ITERTRIP_SEARCH_BASE_URL` | 后端 | 默认 https://api.tavily.com |
 | `ITERTRIP_ROLLINGO_BASE_URL` | 后端 | RollingGo 价格源（可选） |
+| `ITERTRIP_MEMORY_ENABLED` | 后端 | 旅行记忆库总开关（默认 `0` 关闭）；开启需 `pip install fastembed` |
+| `ITERTRIP_EMBED_PROVIDER` / `_MODEL` | 后端 | embedding 来源：`local`（默认 bge-small-zh ONNX）/ `api` |
+| `ITERTRIP_EMBED_BASE_URL` / `_API_KEY` | 后端 | provider=api 时的 OpenAI 兼容 `/embeddings` 地址与 key |
+| `ITERTRIP_MEMORY_DB` | 后端 | 记忆库文件路径（默认项目根 `memory.sqlite`，可改到持久卷） |
+| `HF_ENDPOINT` | 后端 | 本地 embedding 模型下载镜像（国内：`https://hf-mirror.com`） |
 | `ITERTRIP_CORS_ORIGINS` | 后端 | 生产前端域名白名单 |
 | `VITE_API_BASE` | 前端 | 后端 API 地址（构建时注入） |
 
+> 配置读取口径：进程环境变量优先，其次项目根 `.env`（免费源、管理 token、记忆库、CORS、高德 key 均支持写在 `.env`）。
+
 ## 五、密钥安全红线
 
-- 所有 key 只走平台 Variables/Secrets，**不进 git**（`.gitignore` 已拦 `.env` 与 `admin_config.json`）
+- 所有 key 只走平台 Variables/Secrets，**不进 git**（`.gitignore` 已拦 `.env`、`admin_config.json`、`memory.sqlite*`）
 - 上云必须配置：`ITERTRIP_CORS_ORIGINS` 白名单 + `ITERTRIP_ADMIN_TOKEN`（否则后台对公网关闭——这是预期行为）
+- 开启记忆库 = 用户攻略原文落到服务器 `memory.sqlite`（含个人行程偏好）：按匿名档案隔离、可一键清空；
+  容器平台若使用临时文件系统，需把 `ITERTRIP_MEMORY_DB` 指到持久卷，否则重启即失忆（功能上无害）
 - 提交前自检：`git grep -i "api_key|bearer" -- . ':!*.md'`

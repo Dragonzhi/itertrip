@@ -192,7 +192,7 @@ def plan_mock(req: dict) -> RouteJSON:
 
 
 async def _enrich_coordinates(
-    route: RouteJSON, destination: str, overrides: dict | None = None
+    route: RouteJSON, destination: str, overrides: dict | None = None, traveler: str = ""
 ) -> int:
     """对缺失/无效/离谱坐标的地点做补全；返回处理个数。补不到的由前端低置信度提示。
 
@@ -200,7 +200,9 @@ async def _enrich_coordinates(
     ① 离谱检测：有效坐标点中位数为基准，偏离 > 100km 的视为可疑 → 强制重新 geocode；
        新坐标与原值差 > 10km 才替换，否则保留原值并追加「坐标待确认」标注
        （防误杀：跨城行程中合法远点 + LLM 坚持原坐标的知名远景点）。
-    ② 缺失补全：lat/lng 缺失或 (0,0) 的地点/酒店走 geocode 三级降级补全。
+    ② 缺失补全：lat/lng 缺失或 (0,0) 的地点/酒店走 geocode 降级链补全。
+
+    traveler 非空时（M18），geocode 会先查坐标实体记忆（用户手改过的真值），命中即免一次 LLM 调用。
     """
     filled = 0
     valid = [
@@ -218,7 +220,7 @@ async def _enrich_coordinates(
                     continue  # 缺失交给阶段②
                 if haversine_km(p.lat, p.lng, mlat, mlng) <= _OUTLIER_KM:
                     continue
-                result = await geocode(p.name, destination, llm_overrides=overrides)
+                result = await geocode(p.name, destination, llm_overrides=overrides, traveler=traveler)
                 if result["lat"] is None:
                     p.note = (p.note or "") + "【坐标待确认】"
                     continue
@@ -235,7 +237,7 @@ async def _enrich_coordinates(
         for p in day.places:
             if p.lat is not None and p.lng is not None and (p.lat != 0 or p.lng != 0):
                 continue
-            result = await geocode(p.name, destination, llm_overrides=overrides)
+            result = await geocode(p.name, destination, llm_overrides=overrides, traveler=traveler)
             if result["lat"] is not None:
                 p.lat = result["lat"]
                 p.lng = result["lng"]
@@ -243,14 +245,14 @@ async def _enrich_coordinates(
                 filled += 1
         h = day.hotel
         if h is not None and (h.lat == 0 and h.lng == 0):
-            result = await geocode(h.name, destination, llm_overrides=overrides)
+            result = await geocode(h.name, destination, llm_overrides=overrides, traveler=traveler)
             if result["lat"] is not None:
                 h.lat = result["lat"]
                 h.lng = result["lng"]
     return filled
 
 
-async def plan(req: dict, overrides: dict | None = None) -> tuple[RouteJSON, str]:
+async def plan(req: dict, overrides: dict | None = None, traveler: str = "") -> tuple[RouteJSON, str]:
     """统一入口。返回 (route, source)，source ∈ {"llm", "mock"}。"""
     cfg = _llm_config(overrides)
     if cfg is not None:
@@ -272,7 +274,7 @@ async def plan(req: dict, overrides: dict | None = None) -> tuple[RouteJSON, str
         if d.hotel is not None and d.hotel.lat and d.hotel.lng:
             d.hotel.lat, d.hotel.lng = wgs84_to_gcj02(d.hotel.lat, d.hotel.lng)
     try:
-        filled = await _enrich_coordinates(route, route.trip.destination, overrides)
+        filled = await _enrich_coordinates(route, route.trip.destination, overrides, traveler)
         if filled:
             print(f"[planner] 坐标补全 {filled} 个地点")
     except Exception as e:

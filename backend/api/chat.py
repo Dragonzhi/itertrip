@@ -19,6 +19,11 @@
     route 非空 → 对话改路线（SYSTEM_EDIT 输出 {reply, changed, days}）。
 
 护栏（DESIGN.md §4.3）：解析/校验失败带错误重试一次；history 只保留最近 8 轮。
+
+M18 记忆库（opt-in：ITERTRIP_MEMORY_ENABLED=1 且请求头带 X-Traveler-Id 才生效）：
+    提取模式启动前检索【记忆参考】块（≤6 条 / ≤1200 字）拼到 user payload 尾部；
+    路线成功后把本次攻略切分入库（后台任务，不阻塞响应流）。
+    记忆是增强能力——任何异常（缺 fastembed、向量库损坏）都只打印日志，绝不影响主线对话。
 """
 
 import asyncio
@@ -33,6 +38,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ..engine.schema import RouteJSON
 from .deps import llm_overrides
 from ..engine._llmutil import endpoint as _endpoint, non_stream_parts as _non_stream_parts
+from .deps import traveler_id as _traveler_id
 
 router = APIRouter()
 
@@ -358,6 +364,49 @@ def _short_err(e: Exception, has_images: bool = False) -> str:
     return s[:200]
 
 
+# ---------------- M18 记忆库：检索注入 + 攻略入库（均 best-effort，失败只记日志） ----------------
+
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    """后台任务：入库不阻塞响应流。create_task 只有弱引用，需自持强引用防 GC。"""
+    task = asyncio.create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+
+
+async def _memory_reference(traveler: str, prompt: str) -> str:
+    """检索【记忆参考】块；未开启 / 无档案 / 库空 / 依赖缺失时返回 ""（静默降级）。"""
+    if not traveler or not prompt.strip():
+        return ""
+    from ..engine import memory_ingest, memory_store
+
+    if not memory_store.enabled():
+        return ""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(memory_ingest.build_reference, traveler, prompt), timeout=30
+        )
+    except Exception as e:  # noqa: BLE001 记忆是增强能力，异常绝不中断对话
+        print(f"[memory] 检索跳过：{e}")
+        return ""
+
+
+async def _memory_ingest_bg(traveler: str, route: RouteJSON) -> None:
+    """把成功生成的攻略切分入库（后台任务；首轮含模型加载，故不阻塞响应）。"""
+    from ..engine import memory_ingest, memory_store
+
+    if not traveler or not memory_store.enabled():
+        return
+    try:
+        n = await asyncio.wait_for(asyncio.to_thread(memory_ingest.ingest_route, traveler, route), timeout=180)
+        if n:
+            print(f"[memory] 攻略入库 {n} 条（traveler={traveler[:8]}）")
+    except Exception as e:  # noqa: BLE001
+        print(f"[memory] 入库跳过：{e}")
+
+
 @router.post("/api/chat")
 async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     edit_mode = req.route is not None
@@ -372,6 +421,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             if not ok:
                 raise HTTPException(status_code=400, detail=err)
     cfg, is_user_key = await _resolve_cfg(request)
+    traveler = _traveler_id(request)
 
     async def gen():
         yield _sse("stage", {
@@ -379,9 +429,15 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             "label": "正在读取攻略并规划路线…" if not edit_mode else "正在分析当前路线…",
         })
 
+        # M18：提取模式检索长期记忆，注入 user payload 尾部（编辑模式不注入：上下文已含完整 route）
+        mem_ref = "" if edit_mode else await _memory_reference(traveler, req.prompt)
+        if mem_ref:
+            hits = sum(1 for ln in mem_ref.splitlines() if ln.startswith("["))
+            yield _sse("stage", {"stage": "memory", "label": f"参考了 {hits} 条你过往的攻略记忆…"})
+
         base_payload = (
             f"current_route：\n{json.dumps(req.route, ensure_ascii=False)}\n\n用户要求：{req.prompt}"
-            if edit_mode else req.prompt
+            if edit_mode else (req.prompt + ("\n\n" + mem_ref if mem_ref else ""))
         )
         system = SYSTEM_EDIT if edit_mode else SYSTEM_EXTRACT
 
@@ -525,7 +581,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 try:
                     from ..engine.planner import _enrich_coordinates
 
-                    filled = await _enrich_coordinates(route, route.trip.destination, overrides=cfg if is_user_key else None)
+                    filled = await _enrich_coordinates(route, route.trip.destination, overrides=cfg if is_user_key else None, traveler=traveler)
                     if filled:
                         yield _sse("stage", {"stage": "geocode", "label": f"已补全 {filled} 个坐标"})
                 except Exception as e:
@@ -536,6 +592,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 "intent": "route_edit",
                 "route": route.model_dump(),
             })
+            # M18：响应发完后再后台入库（首轮含 embedding 模型加载，不占用本次响应时间）
+            _spawn(_memory_ingest_bg(traveler, route))
             return
 
         # ---- 改路线模式 ----
@@ -571,7 +629,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     for p in need_fix:
                         # 强制重算一次坐标（即使已有坐标也以 LLM/geocode 为准纠正）
                         from ..engine.coordinates import geocode as _geocode
-                        res = await _geocode(p.name, _tmp.trip.destination, llm_overrides=cfg if is_user_key else None)
+                        res = await _geocode(p.name, _tmp.trip.destination, llm_overrides=cfg if is_user_key else None, traveler=traveler)
                         if res["lat"] is not None:
                             p.lat = res["lat"]
                             p.lng = res["lng"]
@@ -625,7 +683,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             _route_obj = _RJ2.model_validate(data["__route"])
             miss = sum(1 for d in _route_obj.days for p in d.places if p.lat == 0 and p.lng == 0)
             if miss:
-                filled = await _enrich_coordinates(_route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None)
+                filled = await _enrich_coordinates(_route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None, traveler=traveler)
                 if filled:
                     data["__route"] = _route_obj.model_dump()
         except Exception as _e2:
@@ -642,7 +700,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     if p.name and p.name in req.prompt:
                         o = old_map.get(p.name)
                         if o and abs(o[0] - p.lat) < 1e-6 and abs(o[1] - p.lng) < 1e-6:
-                            res = await _geocode2(p.name, _new.trip.destination, llm_overrides=cfg if is_user_key else None)
+                            res = await _geocode2(p.name, _new.trip.destination, llm_overrides=cfg if is_user_key else None, traveler=traveler)
                             if res["lat"] is not None:
                                 p.lat = res["lat"]
                                 p.lng = res["lng"]
