@@ -29,6 +29,9 @@ test-artifacts/
 *.generated.html
 /tmp/
 
+# TypeScript 增量编译缓存（生成物），不入库，避免每次构建都产生噪声 diff
+*.tsbuildinfo
+
 # ---------- 编辑器 / 系统 ----------
 .vscode/
 .idea/
