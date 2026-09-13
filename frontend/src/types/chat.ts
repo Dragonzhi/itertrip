@@ -17,6 +17,8 @@ export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
+  /** M15 随消息发送的截图（data URL，仅内存态；持久化历史不含图片） */
+  images?: string[];
   /** 改路线意图的完整路由快照（仅 assistant 携带） */
   route?: RouteJSON;
   /** 本条是否触发了实际路线变更（前端 diff 后写入） */

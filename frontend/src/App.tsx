@@ -103,6 +103,7 @@ export default function App() {
           onBack={backToIndex}
           prefill={chatPrefill}
           settings={settings}
+          onPatchSettings={patchSettings}
         />
         {showSettings && (
           <SettingsPanel

@@ -1,7 +1,8 @@
 """POST /api/chat —— 对话统一入口（M13 提取 / M14 改路线共用），SSE 流式（体验优化①）。
 
 契约（DESIGN.md §2/§7）：
-    输入  { prompt: str, history: [{role, content}], route: RouteJSON | null }
+    输入  { prompt: str, history: [{role, content}], route: RouteJSON | null,
+            images?: [data:image/*;base64 …] }  # M15 截图，仅提取模式接受
     输出  text/event-stream：
         event: stage    data: {"stage": "understand|retry|geocode|done", "label": str}
         event: thinking data: {"thinking": str}    # 推理模型思考链增量（前端淡色小字实时滚动）
@@ -21,6 +22,7 @@
 """
 
 import asyncio
+import base64
 import json
 
 import httpx
@@ -75,6 +77,7 @@ SYSTEM_EXTRACT = (
     "5. 攻略提到住宿就填 hotel；没提则 hotel 为 null\n"
     "6. summary 提炼 2-4 条攻略里的关键建议（避坑/预约/交通等），不要泛泛而谈\n"
     '7. 无法确定目的地或提取不到任何地点时，只输出 <<<REPLY>>> 段（后接一个具体的追问），不要输出 <<<JSON>>> 段\n'
+    "8. 用户可能附攻略截图（多模态图片输入）：从图中提取地点名/营业时间/门票/贴士/住宿，忠于图片内容；多张截图视为同一篇攻略，按顺序合并为一条路线；图中未提及的坐标一律填 0（系统会自动补全），不要凭空编造\n"
     + _QUESTIONS_HINT
 )
 
@@ -109,6 +112,46 @@ class ChatRequest(BaseModel):
     prompt: str = ""
     history: list[HistoryItem] = Field(default_factory=list)
     route: dict | None = None
+    # M15 截图解析：data:image/*;base64 data URL 列表（仅提取模式接受）
+    images: list[str] = Field(default_factory=list)
+
+
+# ---------------- M15 截图（多模态输入） ----------------
+
+_MAX_IMAGES = 4
+_MAX_IMAGE_BYTES = 4 * 1024 * 1024  # 解码后单张上限
+
+
+def _check_image(data_url: str) -> tuple[bool, str]:
+    """校验截图 data URL：MIME 须 image/*，解码后 ≤ 4MB。返回 (ok, 错误信息)。"""
+    s = (data_url or "").strip()
+    if not s.startswith("data:image/"):
+        return False, "截图须为 data:image/*;base64 格式（PNG/JPG/WebP）"
+    b64 = s.partition(",")[2]
+    if not b64:
+        return False, "截图 data URL 缺少 base64 数据"
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except Exception:  # noqa: BLE001
+        return False, "截图 base64 解码失败"
+    if len(raw) > _MAX_IMAGE_BYTES:
+        return False, "单张截图超过 4MB，请压缩后再试"
+    return True, ""
+
+
+def build_user_content(text: str, images: list[str] | None = None):
+    """组装 user 消息 content：无图=纯文本（回归安全）；有图=OpenAI 多模态数组。
+
+    M15 护栏（DESIGN §4.3①）：图片只进当次调用的 user 消息，history 恒为纯文本，
+    原图天然不会出现在后续轮次上下文（防 token 膨胀）。
+    """
+    imgs = [i for i in (images or []) if i]
+    if not imgs:
+        return text
+    parts: list[dict] = [{"type": "text", "text": text or "请解析攻略截图并生成行程"}]
+    for url in imgs:
+        parts.append({"type": "image_url", "image_url": {"url": url}})
+    return parts
 
 
 # ---------------- LLM 流式调用 ----------------
@@ -136,16 +179,20 @@ def _extract_delta(chunk: dict) -> tuple[str, str]:
     return (thinking, content)
 
 
-async def _stream_llm(cfg: dict, system: str, user_text: str, history: list[HistoryItem]):
+async def _stream_llm(
+    cfg: dict, system: str, user_text: str, history: list[HistoryItem],
+    images: list[str] | None = None,
+):
     """调用 LLM 并 yield 文本增量。
 
     优先 SSE 流式；若端点忽略 stream（返回普通 JSON 而非 SSE，常见于部分免费/聚合网关），
     自动回退到一次性非流式响应。兼容 content / reasoning_content 两种取文本方式。
+    images 非空时（M15）user 消息为 OpenAI 多模态数组（文本 + 图片 data URL）。
     """
     messages: list[dict] = [{"role": "system", "content": system}]
     for h in history[-8:]:  # 护栏：只保留最近 8 轮
         messages.append({"role": h.role, "content": h.content})
-    messages.append({"role": "user", "content": user_text})
+    messages.append({"role": "user", "content": build_user_content(user_text, images)})
 
     payload = {"model": cfg["model"], "messages": messages, "temperature": 0.4, "stream": True}
 
@@ -184,7 +231,9 @@ async def _stream_llm(cfg: dict, system: str, user_text: str, history: list[Hist
                         headers={"Authorization": "Bearer " + cfg["api_key"]},
                         json={**payload, "stream": False},
                     )
-                    nresp.raise_for_status()
+                    if nresp.status_code >= 400:
+                        # 带上响应体片段：网关拒绝图片/参数的原因都在 body，_short_err 需要它做视觉判定
+                        raise RuntimeError(f"{nresp.status_code}: {nresp.text[:300]}")
                     raw = nresp.text
                     try:
                         thinking, content = _non_stream_parts(json.loads(raw))
@@ -204,7 +253,8 @@ async def _stream_llm(cfg: dict, system: str, user_text: str, history: list[Hist
                     headers={"Authorization": "Bearer " + cfg["api_key"]},
                     json={**payload, "stream": False},
                 )
-                nresp.raise_for_status()
+                if nresp.status_code >= 400:
+                    raise RuntimeError(f"{nresp.status_code}: {nresp.text[:300]}")
                 raw = nresp.text
                 try:
                     thinking, content = _non_stream_parts(json.loads(raw))
@@ -288,12 +338,19 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _short_err(e: Exception) -> str:
+# 网关拒绝图片输入时错误体常见字样（与 api/llm.py 视觉探测同一判定口径）
+_VISION_ERR_MARKS = ("image", "vision", "multimodal", "visual", "图片", "图像")
+
+
+def _short_err(e: Exception, has_images: bool = False) -> str:
     s = str(e)
     if "429" in s:
         return "被供应商限流（429），key 有效但请稍后再试"
     if "401" in s or "Unauthorized" in s:
         return "鉴权失败（401）：请检查 API Key 是否正确"
+    # M15：带图请求被 4xx 拒绝且错误体含视觉字样 → 前端据此回写 vision=false 置灰入口
+    if has_images and any(m in s.lower() for m in _VISION_ERR_MARKS):
+        return "[vision-unsupported] 当前模型不支持图片输入：请更换 VLM 模型，或在「设置」重新测试连接"
     if "404" in s:
         return "接口不存在（404）：请检查 Base URL 与模型名"
     if "Connect" in s or "timed out" in s or "timeout" in s.lower():
@@ -303,8 +360,18 @@ def _short_err(e: Exception) -> str:
 
 @router.post("/api/chat")
 async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
-    cfg, is_user_key = await _resolve_cfg(request)
     edit_mode = req.route is not None
+    # M15 截图预检（放在 LLM 配置解析之前：校验错误优先于「未配置」提示）
+    if req.images:
+        if edit_mode:
+            raise HTTPException(status_code=400, detail="改路线暂不支持图片输入：请用文字描述修改要求")
+        if len(req.images) > _MAX_IMAGES:
+            raise HTTPException(status_code=400, detail=f"截图最多 {_MAX_IMAGES} 张，请分次发送")
+        for img in req.images:
+            ok, err = _check_image(img)
+            if not ok:
+                raise HTTPException(status_code=400, detail=err)
+    cfg, is_user_key = await _resolve_cfg(request)
 
     async def gen():
         yield _sse("stage", {
@@ -343,7 +410,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
             async def _producer():
                 try:
-                    async for kind, piece in _stream_llm(cfg, system, payload, req.history):
+                    async for kind, piece in _stream_llm(cfg, system, payload, req.history, req.images or None):
                         await queue.put((kind, piece, False))
                 except Exception as e:  # noqa: BLE001
                     await queue.put(("__error__", str(e), True))
@@ -383,7 +450,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                         yield _sse("delta", {"text": visible[sent:]})
                         sent = len(visible)
             except Exception as e:
-                yield _sse("error", {"detail": f"LLM 调用失败：{_short_err(e)}"})
+                yield _sse("error", {"detail": f"LLM 调用失败：{_short_err(e, has_images=bool(req.images))}"})
                 return
             finally:
                 producer_task.cancel()

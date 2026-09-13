@@ -58,7 +58,7 @@ export interface ChatStreamEvent {
  * 返回终帧数据（reply/error 合一的 dict）。
  */
 export async function chatStream(
-  req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[] },
+  req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[]; images?: string[] },
   settings: LlmSettings | null | undefined,
   onEvent?: (ev: ChatStreamEvent) => void,
 ): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] }> {

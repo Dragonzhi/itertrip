@@ -100,6 +100,9 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
    `questions[]`（type 支持 `text`/`select`/`multi`/`date`，前端渲染成澄清卡片）。
 4. **坐标修正硬约束**：用户指出"位置不对/在非洲/在海里"时，禁止 `changed=false` 口头道歉，必须改出真实坐标
    并在 reply 中说明新方位。后端另有三重兜底校验（见 §5.4）。
+5. **截图解析（M15）**：`/api/chat` 接受 `images[]`（data URL，≤4 张、单张解码后 ≤4MB，仅提取模式）；
+   user 消息由 `build_user_content` 组成 OpenAI 多模态数组，一次调用直出 route JSON，不做图→文中转；
+   网关 4xx 拒图且错误体含视觉字样 → 错误消息带 `[vision-unsupported]` 标记，前端据此回写 `vision=false` 置灰入口。
 
 **调用参数**：`temperature=0.4`，`stream=true`，超时 180s，对话历史仅保留**最近 8 轮**（上下文护栏）。
 
@@ -152,7 +155,7 @@ LLM 生成/mock 的坐标视为 WGS84，在进入 route 前经 `engine/geo.py` �
 2. **视觉探测**：用合法 1×1 红色像素 PNG + 提问组合发一次请求；2xx = 支持视觉；4xx 且错误体含
    `image/vision/multimodal` 等字样 = 明确不支持；其他 4xx = 未知按支持处理（宁可信其有）。
 
-**返回**：`{ok, source(user|env|default|none), model, vision, message}`；`vision=false` 时前端置灰截图入口（为 M15 预留）。
+**返回**：`{ok, source(user|env|default|none), model, vision, message}`；`vision=false` 时前端置灰截图入口（M15 已接入）。
 
 ### 4.E Mock 规划器（演示模式）
 
@@ -266,7 +269,7 @@ RouteJSON
 
 ### 6.2 /api/chat SSE 流式协议
 
-请求：`{ prompt, history: [{role: user|assistant, content}] , route: RouteJSON|null }`
+请求：`{ prompt, history: [{role: user|assistant, content}] , route: RouteJSON|null, images?: [data URL]（M15 截图，仅提取模式） }`
 
 响应（`text/event-stream`），事件按序：
 
@@ -401,7 +404,7 @@ RouteJSON
 | 约束 | 细节 |
 |------|------|
 | 单模型全包 | 不做多模型/多代理编排；视觉能力取决于用户所配模型（推荐 VLM） |
-| 截图输入未接入 | 视觉探测已就绪（M12），但 /api/chat 尚无图片字段——M15 待实现 |
+| 截图输入（M15 已接入） | `/api/chat images[]`：≤4 张、单张 ≤4MB data URL，仅提取模式；前端 canvas 压缩（长边 2400px / JPEG 0.82）；原图不进持久化历史与后续轮次上下文；HEIC 等浏览器不可解码格式明确报错 |
 | 链接解析不支持 | 平台链接解析是 v1 后 best-effort 扩展，当前需用户粘贴文字/截图 |
 | 坐标可靠性 | 依赖 LLM 记忆（知名地标可靠，小店可能幻觉）→ 高德 POI 兜底（需 key）+ 离谱检测 + 置信度标注 + 用户确认；离谱检测针对中国境内外粗判（18-54N, 73-135E） |
 | 上下文护栏 | 历史仅 8 轮 + 当前 route 快照；无 route 时历史对提取模式作用有限 |
@@ -418,17 +421,16 @@ RouteJSON
 
 以下按 DESIGN.md §7/§9 整理，均属"已完成/规划中/待反馈"三档：
 
-**已完成（M12–M14 + M17）**
+**已完成（M12–M15 + M17）**
 
 - [x] BYOK 设置面板 + 连通/视觉探测（M12，探测代理上线）
 - [x] 对话提取模式（M13）、对话改路线 + diff 可视化 + 同栈撤销（M14）
 - [x] Agent 式澄清问题（M17，结构化 questions[]）
 - [x] 后台管理配置（热更新 + 脱敏 + token 鉴权）
+- [x] 截图解析（M15）：VLM 直出 route JSON（一次调用，不做图→文中转）；`vision` 字段驱动
+      前端置灰/开启截图入口；原图不进持久化历史与后续上下文（§4.3 护栏①）
 
 **近期规划**
-
-- [ ] **M15 截图解析**：VLM 直出 route JSON（一次调用，不做图→文中转）；探测代理的 `vision`
-      字段届时用于前端置灰/开启截图入口；截图完成后原图从上下文丢弃防 token 膨胀（§4.3 护栏①）
 - [ ] **M16 可选上云**：HF Spaces / 国内 VPS（Dockerfile 已就绪）；届时需复核 CORS 白名单与后台 token
 
 **v1 后扩展（待用户反馈决定）**

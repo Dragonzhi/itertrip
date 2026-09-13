@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { compressImage } from "../lib/imageCompress";
 import CalendarPicker from "./CalendarPicker";
 import ThinkingBlock from "./ThinkingBlock";
 import type { ChatMessage, ClarifyQuestion } from "../types/chat";
@@ -7,7 +8,9 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   loading: boolean;
   hasRoute: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, images?: string[]) => void;
+  /** M15 视觉能力（来自「测试连接」探测）：false 时截图入口置灰 */
+  vision?: "unknown" | boolean;
   /** 流式过程（优化①）：阶段播报 + 正在流出的回复文本 */
   stageLabel?: string | null;
   streamText?: string;
@@ -275,20 +278,51 @@ export function ClarifyCard({
 }
 
 /** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。 */
-export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking }: ChatPanelProps) {
+export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking, vision }: ChatPanelProps) {
   const [text, setText] = useState("");
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgError, setImgError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const MAX_IMAGES = 4;
+  const visionOff = vision === false;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, loading, streamText, stageLabel, streamThinking]);
 
+  /** M15：压缩并追加截图（文件选择 / 剪贴板粘贴共用），上限 4 张 */
+  const addImages = async (files: (File | Blob)[]) => {
+    if (visionOff || imgBusy || !files.length) return;
+    setImgError("");
+    const room = MAX_IMAGES - pendingImages.length;
+    if (room <= 0) {
+      setImgError(`最多附 ${MAX_IMAGES} 张截图`);
+      return;
+    }
+    setImgBusy(true);
+    try {
+      const urls: string[] = [];
+      for (const f of files.slice(0, room)) urls.push(await compressImage(f));
+      setPendingImages((prev) => [...prev, ...urls]);
+      if (files.length > room) setImgError(`最多附 ${MAX_IMAGES} 张截图，已保留前 ${room} 张`);
+    } catch (e) {
+      setImgError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImgBusy(false);
+    }
+  };
+
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const t = text.trim();
-    if (!t || loading) return;
-    onSend(t);
+    const imgs = pendingImages;
+    if (loading || imgBusy || (!t && !imgs.length)) return;
+    onSend(t || "请解析攻略截图并生成行程", imgs.length ? imgs : undefined);
     setText("");
+    setPendingImages([]);
+    setImgError("");
   };
 
   return (
@@ -299,7 +333,7 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
             <div className="text-3xl mb-2">🧭</div>
             <p className="text-sm font-bold mb-1">把攻略丢进来，变成一张地图</p>
             <p className="text-xs text-ink-soft leading-relaxed">
-              粘贴小红书 / 公众号攻略文字，或直接说想去哪儿、玩几天。
+              粘贴小红书 / 公众号攻略文字或截图，或直接说想去哪儿、玩几天。
               <br />
               生成后：对话可改路线，右侧时间线可拖拽精修，随时撤销。
             </p>
@@ -327,6 +361,18 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
               }
             >
               {m.content}
+              {m.role === "user" && m.images && m.images.length > 0 && (
+                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                  {m.images.map((src, i) => (
+                    <img
+                      key={i}
+                      src={src}
+                      alt={`截图${i + 1}`}
+                      className="w-16 h-16 object-cover rounded-lg border border-white/40"
+                    />
+                  ))}
+                </div>
+              )}
               {m.changeSummary && m.changeSummary.length > 0 && (
                 <ul className="mt-1.5 pt-1.5 border-t border-line/60 space-y-0.5" data-testid="change-summary">
                   {m.changeSummary.map((s, i) => (
@@ -369,7 +415,49 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
         )}
       </div>
       <form onSubmit={submit} className="border-t border-line bg-white p-2.5">
+        {(pendingImages.length > 0 || imgError) && (
+          <div className="flex items-center gap-2 flex-wrap mb-2" data-testid="pending-images">
+            {pendingImages.map((src, i) => (
+              <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-line">
+                <img src={src} alt={`待发送截图${i + 1}`} className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute top-0 right-0 w-4 h-4 bg-black/55 text-white text-[10px] leading-none flex items-center justify-center"
+                  aria-label="移除截图"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {imgBusy && <span className="text-[11px] text-ink-soft">处理图片中…</span>}
+            {imgError && <span className="text-[11px] text-[#B85C5C]">{imgError}</span>}
+          </div>
+        )}
         <div className="flex gap-2 items-end">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              if (files.length) void addImages(files);
+              e.target.value = ""; // 允许重复选择同一文件
+            }}
+            data-testid="shot-file-input"
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={visionOff || loading || imgBusy}
+            title={visionOff ? "当前模型不支持图片输入：请在「设置」重新测试或更换 VLM" : "附攻略截图（也可直接 Ctrl+V 粘贴）"}
+            className="border border-line text-ink-soft rounded-xl px-3 py-2.5 text-sm hover:bg-moss-soft hover:text-moss disabled:opacity-35 disabled:cursor-not-allowed"
+            data-testid="shot-btn"
+          >
+            📷
+          </button>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -379,14 +467,25 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
                 submit();
               }
             }}
+            onPaste={(e) => {
+              const files = Array.from(e.clipboardData?.items || [])
+                .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+                .map((it) => it.getAsFile())
+                .filter((f): f is File => !!f);
+              if (files.length) {
+                e.preventDefault();
+                void addImages(files);
+              }
+            }}
             rows={2}
-            placeholder="粘贴攻略文字，或说「想去成都 3 天」…"
+            placeholder="粘贴攻略文字或截图，或说「想去成都 3 天」…"
             className="flex-1 resize-none border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
           <button
             type="submit"
-            disabled={!text.trim() || loading}
+            disabled={(!text.trim() && !pendingImages.length) || loading || imgBusy}
             className="bg-moss text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-[#175740] disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid="send-btn"
           >
             发送
           </button>

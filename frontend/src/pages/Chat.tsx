@@ -11,12 +11,14 @@ interface ChatProps {
   prefill?: string;
   /** BYOK 设置：对话请求必须带 X-LLM-* 头 */
   settings: LlmSettings;
+  /** M15：探测发现模型不支持图片时回写 vision=false，置灰截图入口 */
+  onPatchSettings: (patch: Partial<LlmSettings>) => void;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 /** M13 对话页：粘贴攻略文字 / 自然语言 → /api/chat → route JSON → 进规划页。 */
-export default function Chat({ onRoute, onOpenSettings, onBack, prefill, settings }: ChatProps) {
+export default function Chat({ onRoute, onOpenSettings, onBack, prefill, settings, onPatchSettings }: ChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory());
   const [loading, setLoading] = useState(false);
   /** 流式过程（优化①） */
@@ -50,9 +52,14 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
 
-  async function send(text: string) {
+  async function send(text: string, images?: string[]) {
     if (loading) return;
-    const userMsg: ChatMessage = { id: uid(), role: "user", content: text };
+    const userMsg: ChatMessage = {
+      id: uid(),
+      role: "user",
+      content: text || `📷 攻略截图×${images?.length || 0}`,
+      images, // 仅内存态；saveChatHistory 持久化时剔除（M15 护栏）
+    };
     const history = [...messages, userMsg]
       .filter((m) => !m.error)
       .slice(-12)
@@ -65,16 +72,22 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
     };
     try {
-      const r = await chatStream({ prompt: text, history }, settings, onEvent);
+      const r = await chatStream({ prompt: text, history, images }, settings, onEvent);
       const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply || streamText, questions: r.questions };
       setMessages((prev) => [...prev, reply]);
       if (r.route && r.route.days.length > 0) {
         onRoute(r.route, "chat");
       }
     } catch (e) {
+      let msg = e instanceof Error ? e.message : String(e);
+      // M15：后端识别出模型不支持图片 → 回写 vision=false 置灰截图入口，展示时去掉机器标记
+      if (msg.includes("[vision-unsupported]")) {
+        onPatchSettings({ vision: false });
+        msg = msg.replace("[vision-unsupported]", "").trim();
+      }
       setMessages((prev) => [
         ...prev,
-        { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
+        { id: uid(), role: "assistant", content: msg, error: true },
       ]);
     } finally {
       setStageLabel(null);
@@ -117,6 +130,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
           loading={loading}
           hasRoute={false}
           onSend={send}
+          vision={settings.vision}
           stageLabel={stageLabel}
           streamText={streamText}
           streamThinking={streamThinking}

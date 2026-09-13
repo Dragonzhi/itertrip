@@ -71,7 +71,8 @@ export function loadChatHistory(): ChatMessage[] {
 
 export function saveChatHistory(msgs: ChatMessage[]) {
   try {
-    const slim = msgs.slice(-30).map((m) => ({ ...m, route: undefined }));
+    // M15 护栏：原图不进持久化历史（localStorage 容量 + token 膨胀双重防护）
+    const slim = msgs.slice(-30).map((m) => ({ ...m, route: undefined, images: undefined }));
     localStorage.setItem(PREFIX + "chat", JSON.stringify(slim));
   } catch {
     /* ignore */
