@@ -99,6 +99,16 @@ async def test_llm(request: Request) -> dict:
     overrides = llm_overrides(request)
     source = "user"
     cfg = overrides
+    # 只填了 API Key、漏填 Base URL 时直接给出可读提示；
+    # 否则空 base_url 会让 httpx 抛 "Request URL is missing an 'http://' or 'https://' protocol"
+    if cfg is not None and cfg.get("api_key") and not (cfg.get("base_url") or "").strip():
+        return {
+            "ok": False,
+            "source": source,
+            "model": cfg.get("model", ""),
+            "vision": False,
+            "message": "缺少 Base URL：只填 API Key 无法确定请求地址，请补全 Base URL",
+        }
     if cfg is None or not cfg.get("api_key"):
         from ..engine.planner import _llm_config
         from ..engine._llmutil import default_provider

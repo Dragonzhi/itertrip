@@ -327,6 +327,21 @@ async def _resolve_cfg(request: Request) -> tuple[dict, bool]:
     """BYOK 解析 + 预检（无 key 抛 HTTP 400，发生在流开始前）。返回 (cfg, is_user_key)。"""
     overrides = llm_overrides(request)
     if overrides and overrides.get("api_key"):
+        # BYOK 只填了 API Key、漏填 Base URL 时，base_url/model 回落到服务器当前生效配置。
+        # 否则空 base_url 会让 httpx 抛 "Request URL is missing an 'http://' or 'https://' protocol"，
+        # 对用户是一句不可读的报错（设置面板允许只填 Key 就保存）。
+        if not overrides.get("base_url"):
+            from ..engine.admin_config import resolve_active
+
+            server_cfg, _ = resolve_active()
+            if server_cfg:
+                overrides["base_url"] = (server_cfg.get("base_url") or "").strip().rstrip("/")
+                overrides["model"] = overrides.get("model") or (server_cfg.get("model") or "")
+        if not overrides.get("base_url"):
+            raise HTTPException(
+                status_code=400,
+                detail="BYOK 缺少 Base URL：请在「模型设置」补全 Base URL，或清空 API Key 改用服务器配置",
+            )
         return overrides, True
     from ..engine.planner import _llm_config
 
