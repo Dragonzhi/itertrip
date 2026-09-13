@@ -61,6 +61,12 @@ export default function App() {
     setScreen({ name: "plan", source });
   };
 
+  /** 首页导入行程（JSON / 导出 HTML），解析校验通过后进规划页。 */
+  const handleImportRoute = (r: RouteJSON) => {
+    setRoute(r);
+    setScreen({ name: "plan", source: "imported" });
+  };
+
   const patchSettings = (patch: Partial<LlmSettings>) => setSettings((s) => ({ ...s, ...patch }));
 
   const openChat = (prefill?: string) => {
@@ -124,6 +130,7 @@ export default function App() {
         onOpenSettings={() => setShowSettings(true)}
         hasModel={hasModel}
         hasRoute={!!route}
+        onImportRoute={handleImportRoute}
       />
       {showSettings && (
         <SettingsPanel

@@ -1,3 +1,7 @@
+import { useRef } from "react";
+import type { RouteJSON } from "../types/route";
+import { parseRouteFile } from "../lib/routeImport";
+
 interface IndexProps {
   onChat: (prefill?: string) => void;
   /** 直接进入地图（已有行程则进规划页，否则转去对话生成） */
@@ -6,10 +10,13 @@ interface IndexProps {
   hasModel: boolean;
   /** 是否已有已生成的行程可进入 */
   hasRoute: boolean;
+  /** 导入行程 JSON / 导出 HTML，解析成功后进入规划页 */
+  onImportRoute: (route: RouteJSON) => void;
 }
 
 /** 首页：两个主入口——AI 对话 / 直接进入地图。 */
-export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, hasRoute }: IndexProps) {
+export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, hasRoute, onImportRoute }: IndexProps) {
+  const importRef = useRef<HTMLInputElement | null>(null);
   return (
     <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-6 gap-6">
       <header className="w-full max-w-xl flex items-center justify-between">
@@ -52,6 +59,31 @@ export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, ha
           🗺 直接进入地图
           {hasRoute ? "" : "（先去对话生成）"}
         </button>
+        <button
+          onClick={() => importRef.current?.click()}
+          className="border border-line text-ink-soft rounded-xl py-2.5 text-xs font-semibold hover:bg-moss-soft hover:text-moss"
+          data-testid="import-entry"
+        >
+          📂 导入行程（JSON / 导出的 HTML）
+        </button>
+        <input
+          ref={importRef}
+          type="file"
+          accept=".json,.html,.htm,application/json,text/html"
+          className="hidden"
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = ""; // 允许重复选择同一文件
+            if (!f) return;
+            try {
+              const r = parseRouteFile(await f.text(), f.name);
+              if (hasRoute && !window.confirm("当前已有行程，导入将替换它（可先导出备份）。继续吗？")) return;
+              onImportRoute(r);
+            } catch (err) {
+              window.alert(err instanceof Error ? err.message : String(err));
+            }
+          }}
+        />
         {!hasModel && (
           <p className="text-[11px] text-gold bg-gold-soft rounded-lg px-3 py-2 leading-relaxed">
             当前使用内置免费供应商（真实 AI 规划，无需配置）。

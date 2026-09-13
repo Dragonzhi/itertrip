@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { compressImage } from "../lib/imageCompress";
+import { useElapsed } from "../hooks/useElapsed";
 import CalendarPicker from "./CalendarPicker";
 import ThinkingBlock from "./ThinkingBlock";
 import type { ChatMessage, ClarifyQuestion } from "../types/chat";
@@ -285,6 +286,7 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
   const [imgError, setImgError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const elapsed = useElapsed(loading);
   const MAX_IMAGES = 4;
   const visionOff = vision === false;
 
@@ -393,13 +395,12 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
         ))}
         {loading && (
           <div className="space-y-1.5" data-testid="ai-streaming">
-            {stageLabel && (
-              <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
-                {stageLabel}
-              </div>
-            )}
-{streamThinking && <ThinkingBlock text={streamThinking} />}
+            <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
+              {stageLabel || "AI 正在思考…"}
+              <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {elapsed}s</span>
+            </div>
+            {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
             {streamText && (
               <div className="flex justify-start">
                 <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
@@ -408,8 +409,14 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
                 </div>
               </div>
             )}
-            {!streamText && !stageLabel && !streamThinking && (
-              <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
+            {!streamText && (
+              <div className="text-[11px] text-ink-soft/70 px-1 leading-relaxed" data-testid="wait-hint">
+                {elapsed < 8
+                  ? "模型排队中，免费源首字常需 10–30 秒…"
+                  : elapsed < 45
+                    ? "仍在生成中，长攻略 / 多张截图会更久，请稍候…"
+                    : "快好了，复杂解析需要更长时间；若超过 3 分钟可重试…"}
+              </div>
             )}
           </div>
         )}

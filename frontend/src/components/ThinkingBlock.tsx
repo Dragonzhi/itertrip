@@ -2,12 +2,25 @@ import { useEffect, useRef, useState } from "react";
 
 interface Props {
   text: string;
+  /** 流式进行中：强制展开实时滚动，结束后自动收起（用户可再手动展开） */
+  streaming?: boolean;
 }
 
 /** 可折叠的思考链块：默认收起，点击展开查看实时滚动 */
-export default function ThinkingBlock({ text }: Props) {
+export default function ThinkingBlock({ text, streaming }: Props) {
   const [open, setOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const wasStreaming = useRef(false);
+
+  useEffect(() => {
+    if (streaming) {
+      wasStreaming.current = true;
+      setOpen(true);
+    } else if (wasStreaming.current) {
+      wasStreaming.current = false;
+      setOpen(false);
+    }
+  }, [streaming]);
 
   useEffect(() => {
     if (open && bodyRef.current) {

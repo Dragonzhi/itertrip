@@ -9,6 +9,7 @@ import type { PlaceType, RouteJSON } from "../types/route";
 import { exportHtml, chatStream, type ChatStreamEvent } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
+import { useElapsed } from "../hooks/useElapsed";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import type { ChatMessage } from "../types/chat";
 import { loadMapSettings, saveMapSettings, type MapSettings as MapSettingsType, type LlmSettings } from "../lib/settings";
@@ -33,6 +34,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
   const [hotelForm, setHotelForm] = useState<{ target: { di: number }; hasCoord: boolean } | null>(null);
   const [hotelDraft, setHotelDraft] = useState<HotelDraft>({ name: "", note: "", lat: 0, lng: 0 });
@@ -58,6 +60,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   /** 右侧工具条：导出二级菜单开合 */
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
+  const aiElapsed = useElapsed(aiBusy);
 
   // 点击工具条外部关闭导出菜单
   useEffect(() => {
@@ -361,7 +364,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   };
   const handleExportHtml = async () => {
     setExporting(true);
-    try { await exportHtml(route, "itertrip_" + trip.destination + "_edited"); } finally { setExporting(false); }
+    setExportError("");
+    try {
+      await exportHtml(route, "itertrip_" + trip.destination + "_edited");
+      setExportOpen(false);
+    } catch (e) {
+      // 失败必须可见（此前静默无反应）：后端 422 detail / 网络错误均落到这里
+      setExportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
@@ -494,13 +506,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           ))}
           {aiBusy && (
             <div className="space-y-1.5" data-testid="ai-streaming">
-              {stageLabel && (
-                <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
-                  {stageLabel}
-                </div>
-              )}
-              {streamThinking && <ThinkingBlock text={streamThinking} />}
+              <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
+                {stageLabel || "AI 正在思考…"}
+                <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {aiElapsed}s</span>
+              </div>
+              {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
               {streamText && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words">
@@ -509,8 +520,10 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   </div>
                 </div>
               )}
-              {!streamText && !stageLabel && !streamThinking && (
-                <div className="text-xs text-ink-soft animate-pulse px-1">AI 正在思考…</div>
+              {!streamText && (
+                <div className="text-[11px] text-ink-soft/70 px-1 leading-relaxed">
+                  {aiElapsed < 8 ? "模型排队中，通常 10–30 秒…" : "仍在生成中，复杂改动会更久，请稍候…"}
+                </div>
               )}
             </div>
           )}
@@ -615,6 +628,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               )}
             </div>
           </div>
+          {exportError && (
+            <div className="mt-1.5 text-[11px] text-[#B85C5C] bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
+              {exportError}
+            </div>
+          )}
           <div className="mt-2 text-[11px] text-[#A8A298] text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div>
       </aside>

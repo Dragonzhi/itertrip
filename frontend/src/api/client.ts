@@ -143,7 +143,10 @@ export async function exportHtml(route: RouteJSON, filename: string): Promise<vo
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ route, filename }),
   });
-  if (!resp.ok) throw new Error(`导出失败 (${resp.status})`);
+  if (!resp.ok) {
+    const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(String(detail.detail || `导出失败 (${resp.status})`).slice(0, 200));
+  }
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

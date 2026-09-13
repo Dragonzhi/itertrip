@@ -301,7 +301,7 @@ RouteJSON
 | `/api/geocode` | POST | 单点名称 → 坐标 + confidence | C |
 | `/api/search` | POST | 酒店价格参考 | F |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
-| `/api/export` | POST | route → 自包含 HTML 下载 | —（确定性构建） |
+| `/api/export` | POST | route → 自包含 HTML 下载（导出副本自动清洗：无坐标/(0,0) 地点与无效酒店剔除，名单写入 summary；保证导出成功且无「非洲点」） | —（确定性构建） |
 | `/api/admin/provider` | GET/PUT/DELETE | 后台供应商配置（key 脱敏返回） | — |
 | `/api/admin/provider/test` | POST | 后台配置实时探测 | D |
 | `/api/health` | GET | 健康检查 | — |
@@ -413,7 +413,8 @@ RouteJSON
 | 管理后台 | 未配置 `ITERTRIP_ADMIN_TOKEN` 即整体关闭；单 provider 无多 key 轮换 |
 | 单进程形态 | 规划/对话长请求阻塞 uvicorn worker 数有限；无队列/限流，多人并发共享同一免费源时可能 429 |
 
-**非功能性约束**：key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；admin token 常量时间比较。
+**非功能性约束**：key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；导出文件名按 RFC 5987 双写
+（HTTP 头仅 latin-1，中文目的地走 `filename*=UTF-8''` 百分号编码，ASCII 兜底）；admin token 常量时间比较。
 
 ---
 
@@ -429,6 +430,9 @@ RouteJSON
 - [x] 后台管理配置（热更新 + 脱敏 + token 鉴权）
 - [x] 截图解析（M15）：VLM 直出 route JSON（一次调用，不做图→文中转）；`vision` 字段驱动
       前端置灰/开启截图入口；原图不进持久化历史与后续上下文（§4.3 护栏①）
+- [x] 等待体验与导入导出补全：流式期间计时（⏱ Ns）+ 分时段提示文案 + 思考链流式强制展开；
+      HTML 导出失败可见（catch + 后端 detail 透出）+ 导出副本坐标清洗；首页新增导入
+      （支持 .json 与导出的自包含 .html，括号状态机提取内嵌 TRIP）
 
 **近期规划**
 - [ ] **M16 可选上云**：HF Spaces / 国内 VPS（Dockerfile 已就绪）；届时需复核 CORS 白名单与后台 token
