@@ -1,4 +1,4 @@
-"""POST /api/geocode —— 模糊名称 → 坐标（WEB_APP_PLAN.md §5.2）。"""
+"""POST /api/geocode —— 模糊名称 → 坐标（降级链详见 AGENTS.md §4.C）。"""
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field

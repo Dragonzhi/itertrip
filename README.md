@@ -19,11 +19,12 @@ IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**
 ## 功能
 
 - 🗺 **地图直观呈现**：按天色板图钉、有向路线（段中点箭头）、点击联动高亮
-- 💬 **对话式规划**：说「想去成都 3 天」或直接贴一段攻略文字/截图
+- 💬 **对话式规划**：说「想去成都 3 天」，贴攻略文字，或**直接丢截图**（VLM 看图直出路线，≤4 张）
+- ❓ **澄清式问答**：信息不足时 AI 主动提问（日期日历/预算单选/偏好多选），答完自动生成
 - ✋ **双轨修改**：对话改（「博物馆挪到第一天下午」）+ 手动改（拖拽排序/跨天移动/编辑表单/地图改点/撤销重做）
 - 🏨 **酒店比价卡**：价格由用户手动提供（中立，不抓数据），最低价自动高亮
-- 📦 **自包含导出**：可编辑 HTML 双击即开，分享即产品体验
-- 🔑 **BYOK**：设置面板填自己的 LLM key（OpenAI 兼容格式），本地存储不出本机
+- 📦 **导出与导入**：可编辑 HTML 双击即开，分享即产品体验；JSON / 导出 HTML 均可再导入继续编辑
+- 🔑 **BYOK + 免费源**：设置面板填自己的 key（OpenAI 兼容，本地存储）；服务器也可配置免费源/管理后台（/admin，token 保护），访客零配置用真实 AI
 
 ## 快速开始
 
@@ -32,9 +33,9 @@ IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**
 powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-打开 http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → 设置里填入你的 LLM API key（OpenAI 兼容，推荐多模态模型）→ 开始对话。
+打开 http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → 设置里填入你的 LLM API key（OpenAI 兼容，**推荐多模态模型以支持截图**）→ 开始对话。
 
-无 key 也可用：内置 mock 路由器供体验完整流程。
+无 key 也可用：服务器 `.env` 配好 `ITERTRIP_FREE_API_KEY`（免费源，真实 AI）；都没配时走内置 mock 路由器体验完整流程。运维可用 `/admin?admin_token=<值>` 在线管理免费源配置。
 
 ## 技术栈
 
@@ -45,14 +46,15 @@ FastAPI（规划引擎 + 静态托管）· React 18 + Vite + Tailwind · Leaflet
 
 ```
 itertrip/
-├── backend/           # FastAPI：规划引擎 / geocode / 导出 / SPA 托管
-│   ├── api/           # plan / geocode / search / export
-│   ├── engine/        # planner / coordinates / builder / schema
+├── backend/           # FastAPI：对话/规划/geocode/导出/后台 + SPA 托管
+│   ├── api/           # chat(SSE) / plan / geocode / search / export / llm / admin
+│   ├── engine/        # planner / coordinates / builder / schema / admin_config
 │   └── templates/     # 自包含 HTML 导出模板
 ├── frontend/          # React + Vite + Tailwind
-│   └── src/           # pages / components / hooks / mapCore
+│   └── src/           # pages(Admin) / components / hooks / lib / mapCore
 ├── start.ps1          # 一键单进程启动（本地方案）
 ├── DESIGN.md          # 设计文档（定位/架构/路线图）
+├── AGENTS.md          # AI 代理架构指南（代理协作/协议/配置详表）
 ├── DEPLOY.md          # 部署指南（本地/云）
 └── LICENSE            # MIT
 ```

@@ -23,7 +23,8 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
 
 - 本机访问：`http://127.0.0.1:8100`
 - 手机真机（同一 Wi-Fi）：启动时打印的 `http://<局域网IP>:8100`
-- 接入真实 LLM：先设 `ITERTRIP_LLM_API_KEY` 再运行脚本
+- 接入真实 LLM：三选一——① 设置面板填自己的 key（BYOK）；② `.env` 配 `ITERTRIP_FREE_API_KEY`（内置免费源，访客零配置用真实 AI）；③ env 设 `ITERTRIP_LLM_*`
+- 管理后台：`.env` 配 `ITERTRIP_ADMIN_TOKEN` 后访问 `/admin?admin_token=<值>`（在线换 key/模型/启停，热更新无需重启）
 
 原理：`backend/main.py` 检测到 `frontend/dist` 时自动挂载静态资源并 SPA 回退，单进程 = API + Web 应用。这也意味着任何能跑 Python 容器的平台（含 Hugging Face Spaces）都能用现有 `Dockerfile` 直接部署整站——不需要前后端分离部署。
 
@@ -40,6 +41,9 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
    | `ITERTRIP_LLM_BASE_URL` | 可选 | 默认 https://api.deepseek.com |
    | `ITERTRIP_LLM_MODEL` | 可选 | 默认 deepseek-chat |
    | `ITERTRIP_SEARCH_API_KEY` | 可选 | Tavily 兼容 key，启用 geocode 兜底 + 抓价 |
+   | `ITERTRIP_AMAP_KEY` | 可选 | 高德 Web 服务 key，坐标 POI 店名级兜底 |
+   | `ITERTRIP_FREE_API_KEY` | 可选 | 内置免费源（访客零配置用真实 AI；配 Base/Model 可换网关） |
+   | `ITERTRIP_ADMIN_TOKEN` | 可选 | 管理后台 token；配置后 `/admin` 可在线管理免费源 |
    | `ITERTRIP_CORS_ORIGINS` | 推荐 | 前端域名，如 `https://itertrip.vercel.app`（逗号分隔多个） |
 4. **Settings → Networking → Generate Domain**，得到形如 `https://xxx.up.railway.app` 的地址
 5. 验证：浏览器打开 `https://xxx.up.railway.app/api/health` 应返回 `{"status":"ok",...}`
@@ -80,6 +84,9 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 | `ITERTRIP_LLM_API_KEY` | 后端 | LLM 规划 + LLM geocode（缺省 mock/城市表降级） |
 | `ITERTRIP_LLM_BASE_URL` | 后端 | 默认 DeepSeek，可换 OpenAI/本地 |
 | `ITERTRIP_LLM_MODEL` | 后端 | 默认 deepseek-chat |
+| `ITERTRIP_FREE_API_KEY` / `_BASE_URL` / `_MODEL` | 后端 | 内置免费源兜底（优先级低于 BYOK/env，高于 mock） |
+| `ITERTRIP_ADMIN_TOKEN` | 后端 | 管理后台 token；未配置 = 后台接口整体关闭 |
+| `ITERTRIP_AMAP_KEY` | 后端 | 高德 POI 坐标兜底（店名级精度） |
 | `ITERTRIP_SEARCH_API_KEY` | 后端 | 搜索兜底（geocode + 抓价） |
 | `ITERTRIP_SEARCH_BASE_URL` | 后端 | 默认 https://api.tavily.com |
 | `ITERTRIP_ROLLINGO_BASE_URL` | 后端 | RollingGo 价格源（可选） |
@@ -88,5 +95,6 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 
 ## 五、密钥安全红线
 
-- 所有 key 只走平台 Variables/Secrets，**不进 git**（`.gitignore` 已拦 `.env`）
+- 所有 key 只走平台 Variables/Secrets，**不进 git**（`.gitignore` 已拦 `.env` 与 `admin_config.json`）
+- 上云必须配置：`ITERTRIP_CORS_ORIGINS` 白名单 + `ITERTRIP_ADMIN_TOKEN`（否则后台对公网关闭——这是预期行为）
 - 提交前自检：`git grep -i "api_key|bearer" -- . ':!*.md'`

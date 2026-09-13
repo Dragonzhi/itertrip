@@ -16,11 +16,12 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 ## Features
 
 - 🗺 **Visual map**: day-colored pins, directed routes with midpoint arrows, click-to-link highlighting
-- 💬 **Conversational planning**: say "Chengdu, 3 days" or paste guide text / a screenshot
+- 💬 **Conversational planning**: say "Chengdu, 3 days", paste guide text, or **drop screenshots** (VLM reads images straight into a route, up to 4)
+- ❓ **Clarifying questions**: when info is missing the AI asks first (date picker / budget choice / preference multi-select), then generates
 - ✋ **Dual-track editing**: conversational edits ("move the museum to day 1 afternoon") + hands-on editing (drag reorder / cross-day / edit form / map re-pick / undo-redo)
 - 🏨 **Hotel price card**: prices supplied manually by the user (neutral, no scraping), lowest auto-highlighted
-- 📦 **Self-contained export**: editable HTML that opens by double-click — sharing is the product experience
-- 🔑 **BYOK**: bring your own LLM key (OpenAI-compatible), stored locally, never leaves your machine
+- 📦 **Export & import**: editable HTML opens by double-click — sharing is the product experience; JSON / exported HTML can be re-imported for further editing
+- 🔑 **BYOK + free tier**: bring your own key via the settings panel (OpenAI-compatible, stored locally); the server may also expose a free provider / admin panel (/admin, token-protected) so visitors get real AI with zero setup
 
 ## Quick start
 
@@ -29,9 +30,9 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 powershell -ExecutionPolicy Bypass -File start.ps1
 ```
 
-Open http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → fill in your LLM API key in Settings (OpenAI-compatible, multimodal recommended) → start chatting.
+Open http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → fill in your LLM API key in Settings (OpenAI-compatible, **multimodal recommended for screenshots**) → start chatting.
 
-Works without a key: a built-in mock router lets you try the full flow.
+Works without a key: configure `ITERTRIP_FREE_API_KEY` in the server `.env` (free provider, real AI); with neither, a built-in mock router demonstrates the full flow. Operators can manage the free provider at `/admin?admin_token=<value>`.
 
 ## Stack
 
@@ -42,14 +43,15 @@ FastAPI (planning engine + static hosting) · React 18 + Vite + Tailwind · Leaf
 
 ```
 itertrip/
-├── backend/           # FastAPI: planning engine / geocode / export / SPA hosting
-│   ├── api/           # plan / geocode / search / export
-│   ├── engine/        # planner / coordinates / builder / schema
+├── backend/           # FastAPI: chat / planning / geocode / export / admin + SPA hosting
+│   ├── api/           # chat(SSE) / plan / geocode / search / export / llm / admin
+│   ├── engine/        # planner / coordinates / builder / schema / admin_config
 │   └── templates/     # self-contained HTML export template
 ├── frontend/          # React + Vite + Tailwind
-│   └── src/           # pages / components / hooks / mapCore
+│   └── src/           # pages(Admin) / components / hooks / lib / mapCore
 ├── start.ps1          # one-click single-process launcher (local mode)
 ├── DESIGN.md          # design doc (positioning / architecture / roadmap)
+├── AGENTS.md          # AI-agent architecture guide (agents / protocols / config)
 ├── DEPLOY.md          # deploy guide (local / cloud)
 └── LICENSE            # MIT
 ```

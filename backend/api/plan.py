@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 class PlanRequest(BaseModel):
-    """规划请求（字段见 WEB_APP_PLAN.md §5.1）。"""
+    """规划请求（字段契约见 AGENTS.md §6.4 与 engine/schema.py）。"""
 
     destination: str = Field(min_length=1)
     days: int = Field(default=3, ge=1, le=30)

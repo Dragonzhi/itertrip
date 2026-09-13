@@ -29,7 +29,7 @@
 | --- | --- | --- |
 | 产品身份 | **独立 Web 应用** | 不再是任何 Agent/Skill 的附庸 |
 | 部署形态 | **本地优先（C-1 单进程）** | start.ps1 一键起；断网可演示；将来可选上云 |
-| LLM 配置 | **BYOK + 设置面板** | 用户 key 存 localStorage；后端代理调用（规避 CORS 碎片化）；env 作兜底默认值 |
+| LLM 配置 | **BYOK + 管理后台 + 免费源兜底** | 用户 key 存 localStorage；后端代理调用（规避 CORS 碎片化）；优先级 BYOK 头 > env > admin_config.json（可热更新）> .env 免费源 > mock |
 | 输入方式 | **降级矩阵**（见 §3） | 贴文字/截图是主路径；链接解析是 v1 后扩展（见 §9） |
 | 模型策略 | **单多模态模型全包** | 一个 VLM 干「攻略理解 + 提取 + 对话改路线」全部工作，不做规划/视觉双模型 |
 | 抓取边界 | 用户自己的会话/key/账号 | 工具只是壳；不内置任何平台凭据 |
@@ -64,7 +64,7 @@ AI 修改前在对话里说明「我改了什么」，地图高亮变化处。
 | 优先级 | 输入方式 | 实现 | 可靠性 |
 | --- | --- | --- | --- |
 | 主路径 ① | 粘贴攻略文本 | 纯文本 → LLM 提取 | 永不坏 |
-| 主路径 ② | 上传截图 | VLM 直接看图出 route JSON（一次调用，不做图→文中转） | 稳定（依赖 vision 模型） |
+| 主路径 ② | 上传/粘贴截图 | VLM 直接看图出 route JSON（一次调用，不做图→文中转）**（M15 已接入：≤4 张、前端压缩、原图不进后续上下文）** | 稳定（依赖 vision 模型；探测不支持时前端置灰） |
 | 兜底 ③ | 纯对话 | 意图收集 → 生成 | 永不坏 |
 | 扩展 ④ | 贴平台链接（**v1 后做，见 §9**） | 三层降级：a) 匿名 fetch 分享短链；b) 失败→提示改用 ①②；c) 可选 resolver 插件（Playwright + 用户扫码，本地缓存会话，参考 MediaCrawler 思路但**仅作可选扩展、不进核心依赖**——其学习用途 license 不允许打包分发） | 随平台风控波动 |
 
@@ -74,12 +74,20 @@ AI 修改前在对话里说明「我改了什么」，地图高亮变化处。
 
 ## 4. 模型与 BYOK 设计
 
-### 4.1 设置面板（前端，localStorage 持久化）
+### 4.1 模型配置（BYOK 设置面板 + 服务端管理后台）
+
+**BYOK 设置面板**（前端，localStorage 持久化）：
 
 - 字段：Base URL / API Key / 模型名（下拉 + 自由输入）+「测试连接」按钮
-- 测试连接 = 1 token 补全探测；顺带探测**是否接受图片输入**，不接受则置灰截图入口
+- 测试连接 = 1 token 补全探测；顺带探测**是否接受图片输入**，不接受则置灰截图入口（M15 已接线：运行中被拒也会自动回写置灰）
 - 推荐 VLM 优先（DeepSeek 无视觉，默认供应商将变更；候选：Qwen-VL 系 / GLM-V 系 / GPT-4o / Gemini-Flash 系）
-- 优先级：UI 配置 > env 兜底（ITERTRIP_LLM_*）> mock 降级（现有链路保留）
+
+**管理后台**（M-Admin-1，`/admin`，`ITERTRIP_ADMIN_TOKEN` 保护，未配置即整体关闭）：
+
+- 服务器端免费 AI 服务的 Key/模型/启停在线管理与实时探测；配置存 `admin_config.json`（gitignore，热更新）
+- Key 脱敏展示（sk-***1234）；PUT 时留空 = 保留原值；token 常量时间比较
+
+**解析优先级（全链路统一）**：BYOK 请求头 > env（ITERTRIP_LLM_*）> 管理后台配置 > .env 免费源（ITERTRIP_FREE_*）> mock 降级。
 
 ### 4.2 调用链路
 
@@ -131,7 +139,10 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
   - 落地要点：routeDiff.ts 同名配对 diff（added/removed/moved）；MapView data-pin-key 通道 + flash 动画 + panTo；useTripHistory 改同步快照（修复异步回调丢历史帧）
   - 难点提示：AI 改完的**变化可视化**比改路线本身更费工——新地点闪烁 / 移走的地点淡出 / 「我改了什么」的叙述。
   - 先行实验：在 UI 投入前，先用 prompt 实验确认模型能稳定输出「修改描述 + 完整 route JSON」的结构化格式。
-- [ ] M15：截图解析（VLM 直出 route JSON）
+- [x] M15：截图解析（VLM 直出 route JSON：/api/chat images[] ≤4 张、前端 canvas 压缩长边 2400px、原图不进持久化历史与后续轮次；[vision-unsupported] 自动置灰入口；实测免费源可看图出正确路线）
+- [x] M17：Agent 式澄清问答（need_more_info + 结构化 questions[]，type 含 text/select/multi/date，前端澄清卡 + 日历/自定义选项）
+- [x] 管理后台（M-Admin-1）：/admin 免费服务配置热更新 + 探测 + token 鉴权 + key 脱敏
+- [x] 体验与导入导出补全：流式等待计时 + 分时段提示 + 思考链强制展开；HTML 导出根因修复（中文文件名 RFC 5987 双写）+ 导出副本坐标清洗（无「非洲点」）；首页导入（JSON / 导出 HTML 往返）
 - [ ] M16：可选上云（HF Spaces / 国内 VPS，用现有 Dockerfile）
 
 ## 8. 边界（明确不做）
