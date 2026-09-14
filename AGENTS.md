@@ -460,7 +460,7 @@ RouteJSON
 | `/api/geocode` | POST | 单点名称 → 坐标 + `confidence` + `source`（M19：记忆真值 → 高德 POI → 模型 → 兜底） | C/F |
 | `/api/search` | POST | 酒店价格参考 | G |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
-| `/api/export` | POST | route → 自包含 HTML 下载（导出副本自动清洗：无坐标/(0,0) 地点与无效酒店剔除，名单写入 summary；保证导出成功且无「非洲点」） | —（确定性构建） |
+| `/api/export` | POST | route → 自包含 HTML 下载（导出副本自动清洗：无坐标/(0,0) 地点与无效酒店剔除，名单写入 summary；保证导出成功且无「非洲点」；**文件名 = 行程规划名** `trip.title`，前端 `lib/exportName.ts` 清洗非法字符并回退目的地，JSON 导出同名） | —（确定性构建） |
 | `/api/admin/provider` | GET/PUT/DELETE | 后台供应商配置（key 脱敏返回） | — |
 | `/api/admin/provider/test` | POST | 后台配置实时探测 | D |
 | `/api/memory/feedback` | POST | 编辑器改点上报坐标真值（place_entity 入库；记忆关闭/无档案 → no-op） | F |
@@ -632,7 +632,8 @@ RouteJSON
 | 管理后台 | 未配置 `ITERTRIP_ADMIN_TOKEN` 即整体关闭；单 provider 无多 key 轮换 |
 | 单进程形态 | 规划/对话长请求阻塞 uvicorn worker 数有限；无队列/限流，多人并发共享同一免费源时可能 429 |
 
-**非功能性约束**：key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；导出文件名按 RFC 5987 双写
+**非功能性约束**：移动端适配（M23）：<768px 顶栏单行 + 两个侧栏改底部抽屉（互斥、可拖手柄下滑关闭）、日期卡移入抽屉表头、触屏用 ↑/↓ 跨天排序（桌面 HTML5 拖拽保留）、输入框 16px 防 iOS 缩放、`100dvh` + safe-area、Leaflet 下边距补偿；验收脚本 `frontend/scripts/mobile-shot.mjs`（零依赖 CDP，截图 + 溢出/可达性探针 + 拖拽/排序/价格功能断言，支持 `SHOT_URL` 量任意页面）。**包管理器只选一个**：npm 与 pnpm 混装会让 node_modules 出现两份 react（Invalid hook call）——切换后先删 `node_modules` 再装；
+key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；导出文件名按 RFC 5987 双写
 （HTTP 头仅 latin-1，中文目的地走 `filename*=UTF-8''` 百分号编码，ASCII 兜底）；admin token 常量时间比较。
 
 ---
@@ -675,6 +676,8 @@ RouteJSON
       `amap/high` 标签不再单独构成跳过理由（M20 事故里被写坏的坐标恰好也带这个标签，因此永远躲过复核）。
       实测：整条路线都在别的省（中位数也错）时 **7/7 自主改回**；用户真实行程走默认路径
       `31 次请求 / 写入 21 处 / 距目的地 >300km 从 7 → 0`；合法远点（张家界）不被同名异地 POI 搬走
+- [x] **移动端适配（M23）**：全仓此前**零响应式断点**，手机上两个侧栏互相完全覆盖、AI 抽屉手柄硬编码在 `left-[380px]`（375px 屏上落在视口外 → 关掉后再也打不开）、地图设置面板 `right=416+230` 跑出屏外。改为：md(768px) 纯 CSS 分叉 + 底部抽屉（互斥/可拖拽下滑关闭/初始收起）、手机顶栏单行 + 🤖/🗺 入口、日期卡与元信息进抽屉表头、触屏 ↑/↓ 跨天排序（复用同一条撤销栈）、iOS 输入 16px 防缩放、`100dvh`+safe-area、Leaflet 底边距补偿（`fitBounds`/`panTo` 不把点藏到抽屉后）。动效只引入 `motion`（两处：抽屉拖拽、时间线 layout）与 Magic UI 的 `blur-fade`/`number-ticker`（+clsx/tailwind-merge 的 `cn`），gzip 126.6 → 184.2KB。导出 HTML 模板同步最小适配手机（顶栏收紧、面板改底部抽屉）。
+- [x] **导出文件名 = 行程规划名**：原来写死 `my_trip.json` / `itertrip_<目的地>_edited`，现统一取 `trip.title`（`frontend/src/lib/exportName.ts` 清洗 + 回退），与页面标题一致。
 - [x] **事实检查：出发日期与闭馆日（M22）**：把「周一闭馆」这类规则与那天 weekday 做确定性比对 —— 事故是真实交付物把「周一闭馆」的谢子龙影像艺术馆排在 D5 = 2026-10-05 = 周一，而全仓没有 weekday 逻辑、`trip.dates` 又是自由文本连年份都没有。新增 `backend/engine/facts.py`（简繁闭馆规则解析 + 日期就近推断 + 逐天比对）、`trip.start_date`/`date_source`/`place.warnings` 三个可选字段、`POST /api/route/datecheck`、规划页日期卡与三处告警渲染（时间线/地图/导出 HTML）；**零 LLM、零网络请求**。实测：真实交付物恰好 1 处冲突，改成 2025-10-01 归零；`check_facts` 10/10、真机探针 19/19、导出探针 9/9
 
 **近期规划**
