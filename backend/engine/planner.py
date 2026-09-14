@@ -31,6 +31,7 @@ from .coordinates import (
     geocode_amap_scored,
 )
 from ._llmutil import endpoint
+from . import facts
 from .geo import haversine_km, in_china, wgs84_to_gcj02
 from .schema import RouteJSON
 
@@ -605,4 +606,9 @@ async def plan(req: dict, overrides: dict | None = None, traveler: str = "") -> 
             print(f"[planner] 坐标补全 {filled} 个地点")
     except Exception as e:
         print(f"[planner] 坐标补全失败（忽略）: {e}")
+    # M22：出发日期推断 + 闭馆日冲突检查（确定性算术，零网络调用；失败不阻断出路线）
+    try:
+        facts.annotate_route(route, hint=str(req.get("date") or ""))
+    except Exception as e:
+        print(f"[planner] 闭馆日检查失败（忽略）: {e}")
     return route, source

@@ -36,6 +36,10 @@ function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
     if (p.ticket) html += `<div class="pp-row">🎫 ${p.ticket}</div>`;
     if (p.transport) html += `<div class="pp-row">🚗 ${p.transport}</div>`;
     if (p.note) html += `<div class="pp-row">${p.note}</div>`;
+    // M22 事实告警（如「闭馆日：周一闭馆，当天为周一」）—— 与坐标徽标区分，用告警色
+    for (const w of p.warnings || []) {
+      html += `<div class="pp-row" style="color:#B85C5C;font-weight:600">⚠️ ${w}</div>`;
+    }
   }
   return html + `</div>`;
 }

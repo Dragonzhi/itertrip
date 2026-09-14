@@ -15,7 +15,7 @@ export interface ClarifyQuestion {
 
 /* ---------- M19 决策轨迹：把 AI 的关键决策摊开给用户看（替代「盲盒」体验） ---------- */
 
-export type TraceKind = "provider" | "memory" | "llm" | "retry" | "geocode" | "edit" | "summary";
+export type TraceKind = "provider" | "memory" | "llm" | "retry" | "geocode" | "facts" | "edit" | "summary";
 
 export type TraceStatus = "run" | "done" | "warn" | "fail" | "skip";
 
@@ -40,6 +40,8 @@ export interface TraceStats {
   memory_hits?: number;
   model?: string;
   provider?: string;
+  /** M22 本轮闭馆日冲突条数（0 或省略表示无冲突） */
+  fact_warnings?: number;
 }
 
 export interface ChatMessage {

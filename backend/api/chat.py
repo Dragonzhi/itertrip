@@ -414,7 +414,7 @@ class _Trace:
 
 def _trace_step(step_id: str, kind: str, status: str, title: str, detail: str = "",
                 ms: int | None = None, **meta) -> dict:
-    """构造一步决策记录。kind=provider|memory|llm|retry|geocode|edit|summary；
+    """构造一步决策记录。kind=provider|memory|llm|retry|geocode|facts|edit|summary；
     status=run|done|warn|fail|skip（前端据此上色）。"""
     step: dict = {"id": step_id, "kind": kind, "status": status, "title": title, "detail": detail}
     if ms is not None:
@@ -480,9 +480,32 @@ def _geo_summary_text(records: list[dict]) -> str:
     return line
 
 
+def _facts_step(result: dict) -> dict:
+    """M22 闭馆日检查步：把「哪天撞上闭馆日」摊进决策轨迹。
+
+    无出发日期时 status=skip 并写明「未检查」—— 与 M19「静默兜底必须变成可见决策」同一条原则：
+    检查不了就说检查不了，不能假装通过。
+    """
+    from ..engine.facts import summary_text as _facts_summary
+
+    conflicts = result.get("conflicts") or []
+    if not result.get("checked"):
+        status = "skip"
+    elif conflicts:
+        status = "warn"
+    else:
+        status = "done"
+    return _trace_step(
+        "facts", "facts", status, "🗓 闭馆日检查", _facts_summary(result),
+        conflicts=len(conflicts), start_date=result.get("start_date") or "",
+        date_source=result.get("date_source") or "", skipped=result.get("skipped") or 0,
+    )
+
+
 def _summary_step(
     tr: "_Trace", started: float, *, places: int = 0, filled: int = 0, replaced: int = 0,
     memory_hits: int = 0, attempts: int = 1, model: str = "", source: str = "", note: str = "",
+    fact_warnings: int = 0,
 ) -> dict:
     """终帧前的「本轮完成」汇总步；其 meta 同时作为 reply.stats 下发。"""
     ms = int((time.perf_counter() - started) * 1000)
@@ -493,6 +516,8 @@ def _summary_step(
         detail += f" · 坐标写入 {filled} 处"
     if replaced:
         detail += f" · 修正 {replaced} 处"
+    if fact_warnings:
+        detail += f" · 闭馆日冲突 {fact_warnings} 处"
     if tr.dropped:
         detail += f" · 另有 {tr.dropped} 步省略"
     if note:
@@ -500,7 +525,7 @@ def _summary_step(
     return _trace_step(
         "summary", "summary", "done", "本轮完成", detail, ms=ms,
         elapsed_ms=ms, attempts=attempts, places=places, geocoded=filled, replaced=replaced,
-        memory_hits=memory_hits, model=model, provider=source,
+        memory_hits=memory_hits, model=model, provider=source, fact_warnings=fact_warnings,
     )
 
 
@@ -852,6 +877,16 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 ))
                 if filled:
                     yield _sse("stage", {"stage": "geocode", "label": f"已补全 {filled} 个坐标"})
+            # M22：出发日期推断 + 闭馆日冲突检查（确定性算术，零网络调用；失败不阻断出路线）
+            facts_res: dict = {}
+            try:
+                from ..engine import facts as _facts
+
+                facts_res = _facts.annotate_route(route, hint=req.prompt)
+                yield emit(_facts_step(facts_res))
+            except Exception as e:
+                print(f"[chat] 闭馆日检查失败（忽略）: {e}")
+                yield emit(_trace_step("facts-error", "facts", "warn", "闭馆日检查失败（已忽略）", str(e)[:140]))
             yield _sse("stage", {"stage": "done", "label": "完成"})
             replaced = sum(1 for r in geo_records if r.get("action") == "replace")
             for ev in _reply_events(
@@ -859,6 +894,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 _summary_step(
                     tr, t_start, places=n_places, filled=filled, replaced=replaced,
                     memory_hits=mem_hits, attempts=attempts, model=model_name, source=cfg_source,
+                    fact_warnings=len(facts_res.get("conflicts") or []),
                 ),
                 {
                     "reply": reply_text or f"已生成「{route.trip.title}」：{len(route.days)} 天。",
@@ -971,6 +1007,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         # changed=true：补全仍缺坐标的地点 + 对已有坐标做高德核验
         edit_records: list[dict] = []
         edit_filled = 0
+        edit_facts: dict = {}
         try:
             from ..engine.planner import _enrich_coordinates
             from ..engine.schema import RouteJSON as _RJ2
@@ -980,6 +1017,14 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 _route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None,
                 traveler=traveler, records=edit_records,
             )
+            # M22：日期/事实检查独立兜底，避免自己的异常被上面那层误标成「坐标补全失败」
+            try:
+                from ..engine import facts as _facts
+
+                edit_facts = _facts.annotate_route(_route_obj, hint=req.prompt)
+            except Exception as _ef:
+                print(f"[chat] 改路线闭馆日检查失败（忽略）: {_ef}")
+                yield emit(_trace_step("facts-error", "facts", "warn", "闭馆日检查失败（已忽略）", str(_ef)[:140]))
             data["__route"] = _route_obj.model_dump()
             for r in edit_records:
                 yield emit(_geo_step(r))
@@ -988,6 +1033,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     "geo-summary", "geocode", "done", f"改后坐标处理完成（写入 {edit_filled} 处）",
                     _geo_summary_text(edit_records), ms=int((time.perf_counter() - t_geo2) * 1000),
                 ))
+            if edit_facts:
+                yield emit(_facts_step(edit_facts))
         except Exception as _e2:
             print(f"[chat] 改路线坐标补全失败(忽略): {_e2}")
             yield emit(_trace_step("geo-error", "geocode", "warn", "改后坐标处理失败（已忽略）", str(_e2)[:140]))
@@ -1030,6 +1077,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 tr, t_start, places=edited_places, filled=edit_filled,
                 replaced=sum(1 for r in edit_records if r.get("action") == "replace"),
                 attempts=attempts, model=model_name, source=cfg_source,
+                fact_warnings=len(edit_facts.get("conflicts") or []),
             ),
             {
                 "reply": str(data.get("reply") or reply_text or "已更新路线。"),

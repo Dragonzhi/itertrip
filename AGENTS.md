@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.5 · 2026-09-14 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.6 · 2026-09-14 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -69,6 +69,7 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
 
 > 说明：E/F/G 严格说不算"智能体"——Mock 是确定性代码，Search 是数据抓取服务，Memory 是存储 + 检索组件；
 > 但它们在调用链路中与代理同构（同样的输入输出契约与降级位置），故一并列出。
+> **M22 的事实检查**（`engine/facts.py`）同理属于确定性模块而非智能体，故也未列入上表。
 > F 让 A 拥有了**跨会话长期记忆**（RAG），并给 C 加了一层「用户手改为真值」的检索增强。
 
 **非代理但密切协作的前端组件**：
@@ -111,7 +112,7 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
    编辑模式不注入（上下文已含完整 route，收益低、膨胀风险高）。
 7. **决策轨迹（M19）**：整轮对话逐步下发 `event: trace`——用了哪个模型/从哪来、记忆命中几条（或为什么没注入）、
    每个地点的坐标出自哪里（记忆真值/高德 POI/模型推测/兜底）、有没有被替换或对齐、解析是否重试、
-   坐标兜底是否触发、本轮耗时。终帧 `reply` 带完整 `trace` + `stats`；前端渲染成可折叠「🧭 决策过程」
+   坐标兜底是否触发、**闭馆日有没有撞上（M22）**、本轮耗时。终帧 `reply` 带完整 `trace` + `stats`；前端渲染成可折叠「🧭 决策过程」
    并随消息持久化。原则：**静默兜底必须变成可见决策**（历史上一次漏 import 导致的坐标基准静默失败就藏了很久）。
 
 **调用参数**：`temperature=0.4`，`stream=true`，超时 180s，对话历史仅保留**最近 8 轮**（上下文护栏）。
@@ -262,6 +263,38 @@ Tavily 兼容搜索（正则抽取 ¥100-99999 区间价格）→ 返回空报�
 
 ---
 
+### 4.H 事实检查（Fact Check，M22 · 确定性，不是智能体）
+
+**入口**：随 A/B 的产出自动执行（`planner.plan()` 出口、`chat.py` 提取模式与改路线出口）；
+也可单独调用 `POST /api/route/datecheck`。实现全在 `backend/engine/facts.py`。
+
+坐标有 M19–M21 的多级核验与溯源，而 `ticket`/`time`/`note` 一直是「模型/攻略写什么就是什么」——
+零核验、零来源标注。M22 落地其中**可判定**的第一个切片：**闭馆日冲突**。
+
+> **为什么不是模型**：三个模型读到的都是同一句「周一闭馆」，谁都不会去算 2026-10-05 是星期几。
+> 治幻觉的第一原则是别再加一次幻觉 —— 本模块是纯确定性算术，**零 LLM、零网络请求**
+> （响应带 `amap_calls: 0` 供测试断言）。
+
+- **日期从哪来**：`trip.dates` 是自由文本（「10月1日下午 – 10月6日晚上（国庆假期）」）**不含年份**，
+  算不出星期 —— 故新增结构化 `trip.start_date` + `trip.date_source`；完整日期视为用户给定（`user`），
+  只有月日或阳历节日名则**就近未来**推断（`inferred`，即「默认就是今年」），界面**显式标注「推断」**
+  且点日历即可改（改完走同一条撤销栈）；
+- **为什么推断而不是追问**：追问会给每次贴攻略都加一步，而绝大多数行程并不关心闭馆日；
+  「默认今年 + 标明推断 + 一键可改」在零打扰与不撒谎之间同时成立；
+- **判据**：`(周|週|星期|礼拜|禮拜) + 星期几 + (闭馆|闭园|不开放|休馆|休息|闭关)` 的文本解析（简繁两套）
+  ↔ 该天 weekday（D1 = 出发日）；命中写 `place.warnings`（**独立字段，不污染 `note`** ——
+  审计发现 `note` 已被【坐标待确认】污染，继续往里塞系统告警是坏味道）；
+- **诚实边界**：解析不出日期 → `checked=False`，界面显示「未检查闭馆日」，**不假装通过**；
+  「周一闭馆（法定节假日除外）」抑制硬告警并计入 `skipped`（我们不知道法定假日表，宁可不报也不误报——
+  国庆期间很多博物馆恰恰周一开馆）；农历节日（春节/端午/中秋）不推断；
+  一次性闭馆公告（「10月1日闭园」）不识别；顿号枚举（「周一、周二闭馆」）只认到一条；
+- **幂等**：每次只重写自己写的 `闭馆日：` 前缀条目 —— 重复调用不重复写，改日期后旧结论自动消失；
+- **可见性**：轨迹 `kind="facts"`（🗓）+ `stats.fact_warnings`；规划页日期卡呈
+  「推断 / 已确认 / ⚠️ N 处闭馆日冲突 / 未检查闭馆日」四态；时间线与地图气泡、导出 HTML 同步渲染。
+
+> 不覆盖：营业时间 vs 参观时段冲突、单日时段重叠/动线检查、事实字段的记忆库护栏
+> （`note`/`ticket` 仍会被 M18 切成 `place_card` 并带 `[n]` 引用注入）—— 见 `docs/M22_FACT_CLOSURE_PLAN.md` §6/§7。
+
 ## 5. 代理之间的交互模式
 
 ### 5.1 供应商解析链（所有代理共用的"燃料开关"）
@@ -335,6 +368,9 @@ v1.1 起检测前移到生成阶段：每次规划/提取/改路线完成时，`
 **M21 起**判据再收紧到「与用户要求的目的地一致」：整条路线都被写到别的省（中位数也是错的）时，
 代理仍会按「明显离位 + 改回后更靠近目的地」自主改回，并在决策轨迹里写明 —— 这是默认路径，
 不需要用户点「🔍 校准坐标」。
+**M22 起**同一位置还会跑一遍事实层检查（`facts.annotate_route`）：先定出发日期（推断时界面标「推断」、
+可一键改），再把「周一闭馆」这类写在 `ticket`/`note`/`time` 里的规则与那天 weekday 比一遍，
+命中即写 `place.warnings` 并在轨迹里报 `facts` 步；没有日期就如实说「未检查」，不假装通过。
 
 ### 5.5 前端协作模式（AI 修改的可视化闭环）
 
@@ -351,10 +387,11 @@ v1.1 起检测前移到生成阶段：每次规划/提取/改路线完成时，`
 
 ```
 RouteJSON
-├── trip:   { title, destination, days:int, dates, budget, style, travelers }
+├── trip:   { title, destination, days:int, dates, budget, style, travelers,
+│             start_date?（M22，YYYY-MM-DD）, date_source?（M22，user|inferred） }
 ├── days:   [ { day:int, theme, places:[Place], hotel: Hotel|null } ]      (≥1 天)
 │             Place: { name, lat, lng, type: attraction|food|transport|other,
-│                      time, transport, ticket, note }
+│                      time, transport, ticket, note, warnings?: [str]（M22 事实告警） }
 │             Hotel:  { name, lat, lng, note, prices: [ {platform, price, breakfast, note} ] }
 └── summary: [ str ]   （2-4 条综合建议）
 ```
@@ -374,7 +411,7 @@ RouteJSON
 | event | data 内容 | 语义 |
 |-------|----------|------|
 | `stage` | `{stage: understand\|memory\|retry\|geocode\|done\|thinking-steps, label}` | 阶段播报（驱动前端状态文案）；`memory` = 已检索到历史攻略并注入（M18） |
-| `trace` | `{step: {id, kind, status, title, detail, ms, meta}}` | **M19 决策轨迹**：逐步下发，同 `id` 为 upsert；`kind=provider\|memory\|llm\|retry\|geocode\|edit\|summary`，`status=run\|done\|warn\|fail\|skip`（见 §4.A 能力 7） |
+| `trace` | `{step: {id, kind, status, title, detail, ms, meta}}` | **M19 决策轨迹**：逐步下发，同 `id` 为 upsert；`kind=provider\|memory\|llm\|retry\|geocode\|facts\|edit\|summary`，`status=run\|done\|warn\|fail\|skip`（见 §4.A 能力 7） |
 | `thinking` | `{thinking}` | 推理模型思考链增量（前端淡色小字滚动，不混入正文） |
 | `delta` | `{text}` | 回复正文增量（已剥离协议标记，可直接追加渲染） |
 | `reply` | `{reply, intent: route_edit\|chitchat, route, questions?, trace: [...], stats: {...}}` | **终帧**：完整回复 + 新路线/澄清问题 + **本轮完整轨迹与统计**（供前端持久化重放） |
@@ -400,6 +437,7 @@ RouteJSON
 |------|------|------|------|
 | `/api/plan` | POST | 表单 → 路线（`X-IterTrip-Source` 头标明 llm/mock） | B/E |
 | `/api/route/recheck` | POST | **整条路线坐标重校准（M20）**：`force_verify` 连本次刚写入的点也复核，用户真值跳过；返回 `{route, filled, records, amap_calls, amap_reason}`。（M21 起生成/改路线的**默认路径**已能自主改回明显离位的点，此端点用于「一键全量复核」） | C |
+| `/api/route/datecheck` | POST | **出发日期推断 + 闭馆日冲突检查（M22）**：传 `start_date` 视为用户给定（并同步 `trip.dates` 文本），不传则从 `dates`/标题就近推断；返回 `{route, checked, conflicts, skipped, start_date, date_source, summary}`。**纯确定性：不调 LLM、不调高德** | —（确定性检查） |
 | `/api/chat` | POST | 统一对话（SSE） | A |
 | `/api/geocode` | POST | 单点名称 → 坐标 + `confidence` + `source`（M19：记忆真值 → 高德 POI → 模型 → 兜底） | C/F |
 | `/api/search` | POST | 酒店价格参考 | G |
@@ -476,6 +514,7 @@ RouteJSON
 | 核验对齐 / 行程包络外扩 | 1.5km / 150km | `planner._VERIFY_KM` / `_VERIFY_DRIFT_KM` |
 | 明显离位（自主改回） | 200km 且改回后更靠近目的地参照点 | `planner._VERIFY_WRONG_KM` / `coordinates.destination_anchor` |
 | 离谱检测触发 / 离谱替换门槛 | 偏离中位数 100km / 差 10km 才替换 | `planner._OUTLIER_KM` / `_OUTLIER_REPLACE_KM` |
+| 事实告警前缀 / 日期推断口径 | `闭馆日：` / 完整日期=user，月日或阳历节日=就近未来（inferred） | `facts.WARN_PREFIX` / `facts.resolve_start_date` |
 | 决策轨迹步数上限 | 60 步 | `chat._TRACE_MAX` |
 | 规划页对话留存 | 30 条（按行程指纹隔离） | `settings.savePlanChatHistory` |
 
@@ -562,6 +601,7 @@ RouteJSON
 | 截图输入（M15 已接入） | `/api/chat images[]`：≤4 张、单张 ≤4MB data URL，仅提取模式；前端 canvas 压缩（长边 2400px / JPEG 0.82）；原图不进持久化历史与后续轮次上下文；HEIC 等浏览器不可解码格式明确报错 |
 | 链接解析不支持 | 平台链接解析是 v1 后 best-effort 扩展，当前需用户粘贴文字/截图 |
 | 坐标可靠性 | M19 起：高德 POI 为**一级源**（需 key）+ 对已有坐标**主动核验** + 离谱检测（偏离中位数 >100km / 境内行程落境外）+ 来源徽标 + 置信度标注 + 用户可重新定位或手点覆盖；**M20 追加**：候选地理闸门（省份 / 城市 / 距目的地城市中心 ≤200km，跨省同名 POI 一律拒）+ 核验「精修不搬家」（>1.5km 需精确同名或候选池一致）+ 行程地理包络 + 「🔍 校准坐标」整条重校准；**M21 追加**：判据锚定「用户要求的目的地」（城市表 → 省会），明显离位（>200km）且改回后更靠近目的地即**自主改回**（默认路径，无需点按钮），`amap` 标签不再单独构成跳过理由；无 key 时回落模型知识（同 v1.1） |
+| 事实校验范围（M22） | 只覆盖**闭馆日冲突**：出发日期从文本就近推断（`trip.start_date`/`date_source`，界面标注「推断」可一键改）；「周一闭馆（法定节假日除外）」抑制不报、农历节日不推断、一次性闭园公告不识别、顿号枚举只认一条；无日期时如实显示「未检查」；**`ticket`/`time` 的内容本身仍未被核验**（票价真伪、营业时间是否准确不在本轮范围）；导出 HTML 的编辑弹窗不重算告警 |
 | 同名连锁/分店歧义 | 数据源固有歧义：高德同品牌多分店时按「名称分 + 括号分支名 + 离目的地/现有坐标更近」裁决，不保证选中用户心里那一家；界面给来源徽标与「按名称重新定位」兜底 |
 | 坐标来源可信度分级 | `memory`/`user`（用户手点，最高）> `amap`（POI 核验）> `llm`（模型推测、未核验）> `search`/`city`（低置信兜底）；徽标如实展示，**不做「已核验」的过度声明**（弱匹配但接近时不升级来源标注） |
 | 决策可见性 | 每条 AI 回复都可展开「🧭 决策过程」（≤60 步）；静默兜底（坐标转换失败、补全失败、解析重试）一律以 warn/fail 步暴露；轨迹不含 prompt/响应原文与任何 key |
@@ -582,7 +622,7 @@ RouteJSON
 
 以下按 DESIGN.md §7/§9 整理，均属"已完成/规划中/待反馈"三档：
 
-**已完成（M12–M21）**
+**已完成（M12–M22）**
 
 - [x] BYOK 设置面板 + 连通/视觉探测（M12，探测代理上线）
 - [x] 对话提取模式（M13）、对话改路线 + diff 可视化 + 同栈撤销（M14）
@@ -616,6 +656,7 @@ RouteJSON
       `amap/high` 标签不再单独构成跳过理由（M20 事故里被写坏的坐标恰好也带这个标签，因此永远躲过复核）。
       实测：整条路线都在别的省（中位数也错）时 **7/7 自主改回**；用户真实行程走默认路径
       `31 次请求 / 写入 21 处 / 距目的地 >300km 从 7 → 0`；合法远点（张家界）不被同名异地 POI 搬走
+- [x] **事实检查：出发日期与闭馆日（M22）**：把「周一闭馆」这类规则与那天 weekday 做确定性比对 —— 事故是真实交付物把「周一闭馆」的谢子龙影像艺术馆排在 D5 = 2026-10-05 = 周一，而全仓没有 weekday 逻辑、`trip.dates` 又是自由文本连年份都没有。新增 `backend/engine/facts.py`（简繁闭馆规则解析 + 日期就近推断 + 逐天比对）、`trip.start_date`/`date_source`/`place.warnings` 三个可选字段、`POST /api/route/datecheck`、规划页日期卡与三处告警渲染（时间线/地图/导出 HTML）；**零 LLM、零网络请求**。实测：真实交付物恰好 1 处冲突，改成 2025-10-01 归零；`check_facts` 10/10、真机探针 19/19、导出探针 9/9
 
 **近期规划**
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
@@ -691,4 +732,4 @@ deploy: IterTrip 子路径 /itertrip/ 部署（Vite base+8100+Nginx，反代 810
 
 ---
 
-*本文档基于代码实测编写（2026-09-14，对应 main 分支；M18 记忆库、M19 坐标核验与决策轨迹、M20 坐标区域校验与「校准坐标」、M21 地点自主改回均已实测端到端跑通）。若提示词、参数或协议调整，请同步更新本文件。*
+*本文档基于代码实测编写（2026-09-14，对应 main 分支；M18 记忆库、M19 坐标核验与决策轨迹、M20 坐标区域校验与「校准坐标」、M21 地点自主改回、M22 出发日期推断与闭馆日检查均已实测端到端跑通）。若提示词、参数或协议调整，请同步更新本文件。*

@@ -77,6 +77,9 @@ class Place(BaseModel):
     # M19 坐标溯源（可选、向后兼容）：source=memory|user|amap|llm|search|city，confidence=high|low|none
     source: str = ""
     confidence: str = ""
+    # M22 事实告警（可选、向后兼容）：确定性检查写出的可见警告，如「闭馆日：周一闭馆，当天为周一」
+    # 刻意**不复用 note** —— note 是给用户看的贴士，塞系统告警正是审计发现的坏味道
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DayPlan(BaseModel):
@@ -98,6 +101,10 @@ class TripInfo(BaseModel):
     budget: str = ""
     style: str = ""
     travelers: str = ""
+    # M22 结构化出发日期（可选、向后兼容）：dates 是给人看的自由文本，算不出星期；
+    # start_date 是给机器算的 YYYY-MM-DD，date_source ∈ user|inferred|""（界面据此标注「推断」）
+    start_date: str = ""
+    date_source: str = ""
 
 
 class RouteJSON(BaseModel):

@@ -26,6 +26,7 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 - 📍 **Trustworthy, traceable coordinates** (M19): AMap POI is the primary geocoder and existing coordinates are actively verified (measured model drift 100m~1.2km gets snapped); timeline and map popups show a provenance badge (you confirmed / AMap verified / AI guess / city fallback), and the editor offers "re-locate by name"
 - 🗺 **Places never land in another province** (M20): a candidate coordinate is used only if it falls inside the destination's province/city (or within 200 km of the city centre); verification is now "refine, never relocate", so same-name POIs elsewhere can no longer drag a correct coordinate away. Older itineraries can be fixed in one click with "🔍 Re-calibrate coordinates" (undoable)
 - 🤖 **It fixes misplaced places by itself** (M21): every generation and edit compares each place against **the destination you asked for** — if it is 200 km+ away from where AMap says that place is, and moving it lands closer to your destination, it is corrected automatically and the decision trace says "clearly off the requested destination, moved back". Legitimate far-away stops (Zhangjiajie in a Changsha trip) are protected, and your hand-placed coordinates are never overwritten
+- 🗓 **No more walking into a closed museum** (M22): when the itinerary itself says "closed on Mondays", the app now actually works out what weekday each day is — the start date is inferred from text like "National Day" (labelled **inferred** in the UI, one click on the calendar to correct), and a hit is flagged in red on the timeline and in the decision trace. With no date at all it says "not checked" rather than pretending it passed. Pure deterministic arithmetic: no model call, no network request
 - 💾 **Chats survive reloads**: home and planner conversations (including decision traces) persist across refresh; the planner drawer can be cleared on its own
 - 🔑 **BYOK + free tier**: bring your own key via the settings panel (OpenAI-compatible, stored locally); the server may also expose a free provider / admin panel (/admin, token-protected) so visitors get real AI with zero setup
 
@@ -65,7 +66,7 @@ itertrip/
 ├── DESIGN.md          # design doc (positioning / architecture / roadmap)
 ├── AGENTS.md          # AI-agent architecture guide (agents / protocols / config)
 ├── DEPLOY.md          # deploy guide (local / cloud)
-├── docs/              # milestone records (M19 trust / M20 region gating / M21 destination conflict)
+├── docs/              # milestone records (M19 trust / M20 region gating / M21 destination conflict / M22 closure days)
 └── LICENSE            # MIT
 ```
 

@@ -6,7 +6,8 @@ import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../
 import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../components/HotelForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
-import { exportHtml, chatStream, geocode as geocodeApi, mergeTrace, recheckRoute, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
+import CalendarPicker from "../components/CalendarPicker";
+import { exportHtml, chatStream, dateCheck, geocode as geocodeApi, mergeTrace, recheckRoute, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
 import DecisionTrace from "../components/DecisionTrace";
@@ -64,6 +65,10 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   /** M20：整条路线坐标重校准（修历史遗留的错坐标） */
   const [rechecking, setRechecking] = useState(false);
   const [recheckMsg, setRecheckMsg] = useState("");
+  /** M22：出发日期确认 + 闭馆日冲突检查（确定性，不调 LLM/高德） */
+  const [dateChecking, setDateChecking] = useState(false);
+  const [dateMsg, setDateMsg] = useState("");
+  const dateAutoRef = useRef("");
   const [form, setForm] = useState<FormState | null>(null);
   /** M19：编辑表单里的「按名称重新定位」状态（定位中 / 结果说明） */
   const [relocating, setRelocating] = useState(false);
@@ -555,6 +560,48 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     }
   };
 
+  /* ---------- 出发日期与闭馆日检查（M22）---------- */
+  /**
+   * 定出发日期 + 查闭馆日冲突：确定性算术，**不调 LLM、不调高德**。
+   * `iso` 有值 = 用户手选（date_source=user）；不传 = 由后端就近推断（标 inferred）。
+   * 结果走 `mutate` —— 与手动编辑同一条撤销栈（改日期可 Ctrl+Z）。
+   */
+  const handleDateCheck = async (iso?: string) => {
+    if (dateChecking) return;
+    setDateChecking(true);
+    setDateMsg("");
+    try {
+      const res = await dateCheck(route, iso ?? "");
+      mutate((draft) => {
+        draft.trip.start_date = res.route.trip.start_date || "";
+        draft.trip.date_source = res.route.trip.date_source || "";
+        if (res.route.trip.dates) draft.trip.dates = res.route.trip.dates;
+        draft.days = res.route.days;
+      });
+      setDateMsg(res.summary);
+    } catch (e) {
+      setDateMsg("闭馆日检查失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDateChecking(false);
+    }
+  };
+
+  // 导入的旧 JSON / 导出的 HTML 都不会带日期：进页面自动补跑一次（每条行程只跑一次）。
+  useEffect(() => {
+    if (route.trip.start_date) return;
+    if (!route.days.some((d) => d.places.length > 0)) return;
+    if (dateAutoRef.current === fp) return;
+    dateAutoRef.current = fp;
+    void handleDateCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fp]);
+
+  /** 有告警的地点数量（改日期后由 route 反推，无需额外状态） */
+  const warnCount = useMemo(
+    () => route.days.reduce((n, d) => n + d.places.filter((p) => (p.warnings?.length ?? 0) > 0).length, 0),
+    [route],
+  );
+
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
   const toggleChat = () => {
     setChatOpen((v) => {
@@ -616,6 +663,58 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               <span key={i}>{i > 0 && <span className="mx-1.5 text-[#C9C2B4]">·</span>}{m}</span>
             ))}
           </div>
+        </div>
+        {/* M22：出发日期（算星期用）+ 闭馆日冲突状态。刻意放在标题卡外侧的同层，
+            避免被标题卡的 overflow-hidden 裁掉日历弹层 */}
+        <div
+          className="bg-white border border-line rounded-[14px] px-3 py-2 shadow-card pointer-events-auto shrink-0"
+          data-testid="date-card"
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-[188px]">
+              <CalendarPicker
+                value={trip.start_date || ""}
+                onChange={(v) => void handleDateCheck(v)}
+                placeholder={dateChecking ? "检查中…" : "设置出发日期"}
+              />
+            </div>
+            {trip.start_date && trip.date_source === "inferred" && (
+              <span
+                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-[#F1EDE4] text-[#8A7F6A] shrink-0"
+                title="文本里只有月日或节日名，年份是按「就近未来」推断的 —— 点日期即可改成准确的"
+                data-testid="date-inferred"
+              >
+                推断
+              </span>
+            )}
+            {trip.start_date && trip.date_source === "user" && (
+              <span className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-moss-soft text-moss shrink-0" data-testid="date-user">
+                已确认
+              </span>
+            )}
+            {warnCount > 0 && (
+              <span
+                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-[#F6E7E7] text-[#B85C5C] shrink-0"
+                data-testid="date-warn-count"
+              >
+                ⚠️ {warnCount} 处闭馆日冲突
+              </span>
+            )}
+            {!trip.start_date && route.days.some((d) => d.places.length > 0) && (
+              <span
+                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-gold-soft text-gold shrink-0"
+                title="没有出发日期就算不出星期，闭馆日冲突无从判定 —— 这不是「检查通过」"
+                data-testid="date-unchecked"
+              >
+                未检查闭馆日
+              </span>
+            )}
+          </div>
+          {dateMsg && (
+            <div className="text-[11px] text-ink-soft mt-1 max-w-[300px] truncate" title={dateMsg} data-testid="date-msg">
+              {dateMsg}
+            </div>
+          )}
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto">
           {source === "mock" && (

@@ -230,6 +230,51 @@ export async function recheckRoute(
   };
 }
 
+/** M22 闭馆日检查结果（POST /api/route/datecheck，纯确定性：不调 LLM/高德）。 */
+export interface DateCheckConflict {
+  name: string;
+  day: number;
+  date: string;
+  weekday: string;
+  claim: string;
+  warning: string;
+}
+
+export interface DateCheckResult {
+  route: RouteJSON;
+  checked: boolean;
+  reason: string;
+  conflicts: DateCheckConflict[];
+  skipped: number;
+  startDate: string;
+  dateSource: string;
+  summary: string;
+}
+
+/**
+ * 出发日期推断 / 闭馆日冲突检查。
+ * `startDate` 传空则由后端就近推断（并在 route.trip.date_source 标 inferred）；传了就视为用户给定。
+ */
+export async function dateCheck(route: RouteJSON, startDate?: string): Promise<DateCheckResult> {
+  const resp = await fetch(API_BASE + "/api/route/datecheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ route, start_date: startDate || "" }),
+  });
+  if (!resp.ok) throw new Error("闭馆日检查失败 (" + resp.status + ")");
+  const data = await resp.json();
+  return {
+    route: data.route as RouteJSON,
+    checked: Boolean(data.checked),
+    reason: String(data.reason || ""),
+    conflicts: (data.conflicts || []) as DateCheckConflict[],
+    skipped: Number(data.skipped || 0),
+    startDate: String(data.start_date || ""),
+    dateSource: String(data.date_source || ""),
+    summary: String(data.summary || ""),
+  };
+}
+
 /** 酒店价格搜索（可选能力；未配置数据源时返回提示）。 */
 export interface SearchResult {
   prices: { platform: string; price: number; breakfast?: boolean; note?: string }[];

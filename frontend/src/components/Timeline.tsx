@@ -164,6 +164,17 @@ export default function Timeline({
                           {showMeta && p.ticket && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">🎫 {p.ticket}</span>}
                           {showMeta && p.transport && <div>🚗 {p.transport}</div>}
                           {showMeta && p.note && <div>{p.note}</div>}
+                          {/* M22 事实告警：**不受 showMeta 控制** —— 闭馆日冲突是安全警示，
+                              不该被「显示详细程度」这类纯视图开关藏起来 */}
+                          {(p.warnings || []).map((w, wi) => (
+                            <div
+                              key={wi}
+                              data-testid="place-warning"
+                              className="inline-block bg-[#F6E7E7] text-[#B85C5C] rounded-md px-1.5 mt-0.5 mr-1.5 font-semibold"
+                            >
+                              ⚠️ {w}
+                            </div>
+                          ))}
                         </div>
                       </div>
                       {editing && (

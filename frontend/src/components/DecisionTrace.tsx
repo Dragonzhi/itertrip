@@ -13,6 +13,7 @@ const KIND_ICON: Record<TraceKind | string, string> = {
   llm: "✨",
   retry: "🔁",
   geocode: "📍",
+  facts: "🗓",
   edit: "🛠",
   summary: "🏁",
 };
