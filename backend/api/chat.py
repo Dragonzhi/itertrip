@@ -387,7 +387,8 @@ _GEO_LEVEL_TEXT = {
 }
 _GEO_ACTION_TEXT = {
     "fill": "补全", "replace": "已替换", "align": "核验并对齐 POI 坐标",
-    "confirm": "核验一致（未调整）", "keep": "保留原值（可疑但未被推翻）",
+    "redirect": "明显偏离用户指定的目的地，已改回", "confirm": "核验一致（未调整）",
+    "keep": "保留原值（可疑但未被推翻）",
     "conflict": "同名 POI 偏差大，未替换", "miss": "未命中",
 }
 
@@ -457,16 +458,19 @@ def _geo_summary_text(records: list[dict]) -> str:
     """坐标阶段汇总文案：来源分布 + 修正/对齐数 + 待确认数。"""
     counts = Counter(
         str(r.get("level") or "unknown") for r in records
-        if r.get("action") in ("fill", "replace", "align", "confirm", "keep", "conflict")
+        if r.get("action") in ("fill", "replace", "align", "redirect", "confirm", "keep", "conflict")
     )
     parts = [f"{_GEO_LEVEL_TEXT.get(k, k)} {v}" for k, v in counts.most_common()]
     line = " · ".join(parts) if parts else "本次无需处理坐标"
     replaced = sum(1 for r in records if r.get("action") == "replace")
+    redirected = sum(1 for r in records if r.get("action") == "redirect")
     aligned = sum(1 for r in records if r.get("action") == "align")
     warns = sum(1 for r in records if r.get("action") in ("keep", "conflict"))
     missed = sum(1 for r in records if r.get("action") == "miss")
     if replaced:
         line += f" · 修正 {replaced} 处"
+    if redirected:
+        line += f" · 改回目的地 {redirected} 处"
     if aligned:
         line += f" · 对齐 {aligned} 处"
     if warns:

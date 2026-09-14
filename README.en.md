@@ -25,6 +25,7 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 - 🧭 **Visible decisions** (M19): every AI turn expands into a "decision trace" — which model, whether past guides were hit, where each place's coordinate came from (AMap POI vs model guess), and which were replaced or snapped to the POI
 - 📍 **Trustworthy, traceable coordinates** (M19): AMap POI is the primary geocoder and existing coordinates are actively verified (measured model drift 100m~1.2km gets snapped); timeline and map popups show a provenance badge (you confirmed / AMap verified / AI guess / city fallback), and the editor offers "re-locate by name"
 - 🗺 **Places never land in another province** (M20): a candidate coordinate is used only if it falls inside the destination's province/city (or within 200 km of the city centre); verification is now "refine, never relocate", so same-name POIs elsewhere can no longer drag a correct coordinate away. Older itineraries can be fixed in one click with "🔍 Re-calibrate coordinates" (undoable)
+- 🤖 **It fixes misplaced places by itself** (M21): every generation and edit compares each place against **the destination you asked for** — if it is 200 km+ away from where AMap says that place is, and moving it lands closer to your destination, it is corrected automatically and the decision trace says "clearly off the requested destination, moved back". Legitimate far-away stops (Zhangjiajie in a Changsha trip) are protected, and your hand-placed coordinates are never overwritten
 - 💾 **Chats survive reloads**: home and planner conversations (including decision traces) persist across refresh; the planner drawer can be cleared on its own
 - 🔑 **BYOK + free tier**: bring your own key via the settings panel (OpenAI-compatible, stored locally); the server may also expose a free provider / admin panel (/admin, token-protected) so visitors get real AI with zero setup
 
@@ -66,6 +67,7 @@ itertrip/
 ├── DEPLOY.md          # deploy guide (local / cloud)
 ├── M19_TRUST_PLAN.md  # M19 record (coordinate trust / decision trace / chat persistence)
 ├── M20_GEO_REGION_PLAN.md # M20 record (coordinate region gating / full re-calibration)
+├── M21_DEST_CONFLICT_PLAN.md # M21 record (autonomous fix when a place is far from the requested destination)
 └── LICENSE            # MIT
 ```
 

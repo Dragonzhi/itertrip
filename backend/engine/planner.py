@@ -43,6 +43,9 @@ _VERIFY_KM = 1.5
 # M20 行程地理包络：紧凑行程（spread ≤ _OUTLIER_KM）里，核验只允许把点挪到
 # max(spread, 50) + 此值 的范围内，防止「异地同名 POI」被当成权威坐标
 _VERIFY_DRIFT_KM = 150.0
+# M21 明显离位：现有坐标与「高德说这个地点所在的位置」相差超过此值，即判定它被放错了地方
+# （同城偏差不可能是 200km 量级），允许改回 —— 但必须比原值更靠近目的地锚点/行程中心
+_VERIFY_WRONG_KM = 200.0
 
 SYSTEM_PROMPT = """你是专业旅行规划师。根据用户需求生成行程 JSON。
 只输出 JSON 本身，不要输出任何解释文字或 markdown 代码块标记。
@@ -349,9 +352,11 @@ async def _enrich_coordinates(
     ③ 主动核验（仅当配了高德 key）：对已有坐标**直接查高德**（不整链，避免自己证明自己）：
        - 名称强匹配（≥0.85）且偏差 ≤ 1.5km → **采用 POI 坐标**（记 `align`）：实测模型坐标虽同城，
          却普遍偏离真实 POI 113m~1.2km，只标注不采用等于白核验。
-       - 偏差 > 1.5km 的强匹配必须有佐证才允许「搬家」：名称完全一致（score≈1.0）或候选池
-         ≥3 条互相同意（agree）；否则保留原坐标 + 标待确认（记 `conflict`）。
-         依据：同名子 POI（湖南博物院(南院) 0.94 分、差 2.3km）与异地同名点会骗过单纯的分值判断。
+       - 偏差 > 1.5km 的强匹配必须有佐证才允许「搬家」：名称完全一致（score≈1.0）、候选池
+         ≥3 条互相同意（agree），或**当前坐标明显离位**（M21：与高德说该地点所在的位置相差
+         >200km，且改回去后更靠近目的地锚点 / 行程中心）；否则保留原坐标 + 标待确认（记 `conflict`）。
+         依据：同名子 POI（湖南博物院(南院) 0.94 分、差 2.3km）与异地同名点会骗过单纯的分值判断；
+         而 200km 量级的差距不是「偏差」而是「放错了地方」——属第三种独立佐证，记 `redirect`。
        - 弱匹配（0.72~0.85）且偏差 > 1.5km → 保留原值 + 标注待确认（记 `conflict`）；
          弱匹配但偏差 ≤ 1.5km → 不敢挪动，保留原值且**保持原有来源标注**（记 `confirm`，诚实优先）。
        - **行程地理包络（M20）**：紧凑行程（有效点离中位数都 ≤ 100km）里，强匹配 POI 若落在
@@ -476,8 +481,15 @@ async def _enrich_coordinates(
                     continue
                 if obj.source in ("user", "memory") or _is_user_truth(traveler, obj.name, destination):
                     continue
-                if not force_verify and obj.source == "amap" and obj.confidence == "high":
-                    continue  # 本次刚由高德写入，无需再问一遍
+                # 目的地锚点：判断「这个点看着就不在用户要的地方」的参照物（M21）
+                dest_far = anchor is not None and \
+                    haversine_km(obj.lat, obj.lng, anchor[0], anchor[1]) > _VERIFY_WRONG_KM
+                if not force_verify and obj.source == "amap" and obj.confidence == "high" \
+                        and not dest_far:
+                    # 「本次刚由高德写入」不再用来源标签推断（M20 事故里被写坏的坐标恰好也标着
+                    # amap/high，于是永远躲过复核）——改为：标签 + **位置与用户要求的目的地自洽**
+                    # 两个条件同时成立才跳过。离目的地 200km 以上的 amap 标签一律重新核验。
+                    continue
                 t0 = time.perf_counter()
                 ref = (obj.lat, obj.lng)
                 # 现有坐标是否「可信」：离行程中位数 >100km，或离目的地城市中心 >200km，
@@ -502,18 +514,34 @@ async def _enrich_coordinates(
                 # 依据：模型坐标同城偏差实测 113m~1.2km（≤1.5km 直接对齐即可），
                 # 而「湖南博物院(南院)」这类同名子 POI 会骗到 0.94 分、把正确的点挪走 2.3km。
                 far_ok = score >= _AMAP_EXACT_SCORE or agree >= _AMAP_AGREE_MIN
+                # M21：当前坐标「明显离位」是第三条佐证 —— 高德说这个地点在 A，而它现在被放在
+                # 200km 之外的 B，那就是错的（同城偏差不可能这么大）。此时允许改回，但必须**更靠近
+                # 用户要求的目的地**（锚点，无锚点则退到行程中位数），避免把合法的远点搬回来。
+                ref_center = anchor if anchor is not None else ((mlat, mlng) if mlat is not None else None)
+                wrong_place = dist > _VERIFY_WRONG_KM
+                closer = False
+                if wrong_place and ref_center is not None:
+                    closer = haversine_km(hit[0], hit[1], *ref_center) < \
+                        haversine_km(obj.lat, obj.lng, *ref_center)
                 in_envelope = not (
-                    envelope_strict and plausible and dist > _VERIFY_KM
+                    envelope_strict and plausible and not (wrong_place and closer)
+                    and dist > _VERIFY_KM
                     and haversine_km(hit[0], hit[1], mlat, mlng) > drift_limit
                 )
-                if score >= _AMAP_STRONG_SCORE and (dist <= _VERIFY_KM or far_ok) and in_envelope:
-                    # 采用 POI 坐标（≤1.5km 记 align=对齐；更远记 replace=修正）
+                if score >= _AMAP_STRONG_SCORE and (
+                    dist <= _VERIFY_KM or far_ok or (wrong_place and closer)
+                ) and in_envelope:
+                    # 采用 POI 坐标（≤1.5km 记 align=对齐；明显离位记 redirect=改回；其余记 replace）
                     if abs(obj.lat - hit[0]) > 1e-6 or abs(obj.lng - hit[1]) > 1e-6:
                         obj.lat, obj.lng = hit[0], hit[1]
                         filled += 1
                     obj.source, obj.confidence = "amap", "high"
+                    if wrong_place and closer:
+                        action = "redirect"
+                    else:
+                        action = "replace" if dist > _VERIFY_KM else "align"
                     _geo_rec(rec, rid=rid, name=obj.name,
-                             action=("replace" if dist > _VERIFY_KM else "align"), level="amap",
+                             action=action, level="amap",
                              confidence="high", dist_km=dist, score=score, ms=ms)
                 elif dist > _VERIFY_KM:
                     # 证据不足（弱匹配 / 同名子 POI / 异地同名点）：保留原坐标，标注交用户判断
