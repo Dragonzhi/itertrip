@@ -33,6 +33,19 @@ def out_of_china(lat: float, lng: float) -> bool:
     return not (73.66 < lng < 135.05 and 3.86 < lat < 53.55)
 
 
+def in_china(lat, lng, margin_deg: float = 0.0) -> bool:
+    """是否落在中国大陆粗略范围内（可带容差）。
+
+    M19 用途：境内行程里落在范围外的点几乎一定是错的（幻觉坐标 / 把 lat,lng 写反），
+    比「偏离行程中心 100km」这类相对判据更能抓住绝对错误。非法值一律按「不在境内」处理。
+    """
+    try:
+        la, ln = float(lat), float(lng)
+    except (TypeError, ValueError):
+        return False
+    return (3.86 - margin_deg) < la < (53.55 + margin_deg) and (73.66 - margin_deg) < ln < (135.05 + margin_deg)
+
+
 def wgs84_to_gcj02(lat: float, lng: float) -> tuple[float, float]:
     """WGS84 → GCJ-02（国测局火星坐标）。境外坐标原样返回。精度约 1m，足够地图显示。"""
     if out_of_china(lat, lng):

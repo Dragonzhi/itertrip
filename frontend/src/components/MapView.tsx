@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { RouteJSON, Hotel, Place } from "../types/route";
 import { dayColor, dayPoints, emojiFor, mercY, routeArrowDeg, routeMidPoint } from "../mapCore";
+import { coordBadge } from "../lib/coordSource";
 import type { MapSettings } from "../lib/settings";
 
 interface MapViewProps {
@@ -29,6 +30,8 @@ interface MapViewProps {
 function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
   let html = `<div class="iter-popup"><div class="pp-name">${emoji} ${p.name || ""}</div>`;
   if (showMeta) {
+    const badge = coordBadge(p.source, p.confidence);
+    if (badge) html += `<div class="pp-row pp-badge pp-${badge.tone}" title="${badge.title}">🧭 ${badge.text}</div>`;
     if (p.time) html += `<div class="pp-row">⏰ ${p.time}</div>`;
     if (p.ticket) html += `<div class="pp-row">🎫 ${p.ticket}</div>`;
     if (p.transport) html += `<div class="pp-row">🚗 ${p.transport}</div>`;
@@ -44,6 +47,8 @@ function hotelPopupHtml(h: Hotel, showMeta: boolean): string {
     : null;
   let html = `<div class="iter-popup"><div class="pp-name">🏨 ${h.name}</div>`;
   if (showMeta) {
+    const badge = coordBadge(h.source, h.confidence);
+    if (badge) html += `<div class="pp-row pp-badge pp-${badge.tone}" title="${badge.title}">🧭 ${badge.text}</div>`;
     if (best) html += `<div class="pp-row">最低 ¥${best.price}（${best.platform}）</div>`;
     if (h.note) html += `<div class="pp-row">${h.note}</div>`;
   }

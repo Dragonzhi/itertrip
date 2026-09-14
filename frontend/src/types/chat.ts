@@ -13,6 +13,35 @@ export interface ClarifyQuestion {
   options?: { value: string; label: string }[];
 }
 
+/* ---------- M19 决策轨迹：把 AI 的关键决策摊开给用户看（替代「盲盒」体验） ---------- */
+
+export type TraceKind = "provider" | "memory" | "llm" | "retry" | "geocode" | "edit" | "summary";
+
+export type TraceStatus = "run" | "done" | "warn" | "fail" | "skip";
+
+/** 一步决策记录（后端 SSE `trace` 事件 / 终帧 reply.trace 同构）。 */
+export interface TraceStep {
+  id: string;
+  kind: TraceKind;
+  status: TraceStatus;
+  title: string;
+  detail?: string;
+  ms?: number;
+  meta?: Record<string, unknown>;
+}
+
+/** 本轮统计（reply.stats）：耗时/尝试次数/地点数/命中记忆数/实际使用的模型。 */
+export interface TraceStats {
+  elapsed_ms?: number;
+  attempts?: number;
+  places?: number;
+  geocoded?: number;
+  replaced?: number;
+  memory_hits?: number;
+  model?: string;
+  provider?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -31,6 +60,10 @@ export interface ChatMessage {
   questions?: ClarifyQuestion[];
   /** 该条问题是否已回答（收起为普通文本，避免重复渲染） */
   answered?: boolean;
+  /** M19 本轮决策轨迹（流内实时累积，终帧由后端补齐；随消息持久化，刷新后可重放） */
+  trace?: TraceStep[];
+  /** M19 本轮统计（模型/耗时/坐标写入数） */
+  stats?: TraceStats;
 }
 
 import type { RouteJSON } from "./route";

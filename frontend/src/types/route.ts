@@ -13,6 +13,10 @@ export interface Hotel {
   prices?: PriceItem[];
   verdict?: string;
   bookingUrl?: string;
+  /** M19 坐标溯源：memory|user|amap|llm|search|city|mock */
+  source?: string;
+  /** M19 坐标置信度：high|low|none|""（未核验） */
+  confidence?: string;
 }
 
 export type PlaceType = "attraction" | "food" | "transport" | "other";
@@ -26,6 +30,10 @@ export interface Place {
   transport?: string;
   ticket?: string;
   note?: string;
+  /** M19 坐标溯源：memory|user|amap|llm|search|city|mock */
+  source?: string;
+  /** M19 坐标置信度：high|low|none|""（未核验） */
+  confidence?: string;
 }
 
 export interface DayPlan {

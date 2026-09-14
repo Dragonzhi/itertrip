@@ -29,6 +29,12 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
   `pip install fastembed`（约几十 MB）；首次运行会从 HuggingFace 拉约 100MB 模型，**国内服务器**再追加
   `HF_ENDPOINT=https://hf-mirror.com`（代码检测到该变量会自动关闭 HF 的 Xet 协议，否则镜像下会 401）。
   不想要本地模型可改用 `ITERTRIP_EMBED_PROVIDER=api` + 一个 OpenAI 兼容 `/embeddings` 服务
+- 坐标准确性（M19，建议）：`.env` 配 `ITERTRIP_AMAP_KEY`（高德 Web 服务 key）。配了之后 geocode 以高德 POI 为
+  **一级坐标源**，并对路线里已有坐标做**主动核验**（实测模型给的坐标虽然同城，但普遍偏离真实 POI 100m~1.2km，
+  核验后会直接对齐）；不配则回落模型知识（行为同旧版）。一条 15 点路线最多约 30 次请求，个人开发者日配额足够；
+  key 失效或超额会自动熔断降级，不影响出路线。
+  **M20 起**候选坐标还必须落在目的地的省市范围（或距城市中心 ≤200km）内才会被采用，
+  且核验只做「精修不搬家」——不需要任何新配置，配了同一个 key 即生效
 
 原理：`backend/main.py` 检测到 `frontend/dist` 时自动挂载静态资源并 SPA 回退，单进程 = API + Web 应用。这也意味着任何能跑 Python 容器的平台（含 Hugging Face Spaces）都能用现有 `Dockerfile` 直接部署整站——不需要前后端分离部署。
 
@@ -45,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
    | `ITERTRIP_LLM_BASE_URL` | 可选 | 默认 https://api.deepseek.com |
    | `ITERTRIP_LLM_MODEL` | 可选 | 默认 deepseek-chat |
    | `ITERTRIP_SEARCH_API_KEY` | 可选 | Tavily 兼容 key，启用 geocode 兜底 + 抓价 |
-   | `ITERTRIP_AMAP_KEY` | 可选 | 高德 Web 服务 key，坐标 POI 店名级兜底 |
+   | `ITERTRIP_AMAP_KEY` | 建议 | 高德 Web 服务 key：M19 起是**一级坐标源 + 主动核验开关**（不配则回落模型知识） |
    | `ITERTRIP_FREE_API_KEY` | 可选 | 内置免费源（访客零配置用真实 AI；配 Base/Model 可换网关） |
    | `ITERTRIP_ADMIN_TOKEN` | 可选 | 管理后台 token；配置后 `/admin` 可在线管理免费源 |
    | `ITERTRIP_MEMORY_ENABLED` | 可选 | 旅行记忆库总开关（默认 0 关闭）；开启需装 `fastembed` |
@@ -93,7 +99,7 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 | `ITERTRIP_LLM_MODEL` | 后端 | 默认 deepseek-chat |
 | `ITERTRIP_FREE_API_KEY` / `_BASE_URL` / `_MODEL` | 后端 | 内置免费源兜底（优先级低于 BYOK/env，高于 mock） |
 | `ITERTRIP_ADMIN_TOKEN` | 后端 | 管理后台 token；未配置 = 后台接口整体关闭 |
-| `ITERTRIP_AMAP_KEY` | 后端 | 高德 POI 坐标兜底（店名级精度） |
+| `ITERTRIP_AMAP_KEY` | 后端 | 高德 POI：**一级坐标源 + 主动核验开关**（店名级精度；建议配置） |
 | `ITERTRIP_SEARCH_API_KEY` | 后端 | 搜索兜底（geocode + 抓价） |
 | `ITERTRIP_SEARCH_BASE_URL` | 后端 | 默认 https://api.tavily.com |
 | `ITERTRIP_ROLLINGO_BASE_URL` | 后端 | RollingGo 价格源（可选） |
@@ -113,4 +119,8 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 - 上云必须配置：`ITERTRIP_CORS_ORIGINS` 白名单 + `ITERTRIP_ADMIN_TOKEN`（否则后台对公网关闭——这是预期行为）
 - 开启记忆库 = 用户攻略原文落到服务器 `memory.sqlite`（含个人行程偏好）：按匿名档案隔离、可一键清空；
   容器平台若使用临时文件系统，需把 `ITERTRIP_MEMORY_DB` 指到持久卷，否则重启即失忆（功能上无害）
+- 坐标来源与 AI 决策对用户可见（M19）：时间线/地图气泡显示坐标来源徽标，AI 每轮可展开「决策过程」；
+  **用户手点/手改的坐标是最高真值，任何 AI 核验都不会覆盖**
+- 历史行程的坏坐标可就地修（M20）：规划页「🔍 校准坐标」→ `POST /api/route/recheck`，
+  按同样的高德预算/熔断规则重跑；接口无鉴权但与其它端点一致（本地优先形态，公网部署建议放在 CORS 白名单之后）
 - 提交前自检：`git grep -i "api_key|bearer" -- . ':!*.md'`

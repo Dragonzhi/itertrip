@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { chatStream, type ChatStreamEvent } from "../api/client";
+import { chatStream, mergeTrace, type ChatStreamEvent } from "../api/client";
 import ChatPanel from "../components/ChatPanel";
 import { loadChatHistory, saveChatHistory, type LlmSettings } from "../lib/settings";
-import type { ChatMessage } from "../types/chat";
+import type { ChatMessage, TraceStep } from "../types/chat";
 
 interface ChatProps {
   onRoute: (route: import("../types/route").RouteJSON, source: string) => void;
@@ -26,11 +26,19 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
   const [streamText, setStreamText] = useState("");
   /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
   const [streamThinking, setStreamThinking] = useState("");
+  /** M19 实时决策轨迹（逐步 upsert；终帧后落到消息上持久化） */
+  const [liveTrace, setLiveTrace] = useState<TraceStep[]>([]);
+  const liveTraceRef = useRef<TraceStep[]>([]);
   const sentPrefillRef = useRef(false);
 
   useEffect(() => {
     saveChatHistory(messages);
   }, [messages]);
+
+  /** 澄清卡提交/跳过后标记「已回答」，刷新恢复时不再重复渲染 */
+  const markAnswered = (id: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
+  };
 
   const clearHistory = () => {
     if (loading) return;
@@ -41,6 +49,8 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     setStageLabel(null);
     setStreamText("");
     setStreamThinking("");
+    setLiveTrace([]);
+    liveTraceRef.current = [];
   };
 
   // 首页「带话过来」：进页面自动发送一次
@@ -66,14 +76,24 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       .map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
+    setLiveTrace([]);
+    liveTraceRef.current = [];
     const onEvent = (ev: ChatStreamEvent) => {
       if (ev.event === "stage") setStageLabel(ev.label || null);
       else if (ev.event === "thinking") setStreamThinking((prev) => prev + (ev.thinking || ""));
       else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
+      else if (ev.event === "trace") {
+        liveTraceRef.current = mergeTrace(liveTraceRef.current, ev.step);
+        setLiveTrace(liveTraceRef.current);
+      }
     };
     try {
       const r = await chatStream({ prompt: text, history, images }, settings, onEvent);
-      const reply: ChatMessage = { id: uid(), role: "assistant", content: r.reply || streamText, questions: r.questions };
+      const trace = r.trace && r.trace.length ? r.trace : liveTraceRef.current;
+      const reply: ChatMessage = {
+        id: uid(), role: "assistant", content: r.reply || streamText, questions: r.questions,
+        trace: trace.length ? trace : undefined, stats: r.stats,
+      };
       setMessages((prev) => [...prev, reply]);
       if (r.route && r.route.days.length > 0) {
         onRoute(r.route, "chat");
@@ -87,12 +107,17 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       }
       setMessages((prev) => [
         ...prev,
-        { id: uid(), role: "assistant", content: msg, error: true },
+        {
+          id: uid(), role: "assistant", content: msg, error: true,
+          trace: liveTraceRef.current.length ? liveTraceRef.current : undefined,
+        },
       ]);
     } finally {
       setStageLabel(null);
       setStreamText("");
       setStreamThinking("");
+      setLiveTrace([]);
+      liveTraceRef.current = [];
       setLoading(false);
     }
   }
@@ -134,6 +159,8 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
           stageLabel={stageLabel}
           streamText={streamText}
           streamThinking={streamThinking}
+          liveTrace={liveTrace}
+          onAnswered={markAnswered}
         />
       </div>
     </div>

@@ -22,6 +22,10 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 - 🏨 **Hotel price card**: prices supplied manually by the user (neutral, no scraping), lowest auto-highlighted
 - 📦 **Export & import**: editable HTML opens by double-click — sharing is the product experience; JSON / exported HTML can be re-imported for further editing
 - 🧠 **Travel memory (RAG, opt-in)**: extracted guides are chunked per entity into a memory store, so a later chat about the same destination gets answers that **cite your past guides**; coordinates you fix by hand on the map are remembered and reused directly (retrieval-augmented geocoding)
+- 🧭 **Visible decisions** (M19): every AI turn expands into a "decision trace" — which model, whether past guides were hit, where each place's coordinate came from (AMap POI vs model guess), and which were replaced or snapped to the POI
+- 📍 **Trustworthy, traceable coordinates** (M19): AMap POI is the primary geocoder and existing coordinates are actively verified (measured model drift 100m~1.2km gets snapped); timeline and map popups show a provenance badge (you confirmed / AMap verified / AI guess / city fallback), and the editor offers "re-locate by name"
+- 🗺 **Places never land in another province** (M20): a candidate coordinate is used only if it falls inside the destination's province/city (or within 200 km of the city centre); verification is now "refine, never relocate", so same-name POIs elsewhere can no longer drag a correct coordinate away. Older itineraries can be fixed in one click with "🔍 Re-calibrate coordinates" (undoable)
+- 💾 **Chats survive reloads**: home and planner conversations (including decision traces) persist across refresh; the planner drawer can be cleared on its own
 - 🔑 **BYOK + free tier**: bring your own key via the settings panel (OpenAI-compatible, stored locally); the server may also expose a free provider / admin panel (/admin, token-protected) so visitors get real AI with zero setup
 
 ## Quick start
@@ -36,6 +40,8 @@ Open http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS)
 Works without a key: configure `ITERTRIP_FREE_API_KEY` in the server `.env` (free provider, real AI); with neither, a built-in mock router demonstrates the full flow. Operators can manage the free provider at `/admin?admin_token=<value>`.
 
 To enable travel memory (RAG): set `ITERTRIP_MEMORY_ENABLED=1` in `.env` and `pip install fastembed` (local embeddings; add `HF_ENDPOINT=https://hf-mirror.com` in mainland China). It is off by default — once on, guide text is stored in the server's `memory.sqlite`, isolated per anonymous profile and clearable from the settings panel.
+
+Want more accurate coordinates: set `ITERTRIP_AMAP_KEY` (AMap Web Service key) in `.env`. With it, AMap POI becomes the primary geocoder and the coordinates the model returns are actively verified and snapped (measured drift 100m~1.2km); without it the app falls back to model knowledge + city centroids.
 
 ## Stack
 
@@ -58,7 +64,8 @@ itertrip/
 ├── DESIGN.md          # design doc (positioning / architecture / roadmap)
 ├── AGENTS.md          # AI-agent architecture guide (agents / protocols / config)
 ├── DEPLOY.md          # deploy guide (local / cloud)
-├── M18_MEMORY_PLAN.md # travel memory (RAG) implementation plan
+├── M19_TRUST_PLAN.md  # M19 record (coordinate trust / decision trace / chat persistence)
+├── M20_GEO_REGION_PLAN.md # M20 record (coordinate region gating / full re-calibration)
 └── LICENSE            # MIT
 ```
 

@@ -79,6 +79,48 @@ export function saveChatHistory(msgs: ChatMessage[]) {
   }
 }
 
+/* ---------- M19：规划页 AI 抽屉对话（此前只存内存，刷新即失） ---------- */
+
+export const PLAN_CHAT_KEY = PREFIX + "planchat";
+
+/** 行程指纹：换了行程（标题/目的地/天数变化）就开新会话，避免旧上下文串味。 */
+export function routeFingerprint(route: RouteJSON | null | undefined): string {
+  if (!route || !route.trip) return "";
+  return [route.trip.title || "", route.trip.destination || "", (route.days || []).length].join("|");
+}
+
+export function loadPlanChatHistory(fp: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(PLAN_CHAT_KEY);
+    if (!raw) return [];
+    const v = JSON.parse(raw) as { fp?: string; msgs?: ChatMessage[] };
+    if (!v || !Array.isArray(v.msgs)) return [];
+    if (fp && v.fp && v.fp !== fp) return []; // 属于另一条行程的历史：忽略
+    return v.msgs.slice(-30);
+  } catch {
+    return [];
+  }
+}
+
+export function savePlanChatHistory(msgs: ChatMessage[], fp: string) {
+  try {
+    // route 快照体积大且能从 itertrip:route 恢复，故不重复入库（与 saveChatHistory 同口径）；
+    // 轨迹 trace / 变更清单 / 澄清问答状态都保留（刷新后仍能看到当时 AI 的决定）。
+    const slim = msgs.slice(-30).map((m) => ({ ...m, route: undefined }));
+    localStorage.setItem(PLAN_CHAT_KEY, JSON.stringify({ fp, msgs: slim }));
+  } catch {
+    /* 隐私模式 / 超限：放弃持久化，本次会话内存仍可用 */
+  }
+}
+
+export function clearPlanChatHistory() {
+  try {
+    localStorage.removeItem(PLAN_CHAT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 // ===== 地图显示设置（M16：右下角设置面板，纯前端视图态，不写入 route/后端）=====
 
 export type DayViewMode = "all" | "current";

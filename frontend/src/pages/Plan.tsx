@@ -6,13 +6,39 @@ import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../
 import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../components/HotelForm";
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { PlaceType, RouteJSON } from "../types/route";
-import { exportHtml, chatStream, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
+import { exportHtml, chatStream, geocode as geocodeApi, mergeTrace, recheckRoute, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
+import DecisionTrace from "../components/DecisionTrace";
 import { useElapsed } from "../hooks/useElapsed";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
-import type { ChatMessage } from "../types/chat";
-import { loadMapSettings, saveMapSettings, type MapSettings as MapSettingsType, type LlmSettings } from "../lib/settings";
+import { distanceKm } from "../lib/coordSource";
+import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
+import {
+  clearPlanChatHistory,
+  loadMapSettings,
+  loadPlanChatHistory,
+  loadSettings,
+  routeFingerprint,
+  saveMapSettings,
+  savePlanChatHistory,
+  type MapSettings as MapSettingsType,
+  type LlmSettings,
+} from "../lib/settings";
+
+/** 供应商来源 → 人话（抽屉标题栏徽标用；key 永远不展示） */
+const PROVIDER_LABEL: Record<string, string> = {
+  byok: "你的 key",
+  env: "环境变量",
+  admin: "后台配置",
+  free: "免费源",
+  none: "未配置",
+};
+
+/** 坐标来源 → 文案（「按名称重新定位」结果说明用） */
+const GEO_SOURCE_TEXT: Record<string, string> = {
+  amap: "高德 POI", memory: "记忆库真值", llm: "模型知识", search: "网络搜索", city: "城市中心",
+};
 
 interface PlanProps {
   route: RouteJSON;
@@ -35,7 +61,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [panelOpen, setPanelOpen] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  /** M20：整条路线坐标重校准（修历史遗留的错坐标） */
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckMsg, setRecheckMsg] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
+  /** M19：编辑表单里的「按名称重新定位」状态（定位中 / 结果说明） */
+  const [relocating, setRelocating] = useState(false);
+  const [relocateMsg, setRelocateMsg] = useState("");
   const [hotelForm, setHotelForm] = useState<{ target: { di: number }; hasCoord: boolean } | null>(null);
   const [hotelDraft, setHotelDraft] = useState<HotelDraft>({ name: "", note: "", lat: 0, lng: 0 });
   const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } } | { purpose: "repick-hotel"; target: { di: number } }>(null);
@@ -44,9 +76,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [mapView, setMapView] = useState<MapSettingsType>(() => loadMapSettings());
   useEffect(() => { saveMapSettings(mapView); }, [mapView]);
 
-  /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①） ---------- */
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>([]);
+  /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①）；M19：对话与决策轨迹持久化 ---------- */
+  const fp = useMemo(() => routeFingerprint(initialRoute), [initialRoute]);
+  const bootMsgs = useMemo(() => loadPlanChatHistory(fp), [fp]);
+  const [chatOpen, setChatOpen] = useState(bootMsgs.length > 0);
+  const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>(bootMsgs);
   const [chatInput, setChatInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   /** 流式过程：当前阶段播报 label + 正在流出的回复文本 */
@@ -54,6 +88,9 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [streamText, setStreamText] = useState("");
   /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
   const [streamThinking, setStreamThinking] = useState("");
+  /** M19 实时决策轨迹（逐步 upsert，终帧后落到消息上） */
+  const [liveTrace, setLiveTrace] = useState<TraceStep[]>([]);
+  const liveTraceRef = useRef<TraceStep[]>([]);
   const [flashKeys, setFlashKeys] = useState<string[]>([]);
   /** 优化④：地点交互 {key, seq, mode}；peek=单击弹框，zoom=双击聚焦 */
   const [focus, setFocus] = useState<{ key: string; seq: number; mode: "peek" | "zoom" } | null>(null);
@@ -77,7 +114,38 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
   useEffect(() => {
     if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
-  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel, streamThinking]);
+  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel, streamThinking, liveTrace.length]);
+
+  /* M19：抽屉对话持久化（此前只存内存，刷新即失；按行程指纹隔离，换行程自动开新会话） */
+  useEffect(() => {
+    savePlanChatHistory(chatMsgs, fp);
+  }, [chatMsgs, fp]);
+
+  /** 澄清卡提交/跳过后标记「已回答」，刷新恢复时不再重复渲染 */
+  const markAnswered = (id: string) => {
+    setChatMsgs((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
+  };
+
+  const clearPlanChat = () => {
+    if (aiBusy || !chatMsgs.length) return;
+    if (!window.confirm("确定清空当前对话记录吗？此操作不影响行程本身。")) return;
+    clearPlanChatHistory();
+    setChatMsgs([]);
+    setStageLabel(null);
+    setStreamText("");
+    setStreamThinking("");
+    setLiveTrace([]);
+    liveTraceRef.current = [];
+  };
+
+  /** 最近一轮的实际模型/来源（抽屉标题栏徽标：回答「这轮到底在用谁」） */
+  const lastStats: TraceStats | null = useMemo(() => {
+    for (let i = chatMsgs.length - 1; i >= 0; i -= 1) {
+      const s = chatMsgs[i].stats;
+      if (s && (s.model || s.provider)) return s;
+    }
+    return null;
+  }, [chatMsgs]);
 
   const sendAiEdit = async (text: string) => {
     const t = text.trim();
@@ -93,15 +161,22 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setStageLabel(null);
     setStreamText("");
     setStreamThinking("");
+    setLiveTrace([]);
+    liveTraceRef.current = [];
     const onEvent = (ev: ChatStreamEvent) => {
       if (ev.event === "stage") setStageLabel(ev.label || null);
       else if (ev.event === "thinking") setStreamThinking((prev) => prev + (ev.thinking || ""));
       else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
+      else if (ev.event === "trace") {
+        liveTraceRef.current = mergeTrace(liveTraceRef.current, ev.step);
+        setLiveTrace(liveTraceRef.current);
+      }
     };
     try {
       const r = await chatStream({ prompt: t, history, route }, settings, onEvent);
       setStageLabel(null);
       const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
+      const trace = r.trace && r.trace.length ? r.trace : liveTraceRef.current;
       const reply: ChatMessage = {
         id: uid(),
         role: "assistant",
@@ -110,9 +185,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         changed: !!(diff && diff.changed),
         changeSummary: diff && diff.changed ? diff.summary : undefined,
         questions: r.questions,
+        trace: trace.length ? trace : undefined,
+        stats: r.stats,
       };
       setStreamText("");
       setStreamThinking("");
+      setLiveTrace([]);
+      liveTraceRef.current = [];
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
         mutate((draft) => {
@@ -133,9 +212,15 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       setStreamThinking("");
       setChatMsgs((prev) => [
         ...prev,
-        { id: uid(), role: "assistant", content: e instanceof Error ? e.message : String(e), error: true },
+        {
+          id: uid(), role: "assistant", error: true,
+          content: e instanceof Error ? e.message : String(e),
+          trace: liveTraceRef.current.length ? liveTraceRef.current : undefined,
+        },
       ]);
     } finally {
+      setLiveTrace([]);
+      liveTraceRef.current = [];
       setAiBusy(false);
     }
   };
@@ -221,6 +306,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         if (Math.abs(h.lat - rounded.lat) < 1e-9 && Math.abs(h.lng - rounded.lng) < 1e-9) return; // 点回原位不进历史
         h.lat = rounded.lat;
         h.lng = rounded.lng;
+        h.source = "user";       // M19：用户亲手选点 = 真值来源
+        h.confidence = "high";
       });
       setHotelDraft((d) => ({ ...d, lat: rounded.lat, lng: rounded.lng }));
       lastActiveDayRef.current = t.di;
@@ -235,6 +322,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         if (place.lat != null && Math.abs(place.lat - rounded.lat) < 1e-9 && Math.abs(place.lng - rounded.lng) < 1e-9) return; // 点回原位不进历史
         place.lat = rounded.lat;
         place.lng = rounded.lng;
+        place.source = "user";   // M19：用户亲手选点 = 真值来源（后续 AI 核验永不覆盖）
+        place.confidence = "high";
       });
       lastActiveDayRef.current = t.di;
       reportCoord(route.days[t.di]?.places[t.pi]?.name || "", rounded.lat, rounded.lng);
@@ -244,7 +333,10 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setForm({
       mode: "add",
       dayIdx: Math.min(lastActiveDayRef.current, route.days.length - 1),
-      draft: { name: "", type: "attraction", time: "", transport: "", ticket: "", note: "", ...rounded },
+      draft: {
+        name: "", type: "attraction", time: "", transport: "", ticket: "", note: "",
+        ...rounded, source: "user", confidence: "high",
+      },
     });
   };
 
@@ -252,6 +344,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     const p = route.days[di]?.places[pi];
     if (!p) return;
     lastActiveDayRef.current = di;
+    setRelocateMsg("");
     setForm({
       mode: "edit",
       target: { di, pi },
@@ -265,8 +358,46 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         note: p.note || "",
         lat: p.lat ?? 0,
         lng: p.lng ?? 0,
+        source: p.source || "",
+        confidence: p.confidence || "",
       },
     });
+  };
+
+  /**
+   * M19：按名称重新定位（走 /api/geocode 降级链：记忆真值 → 高德 POI → 模型知识 → 兜底）。
+   * 只写进表单草稿，用户按「保存修改」才进撤销栈 —— 与手动选点保持同一把关节奏。
+   */
+  const relocatePlace = async () => {
+    if (!form || form.mode !== "edit" || relocating) return;
+    const name = form.draft.name.trim();
+    if (!name) return;
+    const t = form.target;
+    setRelocating(true);
+    setRelocateMsg("");
+    try {
+      const r = await geocodeApi(name, trip.destination, settings);
+      if (r.lat == null || r.lng == null) {
+        setRelocateMsg(`没找到「${name}」的坐标：可以点「🗺 更改位置」直接在地图上选点。`);
+        return;
+      }
+      const prev = route.days[t.di]?.places[t.pi];
+      const moved = prev && prev.lat ? distanceKm(prev, { lat: r.lat, lng: r.lng }) : 0;
+      const src = GEO_SOURCE_TEXT[r.source || ""] || "坐标服务";
+      setForm((f) => (f && f.mode === "edit" ? {
+        ...f,
+        draft: { ...f.draft, lat: r.lat!, lng: r.lng!, source: r.source || "", confidence: r.confidence },
+      } : f));
+      setRelocateMsg(
+        `已按「${src}」定位到 ${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}`
+        + (moved > 0.05 ? `（与原位置相差 ${moved < 1 ? Math.round(moved * 1000) + "m" : moved.toFixed(1) + "km"}）` : "")
+        + " · 按「保存修改」才会写入行程",
+      );
+    } catch (e) {
+      setRelocateMsg("定位失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setRelocating(false);
+    }
   };
 
   const startRepick = () => {
@@ -296,7 +427,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         if (fieldsSame && posSame) return;
         p.name = d.name; p.type = d.type; p.time = d.time;
         p.transport = d.transport; p.ticket = d.ticket; p.note = d.note;
-        if (!posSame) { p.lat = d.lat; p.lng = d.lng; }   // 无坐标地点不得写入 0,0
+        if (!posSame) {
+          // 无坐标地点不得写入 0,0；M19 同时记录坐标出处（用户选点 / 重新定位拿到的来源）
+          p.lat = d.lat; p.lng = d.lng;
+          p.source = d.source || "user";
+          p.confidence = d.confidence || (d.source && d.source !== "user" ? "" : "high");
+        }
       });
       if (posChanged) reportCoord(d.name, d.lat, d.lng);  // M18：手改坐标 = 真值
       lastActiveDayRef.current = form.target.di;
@@ -306,12 +442,14 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         r.days[di].places.push({
           name: d.name.trim(), lat: d.lat, lng: d.lng, type: d.type,
           time: d.time, transport: d.transport, ticket: d.ticket, note: d.note,
+          source: d.source || "user", confidence: d.confidence || "high",
         });
       });
       reportCoord(d.name.trim(), d.lat, d.lng);  // M18：地图选点新增 = 真值
       lastActiveDayRef.current = di;
     }
     setForm(null);
+    setRelocateMsg("");
   };
 
   /* ---------- M16：酒店逐天自定义 ---------- */
@@ -389,6 +527,31 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       setExportError(e instanceof Error ? e.message : String(e));
     } finally {
       setExporting(false);
+    }
+  };
+
+  /* ---------- 坐标重校准（M20）---------- */
+  /** 整条路线重新核验坐标：修历史遗留的错坐标，用户手改过的点不会被覆盖，可撤销。 */
+  const handleRecheck = async () => {
+    if (rechecking) return;
+    setRechecking(true);
+    setRecheckMsg("");
+    try {
+      const res = await recheckRoute(route, loadSettings());
+      const unsure = res.records.filter((r) => r.action === "conflict").length;
+      mutate((draft) => {
+        draft.days = res.route.days;
+      });
+      setFlashKeys([]);
+      setRecheckMsg(
+        (res.filled > 0 ? `已校准/补全 ${res.filled} 处坐标` : "坐标都已核对过，无需调整") +
+          (unsure > 0 ? `；${unsure} 处存疑已标【坐标待确认】` : "") +
+          (res.amapReason ? `（高德：${res.amapReason}）` : ""),
+      );
+    } catch (e) {
+      setRecheckMsg("校准失败：" + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setRechecking(false);
     }
   };
 
@@ -476,8 +639,26 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
           <span className="text-lg">🤖</span>
-          <h2 className="text-sm font-bold flex-1">AI 改行程</h2>
-          <span className="text-[10px] text-ink-soft">改动可撤销 · 地图实时更新</span>
+          <h2 className="text-sm font-bold">AI 改行程</h2>
+          {lastStats && (
+            <span
+              className="text-[10px] bg-cream border border-line/70 rounded-md px-1.5 py-px text-ink-soft truncate max-w-[120px]"
+              title={`本轮所用模型：${lastStats.model || "未知"} · 来源：${PROVIDER_LABEL[lastStats.provider || ""] || lastStats.provider || "未知"}`}
+              data-testid="ai-provider"
+            >
+              {lastStats.model || "模型"} · {PROVIDER_LABEL[lastStats.provider || ""] || "来源未知"}
+            </span>
+          )}
+          <span className="text-[10px] text-ink-soft ml-auto">改动可撤销 · 地图实时更新</span>
+          <button
+            onClick={clearPlanChat}
+            disabled={aiBusy || !chatMsgs.length}
+            title="清空当前对话记录（不影响行程本身）"
+            data-testid="plan-clear-chat"
+            className="text-ink-soft hover:text-[#B85C5C] disabled:opacity-30 leading-none px-1"
+          >
+            🗑
+          </button>
           <button onClick={toggleChat} className="text-ink-soft hover:text-ink leading-none" aria-label="关闭对话抽屉">✕</button>
         </div>
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 min-h-0">
@@ -515,7 +696,19 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
                 <div className="w-full max-w-[90%]">
-                  <ClarifyCard questions={m.questions} msgId={m.id} disabled={aiBusy} onSend={sendAiEdit} />
+                  <ClarifyCard
+                    questions={m.questions}
+                    msgId={m.id}
+                    disabled={aiBusy}
+                    answered={m.answered}
+                    onSend={sendAiEdit}
+                    onAnswered={markAnswered}
+                  />
+                </div>
+              )}
+              {m.role === "assistant" && m.trace && m.trace.length > 0 && (
+                <div className="w-full max-w-[90%] mt-1">
+                  <DecisionTrace steps={m.trace} />
                 </div>
               )}
             </div>
@@ -527,6 +720,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                 {stageLabel || "AI 正在思考…"}
                 <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {aiElapsed}s</span>
               </div>
+              {liveTrace.length > 0 && <DecisionTrace steps={liveTrace} live />}
               {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
               {streamText && (
                 <div className="flex justify-start">
@@ -615,6 +809,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             <button onClick={openAddFlow} className="bg-gold text-white border border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
               📍 添加地点
             </button>
+            {/* M20 坐标重校准：修历史遗留的错坐标（同名异地 POI 带偏的那种） */}
+            <button
+              onClick={handleRecheck}
+              disabled={rechecking}
+              title="用高德重新核验整条路线的坐标（你手改过的点不会被覆盖，可撤销）"
+              className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-45"
+              data-testid="recheck-coords"
+            >
+              {rechecking ? "🔍 校准中…" : "🔍 校准坐标"}
+            </button>
             {/* 导出二级菜单（优化②：JSON/HTML 收进右侧工具条） */}
             <div className="relative" ref={exportRef}>
               <button
@@ -644,6 +848,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               )}
             </div>
           </div>
+          {recheckMsg && (
+            <div className="mt-1.5 text-[11px] text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
+              {recheckMsg}
+            </div>
+          )}
           {exportError && (
             <div className="mt-1.5 text-[11px] text-[#B85C5C] bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
               {exportError}
@@ -667,8 +876,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           picking={false}
           onChange={(patch) => setForm((f) => (f ? { ...f, draft: { ...f.draft, ...patch } } : f))}
           onSave={saveForm}
-          onCancel={() => setForm(null)}
+          onCancel={() => { setForm(null); setRelocateMsg(""); }}
           onStartRepick={startRepick}
+          onRelocate={relocatePlace}
+          relocating={relocating}
+          relocateMsg={relocateMsg}
         />
       )}
 

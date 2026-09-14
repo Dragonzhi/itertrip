@@ -4,10 +4,12 @@
     输入  { prompt: str, history: [{role, content}], route: RouteJSON | null,
             images?: [data:image/*;base64 …] }  # M15 截图，仅提取模式接受
     输出  text/event-stream：
-        event: stage    data: {"stage": "understand|retry|geocode|done", "label": str}
+        event: stage    data: {"stage": "understand|memory|retry|geocode|thinking-steps|done", "label": str}
+        event: trace    data: {"step": {id, kind, status, title, detail, ms, meta}}  # M19 决策轨迹（按 id upsert）
         event: thinking data: {"thinking": str}    # 推理模型思考链增量（前端淡色小字实时滚动）
         event: delta    data: {"text": str}        # <<<REPLY>>> 段的增量（客户端追加）
-        event: reply    data: {"reply": str, "intent": "route_edit|chitchat", "route": ...|null}
+        event: reply    data: {"reply": str, "intent": "route_edit|chitchat", "route": ...|null,
+                               "questions"?: [...], "trace": [...], "stats": {...}}
         event: error    data: {"detail": str}      # 流开始后的错误（预检失败仍是 HTTP 400）
 
 双段输出协议（让模型先写给人看的过程叙述，再写结构化数据）：
@@ -24,11 +26,19 @@ M18 记忆库（opt-in：ITERTRIP_MEMORY_ENABLED=1 且请求头带 X-Traveler-Id
     提取模式启动前检索【记忆参考】块（≤6 条 / ≤1200 字）拼到 user payload 尾部；
     路线成功后把本次攻略切分入库（后台任务，不阻塞响应流）。
     记忆是增强能力——任何异常（缺 fastembed、向量库损坏）都只打印日志，绝不影响主线对话。
+
+M19 决策轨迹（让 AI 的过程不再是盲盒）：
+    新增 `event: trace`，按序下发 provider / memory / llm / retry / geocode / edit / summary 等决策步
+    （每步 {id, kind, status, title, detail, ms, meta}，同 id 为 upsert）；终帧 `reply` 另带完整
+    `trace` 与 `stats`，前端可随消息持久化、刷新后重放。坐标核验的每一条替换/冲突都在这里可见，
+    静默兜底（坐标转换失败、补全失败）也一律以 warn 步暴露，而不是只进后台日志。
 """
 
 import asyncio
 import base64
 import json
+import time
+from collections import Counter
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -39,6 +49,12 @@ from ..engine.schema import RouteJSON
 from .deps import llm_overrides
 from ..engine._llmutil import endpoint as _endpoint, non_stream_parts as _non_stream_parts
 from .deps import traveler_id as _traveler_id
+from ..engine.planner import (
+    convert_new_coords,
+    describe_provider,
+    llm_config_with_source,
+    route_to_gcj02,
+)
 
 router = APIRouter()
 
@@ -323,8 +339,11 @@ def _visible_reply(full: str) -> str:
     return head
 
 
-async def _resolve_cfg(request: Request) -> tuple[dict, bool]:
-    """BYOK 解析 + 预检（无 key 抛 HTTP 400，发生在流开始前）。返回 (cfg, is_user_key)。"""
+async def _resolve_cfg(request: Request) -> tuple[dict, bool, str]:
+    """BYOK 解析 + 预检（无 key 抛 HTTP 400，发生在流开始前）。返回 (cfg, is_user_key, source)。
+
+    source ∈ {"byok", "env", "admin", "free"}：供决策轨迹说明「这一轮到底在用谁」。
+    """
     overrides = llm_overrides(request)
     if overrides and overrides.get("api_key"):
         # BYOK 只填了 API Key、漏填 Base URL 时，base_url/model 回落到服务器当前生效配置。
@@ -342,21 +361,152 @@ async def _resolve_cfg(request: Request) -> tuple[dict, bool]:
                 status_code=400,
                 detail="BYOK 缺少 Base URL：请在「模型设置」补全 Base URL，或清空 API Key 改用服务器配置",
             )
-        return overrides, True
-    from ..engine.planner import _llm_config
-
-    cfg = _llm_config()
+        return overrides, True, "byok"
+    cfg, src = llm_config_with_source()
     if cfg is None:
         # BYOK / 环境变量 / .env 免费供应商都没配置 → 明确提示（服务器放一份 .env 即可用免费源）
         raise HTTPException(
             status_code=400,
             detail="未配置 LLM：请在「模型设置」填入 API Key，或在服务器 .env 配置 ITERTRIP_FREE_API_KEY",
         )
-    return cfg, False
+    return cfg, False, src
 
 
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# ---------------- M19 决策轨迹（把「盲盒」摊开成可读的决策步） ----------------
+
+_TRACE_MAX = 60  # 单轮步数上限（轨迹随消息持久化，必须防膨胀）
+
+# 坐标来源 / 动作的人话文案（轨迹与文案共用一套口径）
+_GEO_LEVEL_TEXT = {
+    "memory": "记忆库真值", "user": "你手动确认", "amap": "高德 POI",
+    "llm": "模型推测", "search": "网络搜索兜底", "city": "城市中心兜底", "mock": "mock 样例", "none": "无来源",
+}
+_GEO_ACTION_TEXT = {
+    "fill": "补全", "replace": "已替换", "align": "核验并对齐 POI 坐标",
+    "confirm": "核验一致（未调整）", "keep": "保留原值（可疑但未被推翻）",
+    "conflict": "同名 POI 偏差大，未替换", "miss": "未命中",
+}
+
+
+class _Trace:
+    """单轮轨迹累积器：同 id upsert，超出上限的新步只计数（终帧提示省略条数）。"""
+
+    def __init__(self) -> None:
+        self.steps: list[dict] = []
+        self.dropped = 0
+
+    def add(self, step: dict) -> dict:
+        for i, s in enumerate(self.steps):
+            if s.get("id") == step.get("id"):
+                self.steps[i] = step
+                return step
+        if len(self.steps) >= _TRACE_MAX:
+            self.dropped += 1
+            return step
+        self.steps.append(step)
+        return step
+
+
+def _trace_step(step_id: str, kind: str, status: str, title: str, detail: str = "",
+                ms: int | None = None, **meta) -> dict:
+    """构造一步决策记录。kind=provider|memory|llm|retry|geocode|edit|summary；
+    status=run|done|warn|fail|skip（前端据此上色）。"""
+    step: dict = {"id": step_id, "kind": kind, "status": status, "title": title, "detail": detail}
+    if ms is not None:
+        step["ms"] = ms
+    if meta:
+        step["meta"] = meta
+    return step
+
+
+def _geo_step(r: dict) -> dict:
+    """把 planner 的坐标记录翻译成一条可读的轨迹步。"""
+    level = str(r.get("level") or "")
+    action = str(r.get("action") or "")
+    parts = [_GEO_LEVEL_TEXT.get(level, level or "未知")]
+    if r.get("confidence") == "low":
+        parts.append("低置信")
+    parts.append(_GEO_ACTION_TEXT.get(action, action))
+    dist = r.get("dist_km")
+    if dist is not None:
+        parts.append(f"偏离 {dist * 1000:.0f}m" if dist < 1 else f"偏离 {dist:.1f}km")
+    if r.get("score") is not None:
+        parts.append(f"名称匹配 {r['score']:.2f}")
+    if action == "miss" and level == "amap":
+        parts.append("沿用原坐标")
+        status = "skip"  # 高德没查到 ≠ 出错，原坐标继续用
+    elif action == "miss":
+        parts.append("无坐标可用")
+        status = "fail"
+    elif action in ("conflict", "keep"):
+        status = "warn"
+    else:
+        status = "done"
+    return _trace_step(
+        str(r.get("id") or "geo"), "geocode", status, f"📍 {r.get('name') or '地点'}",
+        " · ".join(parts), ms=r.get("ms") or 0,
+        level=level, action=action, dist_km=dist, score=r.get("score"),
+    )
+
+
+def _geo_summary_text(records: list[dict]) -> str:
+    """坐标阶段汇总文案：来源分布 + 修正/对齐数 + 待确认数。"""
+    counts = Counter(
+        str(r.get("level") or "unknown") for r in records
+        if r.get("action") in ("fill", "replace", "align", "confirm", "keep", "conflict")
+    )
+    parts = [f"{_GEO_LEVEL_TEXT.get(k, k)} {v}" for k, v in counts.most_common()]
+    line = " · ".join(parts) if parts else "本次无需处理坐标"
+    replaced = sum(1 for r in records if r.get("action") == "replace")
+    aligned = sum(1 for r in records if r.get("action") == "align")
+    warns = sum(1 for r in records if r.get("action") in ("keep", "conflict"))
+    missed = sum(1 for r in records if r.get("action") == "miss")
+    if replaced:
+        line += f" · 修正 {replaced} 处"
+    if aligned:
+        line += f" · 对齐 {aligned} 处"
+    if warns:
+        line += f" · {warns} 处待确认"
+    if missed:
+        line += f" · {missed} 处未命中"
+    return line
+
+
+def _summary_step(
+    tr: "_Trace", started: float, *, places: int = 0, filled: int = 0, replaced: int = 0,
+    memory_hits: int = 0, attempts: int = 1, model: str = "", source: str = "", note: str = "",
+) -> dict:
+    """终帧前的「本轮完成」汇总步；其 meta 同时作为 reply.stats 下发。"""
+    ms = int((time.perf_counter() - started) * 1000)
+    detail = f"用时 {ms / 1000:.1f}s · 模型尝试 {attempts} 次"
+    if places:
+        detail += f" · 地点 {places} 个"
+    if filled:
+        detail += f" · 坐标写入 {filled} 处"
+    if replaced:
+        detail += f" · 修正 {replaced} 处"
+    if tr.dropped:
+        detail += f" · 另有 {tr.dropped} 步省略"
+    if note:
+        detail += f" · {note}"
+    return _trace_step(
+        "summary", "summary", "done", "本轮完成", detail, ms=ms,
+        elapsed_ms=ms, attempts=attempts, places=places, geocoded=filled, replaced=replaced,
+        memory_hits=memory_hits, model=model, provider=source,
+    )
+
+
+def _reply_events(tr: "_Trace", summary: dict, payload: dict) -> list[str]:
+    """终帧事件：先落一刀汇总步，再发 reply（携带完整轨迹 + 统计，供前端持久化重放）。"""
+    step = tr.add(summary)
+    return [
+        _sse("trace", {"step": step}),
+        _sse("reply", {**payload, "trace": tr.steps, "stats": step.get("meta", {})}),
+    ]
 
 
 # 网关拒绝图片输入时错误体常见字样（与 api/llm.py 视觉探测同一判定口径）
@@ -391,21 +541,38 @@ def _spawn(coro) -> None:
     task.add_done_callback(_BG_TASKS.discard)
 
 
-async def _memory_reference(traveler: str, prompt: str) -> str:
-    """检索【记忆参考】块；未开启 / 无档案 / 库空 / 依赖缺失时返回 ""（静默降级）。"""
-    if not traveler or not prompt.strip():
-        return ""
+async def _memory_reference(traveler: str, prompt: str) -> tuple[str, dict]:
+    """检索【记忆参考】块；返回 (文本, 元信息)（元信息供决策轨迹说明「为什么没注入」）。
+
+    未开启 / 无档案 / 库空 / 依赖缺失时返回 ("", meta)，静默降级，绝不中断对话。
+    """
+    meta: dict = {"hits": 0, "reason": "", "ms": 0}
+    if not traveler:
+        meta["reason"] = "本浏览器没有匿名档案 id（请求头缺 X-Traveler-Id）"
+        return "", meta
+    if not prompt.strip():
+        meta["reason"] = "本次输入为空"
+        return "", meta
     from ..engine import memory_ingest, memory_store
 
     if not memory_store.enabled():
-        return ""
+        meta["reason"] = "记忆库未开启（ITERTRIP_MEMORY_ENABLED=0）"
+        return "", meta
+    t0 = time.perf_counter()
     try:
-        return await asyncio.wait_for(
+        text = await asyncio.wait_for(
             asyncio.to_thread(memory_ingest.build_reference, traveler, prompt), timeout=30
         )
     except Exception as e:  # noqa: BLE001 记忆是增强能力，异常绝不中断对话
         print(f"[memory] 检索跳过：{e}")
-        return ""
+        meta["reason"] = "检索失败（已忽略）"
+        return "", meta
+    meta["ms"] = int((time.perf_counter() - t0) * 1000)
+    hits = sum(1 for ln in text.splitlines() if ln.startswith("["))
+    meta["hits"] = hits
+    if not hits:
+        meta["reason"] = "记忆库为空，或与本次需求无关"
+    return text, meta
 
 
 async def _memory_ingest_bg(traveler: str, route: RouteJSON) -> None:
@@ -435,20 +602,41 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             ok, err = _check_image(img)
             if not ok:
                 raise HTTPException(status_code=400, detail=err)
-    cfg, is_user_key = await _resolve_cfg(request)
+    cfg, is_user_key, cfg_source = await _resolve_cfg(request)
     traveler = _traveler_id(request)
+    model_name, provider_label = describe_provider(cfg, cfg_source)
 
     async def gen():
+        t_start = time.perf_counter()
+        tr = _Trace()
+
+        def emit(step: dict) -> str:
+            """落一步决策记录（同 id 覆盖）并返回对应 SSE 文本。"""
+            return _sse("trace", {"step": tr.add(step)})
+
         yield _sse("stage", {
             "stage": "understand",
             "label": "正在读取攻略并规划路线…" if not edit_mode else "正在分析当前路线…",
         })
+        yield emit(_trace_step(
+            "provider", "provider", "done", f"模型 {model_name}", f"来源：{provider_label}",
+            model=model_name, source=cfg_source,
+        ))
 
         # M18：提取模式检索长期记忆，注入 user payload 尾部（编辑模式不注入：上下文已含完整 route）
-        mem_ref = "" if edit_mode else await _memory_reference(traveler, req.prompt)
-        if mem_ref:
-            hits = sum(1 for ln in mem_ref.splitlines() if ln.startswith("["))
-            yield _sse("stage", {"stage": "memory", "label": f"参考了 {hits} 条你过往的攻略记忆…"})
+        if edit_mode:
+            mem_ref, mem_meta = "", {"hits": 0, "reason": "编辑模式不注入（上下文已含完整路线）", "ms": 0}
+        else:
+            mem_ref, mem_meta = await _memory_reference(traveler, req.prompt)
+        mem_hits = int(mem_meta.get("hits") or 0)
+        if mem_hits:
+            yield _sse("stage", {"stage": "memory", "label": f"参考了 {mem_hits} 条你过往的攻略记忆…"})
+            yield emit(_trace_step(
+                "memory", "memory", "done", f"长期记忆命中 {mem_hits} 条",
+                "已拼进本轮【记忆参考】，要求模型带 [n] 引用", ms=mem_meta.get("ms") or 0, hits=mem_hits,
+            ))
+        else:
+            yield emit(_trace_step("memory", "memory", "skip", "长期记忆未注入", str(mem_meta.get("reason") or "未命中")))
 
         base_payload = (
             f"current_route：\n{json.dumps(req.route, ensure_ascii=False)}\n\n用户要求：{req.prompt}"
@@ -460,16 +648,29 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         data: dict | None = None
         parse_err = ""
         exhausted = False  # 重试后仍解析失败
+        attempts = 0
 
         for attempt in range(2):
             if attempt == 1:
                 yield _sse("stage", {"stage": "retry", "label": "格式有点问题，正在重新整理…"})
+                yield emit(_trace_step(
+                    "retry", "retry", "warn", "输出格式不对，正在带错误重试",
+                    f"原因：{(parse_err or '未识别')[:140]}",
+                ))
+            attempts = attempt + 1
             payload = base_payload + (
                 "\n\n（上次输出解析失败：" + parse_err + "。请严格按 <<<REPLY>>> / <<<JSON>>> 两段格式重新输出完整内容。）"
                 if attempt == 1 and parse_err else ""
             )
+            t_llm = time.perf_counter()
+            yield emit(_trace_step(
+                "llm:%d" % attempt, "llm", "run", "正在生成…",
+                f"{model_name} · 第 {attempts} 次尝试" + ("（带格式纠错）" if attempt else ""),
+            ))
             full = ""
             sent = 0
+            ttft_ms = 0
+            thinking_len = 0
             # 阶段轮播文案：让「正在读取攻略并规划路线…」动起来，覆盖模型首个 token 前的等待窗口。
             # 后台真实调用模型，主流程并发轮播前置步骤；一旦收到真实内容（thinking/delta）即用真实内容接管。
             _STEPS = (
@@ -508,9 +709,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                         if kind == "__error__":
                             raise RuntimeError(piece)
                         break
+                    if not started:
+                        ttft_ms = int((time.perf_counter() - t_llm) * 1000)
                     started = True
                     if kind == "thinking":
                         # 思考链实时下发到 thinking 通道（前端淡色小字滚动，不混入正文）
+                        thinking_len += len(piece)
                         yield _sse("thinking", {"thinking": piece})
                         continue
                     full += piece
@@ -521,10 +725,21 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                         yield _sse("delta", {"text": visible[sent:]})
                         sent = len(visible)
             except Exception as e:
+                yield emit(_trace_step(
+                    "llm:%d" % attempt, "llm", "fail", "模型调用失败",
+                    _short_err(e, has_images=bool(req.images))[:140],
+                    ms=int((time.perf_counter() - t_llm) * 1000),
+                ))
                 yield _sse("error", {"detail": f"LLM 调用失败：{_short_err(e, has_images=bool(req.images))}"})
                 return
             finally:
                 producer_task.cancel()
+            yield emit(_trace_step(
+                "llm:%d" % attempt, "llm", "done", "模型已返回",
+                f"首字 {ttft_ms / 1000:.1f}s · 正文 {len(full)} 字"
+                + (f" · 思考链 {thinking_len} 字" if thinking_len else ""),
+                ms=int((time.perf_counter() - t_llm) * 1000), chars=len(full), ttft_ms=ttft_ms,
+            ))
 
             reply_text, json_part = _split_reply_json(full)
             if not json_part:
@@ -574,39 +789,80 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         if not edit_mode:
             if data is None:
                 yield _sse("stage", {"stage": "done", "label": "完成"})
-                yield _sse("reply", {"reply": reply_text or "能再描述一下目的地吗？", "intent": "chitchat", "route": None})
+                for ev in _reply_events(
+                    tr,
+                    _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未产出路线"),
+                    {"reply": reply_text or "能再描述一下目的地吗？", "intent": "chitchat", "route": None},
+                ):
+                    yield ev
                 return
             if data.get("need_more_info"):
+                qs = data.get("questions") or []
                 yield _sse("stage", {"stage": "done", "label": "完成"})
-                yield _sse("reply", {
-                    "reply": str(data.get("reply") or reply_text or "能再描述一下吗？"),
-                    "intent": "chitchat",
-                    "route": None,
-                    "questions": data.get("questions") or [],
-                })
+                yield emit(_trace_step("clarify", "edit", "done", "信息不足，先向用户澄清", f"{len(qs)} 个关键问题"))
+                for ev in _reply_events(
+                    tr,
+                    _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="等待用户补充信息"),
+                    {
+                        "reply": str(data.get("reply") or reply_text or "能再描述一下吗？"),
+                        "intent": "chitchat",
+                        "route": None,
+                        "questions": qs,
+                    },
+                ):
+                    yield ev
                 return
             route = RouteJSON.model_validate(data)
-            # 坐标补全 + 阶段播报
-            missing = sum(
-                1 for d in route.days for p in d.places
-                if p.lat is None or p.lng is None or (p.lat == 0 and p.lng == 0)
-            )
-            if missing:
-                yield _sse("stage", {"stage": "geocode", "label": f"正在为 {missing} 个地点补全坐标…"})
+            # M19 修复：提取路径此前漏了坐标基准转换（模型坐标是 WGS84，画在高德瓦片上偏移约 360~560m）
+            route = route_to_gcj02(route)
+            n_places = sum(len(d.places) for d in route.days)
+            geo_records: list[dict] = []
+            filled = 0
+            # 坐标补全 / 核验 + 阶段播报（M19：有高德 key 时对已有坐标也做核验，故不再只在 missing 时执行）
+            has_geo_work = n_places > 0 or any(d.hotel is not None for d in route.days)
+            if has_geo_work:
+                missing = sum(
+                    1 for d in route.days for p in d.places
+                    if p.lat is None or p.lng is None or (p.lat == 0 and p.lng == 0)
+                )
+                yield _sse("stage", {
+                    "stage": "geocode",
+                    "label": f"正在为 {missing} 个地点补全坐标…" if missing else f"正在核验 {n_places} 个地点的坐标…",
+                })
+                t_geo = time.perf_counter()
                 try:
                     from ..engine.planner import _enrich_coordinates
 
-                    filled = await _enrich_coordinates(route, route.trip.destination, overrides=cfg if is_user_key else None, traveler=traveler)
-                    if filled:
-                        yield _sse("stage", {"stage": "geocode", "label": f"已补全 {filled} 个坐标"})
+                    filled = await _enrich_coordinates(
+                        route, route.trip.destination, overrides=cfg if is_user_key else None,
+                        traveler=traveler, records=geo_records,
+                    )
                 except Exception as e:
                     print(f"[chat] 坐标补全失败（忽略）: {e}")
+                    yield emit(_trace_step("geo-error", "geocode", "warn", "坐标补全失败（已忽略）", str(e)[:140]))
+                for r in geo_records:
+                    yield emit(_geo_step(r))
+                yield emit(_trace_step(
+                    "geo-summary", "geocode", "done", f"坐标处理完成（写入 {filled} 处）",
+                    _geo_summary_text(geo_records), ms=int((time.perf_counter() - t_geo) * 1000),
+                ))
+                if filled:
+                    yield _sse("stage", {"stage": "geocode", "label": f"已补全 {filled} 个坐标"})
             yield _sse("stage", {"stage": "done", "label": "完成"})
-            yield _sse("reply", {
-                "reply": reply_text or f"已生成「{route.trip.title}」：{len(route.days)} 天。",
-                "intent": "route_edit",
-                "route": route.model_dump(),
-            })
+            replaced = sum(1 for r in geo_records if r.get("action") == "replace")
+            for ev in _reply_events(
+                tr,
+                _summary_step(
+                    tr, t_start, places=n_places, filled=filled, replaced=replaced,
+                    memory_hits=mem_hits, attempts=attempts, model=model_name, source=cfg_source,
+                ),
+                {
+                    "reply": reply_text or f"已生成「{route.trip.title}」：{len(route.days)} 天。",
+                    "intent": "route_edit",
+                    "route": route.model_dump(),
+                },
+            ):
+                yield ev
             # M18：响应发完后再后台入库（首轮含 embedding 模型加载，不占用本次响应时间）
             _spawn(_memory_ingest_bg(traveler, route))
             return
@@ -614,7 +870,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         # ---- 改路线模式 ----
         yield _sse("stage", {"stage": "done", "label": "完成"})
         if data is None:
-            yield _sse("reply", {"reply": reply_text or "我在呢，想怎么改？", "intent": "chitchat", "route": None})
+            for ev in _reply_events(
+                tr,
+                _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未产出改动"),
+                {"reply": reply_text or "我在呢，想怎么改？", "intent": "chitchat", "route": None},
+            ):
+                yield ev
             return
         if not data.get("changed"):
             # 坐标修正请求被模型以 changed=false 口头道歉糊弄时，自动用后端 geocode 兜底真改坐标
@@ -641,31 +902,52 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                                     # 粗略判定“在非洲”等离谱坐标（中国境内大致 18-54N, 73-135E）
                                     need_fix.append(p)
                     fixed = 0
+                    fixed_names: list[str] = []
                     for p in need_fix:
-                        # 强制重算一次坐标（即使已有坐标也以 LLM/geocode 为准纠正）
+                        # 强制重算一次坐标（即使已有坐标也以 geocode 降级链为准纠正；高德优先，用户真值最优先）
                         from ..engine.coordinates import geocode as _geocode
                         res = await _geocode(p.name, _tmp.trip.destination, llm_overrides=cfg if is_user_key else None, traveler=traveler)
                         if res["lat"] is not None:
                             p.lat = res["lat"]
                             p.lng = res["lng"]
+                            p.source, p.confidence = res["source"], res["confidence"]
                             fixed += 1
+                            fixed_names.append(p.name)
                     if fixed:
                         route_obj = _tmp
-                        yield _sse("reply", {
-                            "reply": str(data.get("reply") or reply_text or "已修正坐标。") + f"（已通过坐标服务修正 {fixed} 个地点）",
-                            "intent": "route_edit",
-                            "route": route_obj.model_dump(),
-                        })
+                        yield emit(_trace_step(
+                            "coord-fallback", "edit", "done", "坐标兜底修正（模型只说抱歉没动手）",
+                            f"{fixed} 个地点已重新定位：" + "、".join(fixed_names[:4]),
+                        ))
+                        for ev in _reply_events(
+                            tr,
+                            _summary_step(tr, t_start, filled=fixed, replaced=fixed, attempts=attempts,
+                                          model=model_name, source=cfg_source, note="坐标兜底修正"),
+                            {
+                                "reply": str(data.get("reply") or reply_text or "已修正坐标。") + f"（已通过坐标服务修正 {fixed} 个地点）",
+                                "intent": "route_edit",
+                                "route": route_obj.model_dump(),
+                            },
+                        ):
+                            yield ev
                         return
+                    yield emit(_trace_step("coord-fallback", "edit", "skip", "坐标兜底修正无可用结果", "未能定位到新坐标，请手动选点"))
                 except Exception as _e:
                     print(f"[chat] 坐标修正兜底失败: {_e}")
+                    yield emit(_trace_step("coord-fallback", "edit", "fail", "坐标兜底修正失败（已忽略）", str(_e)[:140]))
             qs = data.get("questions") or []
-            yield _sse("reply", {
-                "reply": str(data.get("reply") or reply_text or "好的。"),
-                "intent": "chitchat",
-                "route": None,
-                "questions": qs if qs else None,
-            })
+            yield emit(_trace_step("edit", "edit", "skip", "未改动路线", "聊天/咨询类请求（changed=false）"))
+            for ev in _reply_events(
+                tr,
+                _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未改动路线"),
+                {
+                    "reply": str(data.get("reply") or reply_text or "好的。"),
+                    "intent": "chitchat",
+                    "route": None,
+                    "questions": qs if qs else None,
+                },
+            ):
+                yield ev
             return
         # changed=true：先把 LLM 新写/改动的坐标从 WGS84 转 GCJ-02（全链路统一 GCJ-02）。
         # 与旧路线同名同值的坐标是回显的 GCJ-02，跳过以防双重偏移；差异坐标才视为 WGS84 转换。
@@ -673,36 +955,38 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             from ..engine.schema import RouteJSON as _RJ0
 
             _new = _RJ0.model_validate(data["__route"])
-            _old_days = _RJ0.model_validate(req.route).days
-            _old_map = {p.name: (p.lat, p.lng) for d in _old_days for p in d.places}
-            _old_hotel = {d.hotel.name: (d.hotel.lat, d.hotel.lng) for d in _old_days if d.hotel}
-            for d in _new.days:
-                for p in d.places:
-                    o = _old_map.get(p.name)
-                    echoed = o is not None and o[0] is not None and abs(o[0] - p.lat) < 1e-6 and abs(o[1] - p.lng) < 1e-6
-                    if not echoed and p.lat and p.lng:
-                        p.lat, p.lng = wgs84_to_gcj02(p.lat, p.lng)
-                h = d.hotel
-                if h is not None and h.lat and h.lng:
-                    oh = _old_hotel.get(h.name)
-                    echoed_h = oh is not None and oh[0] is not None and abs(oh[0] - h.lat) < 1e-6 and abs(oh[1] - h.lng) < 1e-6
-                    if not echoed_h:
-                        h.lat, h.lng = wgs84_to_gcj02(h.lat, h.lng)
-            data["__route"] = _new.model_dump()
+            _old = _RJ0.model_validate(req.route)
+            data["__route"] = convert_new_coords(_new, _old).model_dump()
         except Exception as _e0:
+            # 此前这里只 print，一处漏 import 就静默偏移了半年（M19）：兜底失败必须是可见决策
             print(f"[chat] 新坐标 GCJ-02 转换失败(忽略): {_e0}")
-        # changed=true：若仍有 0,0 坐标，尝试后端补全
+            yield emit(_trace_step(
+                "coord-datum", "edit", "warn", "坐标基准转换失败（已忽略）",
+                f"{type(_e0).__name__}: {str(_e0)[:120]}",
+            ))
+        # changed=true：补全仍缺坐标的地点 + 对已有坐标做高德核验
+        edit_records: list[dict] = []
+        edit_filled = 0
         try:
             from ..engine.planner import _enrich_coordinates
             from ..engine.schema import RouteJSON as _RJ2
             _route_obj = _RJ2.model_validate(data["__route"])
-            miss = sum(1 for d in _route_obj.days for p in d.places if p.lat == 0 and p.lng == 0)
-            if miss:
-                filled = await _enrich_coordinates(_route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None, traveler=traveler)
-                if filled:
-                    data["__route"] = _route_obj.model_dump()
+            t_geo2 = time.perf_counter()
+            edit_filled = await _enrich_coordinates(
+                _route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None,
+                traveler=traveler, records=edit_records,
+            )
+            data["__route"] = _route_obj.model_dump()
+            for r in edit_records:
+                yield emit(_geo_step(r))
+            if edit_records:
+                yield emit(_trace_step(
+                    "geo-summary", "geocode", "done", f"改后坐标处理完成（写入 {edit_filled} 处）",
+                    _geo_summary_text(edit_records), ms=int((time.perf_counter() - t_geo2) * 1000),
+                ))
         except Exception as _e2:
             print(f"[chat] 改路线坐标补全失败(忽略): {_e2}")
+            yield emit(_trace_step("geo-error", "geocode", "warn", "改后坐标处理失败（已忽略）", str(_e2)[:140]))
         # 口头说改但坐标未动的二次校验：若 changed=true 且用户提及某地名但该地坐标未变，强制 geocode 纠正
         try:
             from ..engine.coordinates import geocode as _geocode2
@@ -710,6 +994,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             _new = _RJ3.model_validate(data["__route"])
             _old = _RJ3.model_validate(req.route)
             old_map = {p.name: (p.lat, p.lng) for d in _old.days for p in d.places}
+            rechecked: list[str] = []
             for d in _new.days:
                 for p in d.places:
                     if p.name and p.name in req.prompt:
@@ -719,14 +1004,36 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                             if res["lat"] is not None:
                                 p.lat = res["lat"]
                                 p.lng = res["lng"]
+                                p.source, p.confidence = res["source"], res["confidence"]
+                                rechecked.append(p.name)
             data["__route"] = _new.model_dump()
+            if rechecked:
+                yield emit(_trace_step(
+                    "coord-recheck", "edit", "warn", "二次校验：说了改但坐标没动",
+                    f"{len(rechecked)} 个地点已强制重新定位：" + "、".join(rechecked[:4]),
+                ))
         except Exception as _e3:
             print(f"[chat] 坐标二次校验失败(忽略): {_e3}")
-        yield _sse("reply", {
-            "reply": str(data.get("reply") or reply_text or "已更新路线。"),
-            "intent": "route_edit",
-            "route": data["__route"],
-        })
+            yield emit(_trace_step("coord-recheck", "edit", "warn", "坐标二次校验失败（已忽略）", str(_e3)[:140]))
+        edited_places = sum(len(d.get("places") or []) for d in (data["__route"].get("days") or []))
+        yield emit(_trace_step(
+            "edit", "edit", "done", "已应用路线改动",
+            f"{len(data['__route'].get('days') or [])} 天 · {edited_places} 个地点",
+        ))
+        for ev in _reply_events(
+            tr,
+            _summary_step(
+                tr, t_start, places=edited_places, filled=edit_filled,
+                replaced=sum(1 for r in edit_records if r.get("action") == "replace"),
+                attempts=attempts, model=model_name, source=cfg_source,
+            ),
+            {
+                "reply": str(data.get("reply") or reply_text or "已更新路线。"),
+                "intent": "route_edit",
+                "route": data["__route"],
+            },
+        ):
+            yield ev
 
     return StreamingResponse(
         gen(),

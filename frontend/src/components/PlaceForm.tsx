@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PlaceType } from "../types/route";
+import { BADGE_CLASS, coordBadge } from "../lib/coordSource";
 
 export const PICK_HINT_ADD = "📍 点击地图选择地点位置（Esc 取消）";
 export const PICK_HINT_REPICK = "📍 点击地图为新位置（Esc 取消）";
@@ -24,6 +25,9 @@ export interface PlaceDraft {
   note: string;
   lat: number;
   lng: number;
+  /** M19 坐标溯源（保存后写入 route，供地图/时间线显示来源徽标） */
+  source?: string;
+  confidence?: string;
 }
 
 interface PlaceFormProps {
@@ -37,16 +41,23 @@ interface PlaceFormProps {
   onSave: () => void;
   onCancel: () => void;
   onStartRepick: () => void;
+  /** M19：按名称重新定位（走 /api/geocode 降级链：高德 POI 优先 → 模型 → 兜底） */
+  onRelocate?: () => void;
+  relocating?: boolean;
+  /** 重新定位的结果说明（成功带来源/偏差，失败提示改用手动选点） */
+  relocateMsg?: string;
 }
 
-/** 新增/编辑地点表单（移植自旧版 #add-form：双模式 + datalist 预设 + 更改位置）。 */
+/** 新增/编辑地点表单（移植自旧版 #add-form：双模式 + datalist 预设 + 更改位置 + 按名称重新定位）。 */
 export default function PlaceForm({
   mode, draft, hasCoord, dayOptions, initialDay, picking, onChange, onSave, onCancel, onStartRepick,
+  onRelocate, relocating, relocateMsg,
 }: PlaceFormProps) {
   const [dayIdx, setDayIdx] = useState(initialDay);
   const nameRef = useRef<HTMLInputElement>(null);
   const isEdit = mode === "edit";
   const okDisabled = !draft.name.trim();
+  const badge = coordBadge(draft.source, draft.confidence);
 
   useEffect(() => { setDayIdx(initialDay); }, [initialDay]);
   useEffect(() => { if (!picking) nameRef.current?.focus(); }, [picking]);
@@ -161,7 +172,7 @@ export default function PlaceForm({
         {isEdit && (
           <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
             位置
-            <span>
+            <span className="flex gap-1.5 flex-wrap">
               <button
                 type="button"
                 onClick={onStartRepick}
@@ -169,11 +180,39 @@ export default function PlaceForm({
               >
                 🗺 更改位置
               </button>
+              {onRelocate && (
+                <button
+                  type="button"
+                  onClick={onRelocate}
+                  disabled={relocating || !draft.name.trim()}
+                  data-testid="place-relocate"
+                  title="按名称重新查一次坐标（优先高德 POI，再退到模型知识）"
+                  className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+                >
+                  {relocating ? "🔍 定位中…" : "🔍 按名称重新定位"}
+                </button>
+              )}
             </span>
           </label>
         )}
 
-        <div className="text-[11px] text-ink-soft tabular-nums">{posText}</div>
+        <div className="text-[11px] text-ink-soft tabular-nums flex items-center gap-1.5 flex-wrap">
+          <span>{posText}</span>
+          {badge && (
+            <span
+              title={badge.title}
+              data-testid="coord-badge"
+              className={"rounded-md px-1.5 py-px text-[10px] font-semibold " + BADGE_CLASS[badge.tone]}
+            >
+              {badge.text}
+            </span>
+          )}
+        </div>
+        {relocateMsg && (
+          <div className="text-[11px] text-ink-soft bg-cream border border-line/60 rounded-lg px-2 py-1" data-testid="relocate-msg">
+            {relocateMsg}
+          </div>
+        )}
 
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={onCancel} className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft">

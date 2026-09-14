@@ -1,5 +1,5 @@
 import type { PlanRequest, RouteJSON } from "../types/route";
-import type { ClarifyQuestion } from "../types/chat";
+import type { ClarifyQuestion, TraceStats, TraceStep } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
 import { memoryHeaders } from "../lib/memory";
 
@@ -37,12 +37,14 @@ export async function planTrip(
   return { route, source: resp.headers.get("X-IterTrip-Source") || "?" };
 }
 
-/** 对话流式事件（优化①）：stage=阶段播报 delta=回复增量 reply=终帧 error=流内错误 */
+/** 对话流式事件（优化①）：stage=阶段播报 trace=决策轨迹 delta=回复增量 reply=终帧 error=流内错误 */
 export interface ChatStreamEvent {
-  event: "stage" | "thinking" | "delta" | "reply" | "error";
+  event: "stage" | "trace" | "thinking" | "delta" | "reply" | "error";
   stage?: string;
   label?: string;
   text?: string;
+  /** M19 决策轨迹的单步（按 step.id upsert 到本轮轨迹） */
+  step?: TraceStep;
   /** 推理模型思考链增量（实时滚动，淡色小字展示，不混入正文） */
   thinking?: string;
   reply?: string;
@@ -51,6 +53,19 @@ export interface ChatStreamEvent {
   detail?: string;
   /** Agent 式澄清问题（M17） */
   questions?: ClarifyQuestion[];
+  /** M19 终帧携带的完整轨迹与统计（供持久化与刷新后重放） */
+  trace?: TraceStep[];
+  stats?: TraceStats;
+}
+
+/** 把流内逐步下发的 trace 事件按 id 合并成完整轨迹（与后端 upsert 语义一致）。 */
+export function mergeTrace(prev: TraceStep[], step?: TraceStep | null): TraceStep[] {
+  if (!step || !step.id) return prev;
+  const idx = prev.findIndex((s) => s.id === step.id);
+  if (idx === -1) return [...prev, step];
+  const next = prev.slice();
+  next[idx] = step;
+  return next;
 }
 
 /**
@@ -62,7 +77,7 @@ export async function chatStream(
   req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[]; images?: string[] },
   settings: LlmSettings | null | undefined,
   onEvent?: (ev: ChatStreamEvent) => void,
-): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] }> {
+): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[]; trace?: TraceStep[]; stats?: TraceStats }> {
   const resp = await fetch(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
@@ -79,7 +94,7 @@ export async function chatStream(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
-  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[] } = {
+  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[]; trace?: TraceStep[]; stats?: TraceStats } = {
     reply: "", intent: "chitchat", route: null,
   };
   let failed = false;
@@ -108,7 +123,10 @@ export async function chatStream(
       }
       onEvent?.(payload);
       if (event === "reply") {
-        final = { reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null, questions: payload.questions || undefined };
+        final = {
+          reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null,
+          questions: payload.questions || undefined, trace: payload.trace, stats: payload.stats,
+        };
       }
     }
   }
@@ -157,12 +175,12 @@ export async function exportHtml(route: RouteJSON, filename: string): Promise<vo
   URL.revokeObjectURL(url);
 }
 
-/** 单点 geocode（编辑器「按名称找位置」用）。 */
+/** 单点 geocode（编辑器「按名称重新定位」用）。source=amap|llm|memory|search|city|none */
 export async function geocode(
   name: string,
   city: string,
   settings?: LlmSettings | null,
-): Promise<{ lat: number | null; lng: number | null; confidence: string }> {
+): Promise<{ lat: number | null; lng: number | null; confidence: string; source?: string }> {
   const resp = await fetch(API_BASE + "/api/geocode", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
@@ -170,6 +188,46 @@ export async function geocode(
   });
   if (!resp.ok) throw new Error("geocode 失败 (" + resp.status + ")");
   return resp.json();
+}
+
+/** 整条路线的坐标重校准（M20）：后端重跑补全 + 主动核验，用户手改真值不动。 */
+export interface RecheckRecord {
+  id: string;
+  name: string;
+  action: "align" | "replace" | "confirm" | "conflict" | "fill" | "keep" | "miss" | string;
+  level?: string;
+  confidence?: string;
+  dist_km?: number | null;
+  score?: number | null;
+  ms?: number;
+}
+
+export interface RecheckResult {
+  route: RouteJSON;
+  filled: number;
+  records: RecheckRecord[];
+  amapCalls: number;
+  amapReason: string;
+}
+
+export async function recheckRoute(
+  route: RouteJSON,
+  settings?: LlmSettings | null,
+): Promise<RecheckResult> {
+  const resp = await fetch(API_BASE + "/api/route/recheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
+    body: JSON.stringify({ route }),
+  });
+  if (!resp.ok) throw new Error("坐标校准失败 (" + resp.status + ")");
+  const data = await resp.json();
+  return {
+    route: data.route as RouteJSON,
+    filled: Number(data.filled || 0),
+    records: (data.records || []) as RecheckRecord[],
+    amapCalls: Number(data.amap_calls || 0),
+    amapReason: String(data.amap_reason || ""),
+  };
 }
 
 /** 酒店价格搜索（可选能力；未配置数据源时返回提示）。 */

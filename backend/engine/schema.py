@@ -25,6 +25,9 @@ class Hotel(BaseModel):
     lng: float
     note: str = ""
     prices: list[PriceItem] = Field(default_factory=list)
+    # M19 坐标溯源（可选、向后兼容）：source=memory|user|amap|llm|search|city，confidence=high|low|none
+    source: str = ""
+    confidence: str = ""
 
     @field_validator("prices", mode="before")
     @classmethod
@@ -71,6 +74,9 @@ class Place(BaseModel):
     transport: str = ""
     ticket: str = ""
     note: str = ""
+    # M19 坐标溯源（可选、向后兼容）：source=memory|user|amap|llm|search|city，confidence=high|low|none
+    source: str = ""
+    confidence: str = ""
 
 
 class DayPlan(BaseModel):

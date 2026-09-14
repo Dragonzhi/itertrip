@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { RouteJSON } from "../types/route";
 import { dayColor, emojiFor } from "../mapCore";
 import type { MapSettings } from "../lib/settings";
+import { BADGE_CLASS, coordBadge } from "../lib/coordSource";
 import HotelCard from "./HotelCard";
 
 interface TimelineProps {
@@ -119,6 +120,7 @@ export default function Timeline({
                 {(day.places || []).map((p, pi) => {
                   const key = `d${di}-p${pi}`;
                   const isActive = activeKey === key;
+                  const badge = showMeta ? coordBadge(p.source, p.confidence) : null;
                   return (
                     <div
                       key={key}
@@ -145,7 +147,18 @@ export default function Timeline({
                         {emojiFor(p)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold">{p.name}</div>
+                        <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
+                          <span data-testid="place-name">{p.name}</span>
+                          {badge && (
+                            <span
+                              title={badge.title}
+                              data-testid="coord-badge"
+                              className={"text-[10px] font-semibold rounded-md px-1.5 py-px " + BADGE_CLASS[badge.tone]}
+                            >
+                              {badge.text}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">
                           {showMeta && p.time && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">{p.time}</span>}
                           {showMeta && p.ticket && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">🎫 {p.ticket}</span>}

@@ -3,7 +3,8 @@ import { compressImage } from "../lib/imageCompress";
 import { useElapsed } from "../hooks/useElapsed";
 import CalendarPicker from "./CalendarPicker";
 import ThinkingBlock from "./ThinkingBlock";
-import type { ChatMessage, ClarifyQuestion } from "../types/chat";
+import DecisionTrace from "./DecisionTrace";
+import type { ChatMessage, ClarifyQuestion, TraceStep } from "../types/chat";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -17,6 +18,10 @@ interface ChatPanelProps {
   streamText?: string;
   /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
   streamThinking?: string;
+  /** M19 实时决策轨迹（流式期间逐步下发，终帧后落到消息上持久化） */
+  liveTrace?: TraceStep[];
+  /** M19：澄清卡提交后回写「已回答」，避免刷新后已答的卡复活 */
+  onAnswered?: (id: string) => void;
 }
 
 const EXAMPLES = [
@@ -155,20 +160,30 @@ function QuestionInput({
 
 /** 澄清问题卡：渲染 AI 待答问题，组装答案提交或跳过。 */
 export function ClarifyCard({
-  questions, msgId, disabled, onSend,
+  questions, msgId, disabled, answered, onSend, onAnswered,
 }: {
   questions: ClarifyQuestion[];
   msgId: string;
   disabled: boolean;
+  /** 已答（含刷新后从持久化历史恢复的状态）：不再渲染，避免重复提交 */
+  answered?: boolean;
   onSend: (text: string) => void;
+  onAnswered?: (id: string) => void;
 }) {
   const [values, setValues] = useState<Record<string, string | Set<string>>>({});
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
   const [multiCustomInputs, setMultiCustomInputs] = useState<Record<string, string>>({});
-  const [answered, setAnswered] = useState(false);
+  const [answeredLocal, setAnsweredLocal] = useState(false);
   const answeredRef = useRef<Set<string>>(new Set<string>());
   // answered via either ref (survives remounts within same component instance) or state (triggers re-render)
-  if (answered || answeredRef.current.has(msgId)) return null; // 已提交收起，不再占位
+  const done = answered || answeredLocal || answeredRef.current.has(msgId);
+  if (done) return null; // 已提交收起，不再占位
+
+  const markAnswered = () => {
+    answeredRef.current.add(msgId);
+    setAnsweredLocal(true);
+    onAnswered?.(msgId);
+  };
 
   const setVal = (key: string, v: string | Set<string>) => setValues((prev) => ({ ...prev, [key]: v }));
 
@@ -212,9 +227,8 @@ export function ClarifyCard({
   };
 
   const submitAnswer = () => {
-    answeredRef.current.add(msgId);
-    setAnswered(true);
     const ans = buildAnswer();
+    markAnswered();
     onSend(ans ? "好的，以下是我的选择：" + ans : "没什么特别偏好，按合理的默认来规划即可。");
   };
 
@@ -266,7 +280,7 @@ export function ClarifyCard({
         </button>
         <button
           type="button"
-          onClick={() => { answeredRef.current.add(msgId); setAnswered(true); onSend("按合理默认来规划即可。"); }}
+          onClick={() => { markAnswered(); onSend("按合理默认来规划即可。"); }}
           disabled={disabled}
           data-testid="clarify-skip"
           className="border border-line bg-white text-ink-soft rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft"
@@ -278,8 +292,8 @@ export function ClarifyCard({
   );
 }
 
-/** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。 */
-export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking, vision }: ChatPanelProps) {
+/** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。M19 加决策轨迹。 */
+export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking, vision, liveTrace, onAnswered }: ChatPanelProps) {
   const [text, setText] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [imgBusy, setImgBusy] = useState(false);
@@ -388,7 +402,19 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
             </div>
             {m.role === "assistant" && m.questions && m.questions.length > 0 && (
               <div className="w-full max-w-[90%]">
-                <ClarifyCard questions={m.questions} msgId={m.id} disabled={loading} onSend={onSend} />
+                <ClarifyCard
+                  questions={m.questions}
+                  msgId={m.id}
+                  disabled={loading}
+                  answered={m.answered}
+                  onSend={onSend}
+                  onAnswered={onAnswered}
+                />
+              </div>
+            )}
+            {m.role === "assistant" && m.trace && m.trace.length > 0 && (
+              <div className="w-full max-w-[90%] mt-1">
+                <DecisionTrace steps={m.trace} />
               </div>
             )}
           </div>
@@ -400,6 +426,7 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
               {stageLabel || "AI 正在思考…"}
               <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {elapsed}s</span>
             </div>
+            {liveTrace && liveTrace.length > 0 && <DecisionTrace steps={liveTrace} live />}
             {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
             {streamText && (
               <div className="flex justify-start">
