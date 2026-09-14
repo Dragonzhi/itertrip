@@ -119,7 +119,22 @@ SYSTEM_EDIT = (
     "或缺少完成修改所需的关键信息时，先按下方澄清规则输出 need_more_info 问题，changed=false，"
     "不要擅自猜测并大改路线。\n"
     "6. 坐标修正类要求（用户说某个地点位置不对、在非洲、在海里等）必须满足：changed 只能为 true（禁止 changed=false 的口头道歉），且 days 里对应地点的 lat/lng 必须改成你确信的真实坐标（WGS84），禁止原样返回或填 0；也要在 reply 里用一句话说明新坐标的大致方位（如“已修正到海口水巷口附近 20.03,110.32”）。\n"
+    "7. **酒店与报价也是路线数据**：换酒店、加/删酒店、设置或修改报价（「把每天酒店报价设为 300」"
+    "「这家太贵了换成 400 左右」）都是**路线修改**，必须 changed=true 并给出完整 days —— "
+    "报价写在 `days[].hotel.prices`，形如 `[{\"platform\": \"手动录入\", \"price\": 300, \"breakfast\": false, \"note\": \"\"}]`"
+    "（price 是**数字**不是字符串；hotel 为 null 的天不要凭空补酒店）。禁止只用 reply 说「已设置」却不改数据。\n"
+    "8. 第二段 `<<<JSON>>>` **每次都必须输出**：即使 changed=false 也要给 "
+    "`{\"reply\": ..., \"changed\": false, \"days\": <原样数组>}`。只输出叙述会被系统当成闲聊，"
+    "用户会以为你改了、其实一个字都没动。\n"
     + _QUESTIONS_HINT
+)
+
+# 用户消息里出现这些词 → 视为「要求改路线」而不是闲聊。用于模型只回叙述、没给 JSON 时的语义性重试
+# （M22.2：实测「把每天酒店的报价都设置为 300 块钱」被模型当成闲聊顺着回，路线一字未动）。
+_EDIT_INTENT_HINTS = (
+    "设为", "设成", "设置", "改成", "改为", "调整为", "调整", "修改", "统一",
+    "换成", "替换", "增加", "添加", "加上", "删除", "删掉", "去掉", "移除",
+    "挪到", "移到", "移动到", "报价", "价格", "人均", "预算", "门票",
 )
 
 # ---------------- 请求模型 ----------------
@@ -678,19 +693,29 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         parse_err = ""
         exhausted = False  # 重试后仍解析失败
         attempts = 0
+        # M22.2：用户这条消息看起来是在要求改路线（而非闲聊）—— 模型若只回叙述不给 JSON，
+        # 则再问一次并明确「这是对路线数据的修改」。没有它就会被当成闲聊顺着回，用户以为改了实际没动。
+        edit_intent = edit_mode and any(k in req.prompt for k in _EDIT_INTENT_HINTS)
+        semantic_retry = False
 
         for attempt in range(2):
             if attempt == 1:
-                yield _sse("stage", {"stage": "retry", "label": "格式有点问题，正在重新整理…"})
+                yield _sse("stage", {"stage": "retry", "label": (
+                    "刚才只回了文字、没动路线，正在重试…" if semantic_retry else "格式有点问题，正在重新整理…"
+                )})
                 yield emit(_trace_step(
-                    "retry", "retry", "warn", "输出格式不对，正在带错误重试",
+                    "retry", "retry", "warn",
+                    "模型只回了叙述、未改路线，正在重试" if semantic_retry else "输出格式不对，正在带错误重试",
                     f"原因：{(parse_err or '未识别')[:140]}",
                 ))
             attempts = attempt + 1
-            payload = base_payload + (
-                "\n\n（上次输出解析失败：" + parse_err + "。请严格按 <<<REPLY>>> / <<<JSON>>> 两段格式重新输出完整内容。）"
-                if attempt == 1 and parse_err else ""
-            )
+            if attempt == 1 and parse_err:
+                head = "（上次你只回了叙述、没有输出 <<<JSON>>> 段：" if semantic_retry else "（上次输出解析失败："
+                payload = base_payload + (
+                    "\n\n" + head + parse_err + "。请严格按 <<<REPLY>>> / <<<JSON>>> 两段格式重新输出完整内容。）"
+                )
+            else:
+                payload = base_payload
             t_llm = time.perf_counter()
             yield emit(_trace_step(
                 "llm:%d" % attempt, "llm", "run", "正在生成…",
@@ -786,6 +811,18 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     break
                 except (ValueError, json.JSONDecodeError):
                     data = None
+                    # M22.2：只回叙述、没给 JSON —— 闲聊是合法路径，但**用户明确要改路线**时
+                    # 「说了没做」不能就这么过去（实测「把酒店报价设为 300」正是栽在这）。
+                    if edit_intent and attempt == 0:
+                        semantic_retry = True
+                        parse_err = (
+                            "你上一条只输出了叙述、没有输出 <<<JSON>>> 段，系统因此判定「未改动路线」，"
+                            "用户看到的是「改好了」但数据一个字都没变。用户的这条消息是对**路线数据**的修改要求"
+                            "（酒店报价属于 days[].hotel.prices，形如 [{platform, price, breakfast, note}]，"
+                            "price 是数字）。请 changed=true 并输出完整 days 数组；确实与路线无关时才 changed=false，"
+                            "且同样必须输出 <<<JSON>>> 段（days 给原样数组）。"
+                        )
+                        continue
                     break  # 纯叙述/追问/闲聊，合法路径
             try:
                 data = _extract_json(json_part)
@@ -910,10 +947,19 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         # ---- 改路线模式 ----
         yield _sse("stage", {"stage": "done", "label": "完成"})
         if data is None:
+            # M22.2：用户要的是改路线、模型却只回了叙述（还常自称「已改好」）——
+            # 必须明说「行程一个字都没变」，不能把模型那句「已设置」原样递给用户。
+            claim = (reply_text or "").strip()
+            reply = (
+                "⚠️ 这轮模型只回了文字、没有输出可执行的路线改动，**行程一个字都没变**"
+                + (f"（你看到的「{claim[:40]}…」不算数）" if claim else "")
+                + "。可以再说一次，或直接在「✎ 编辑酒店」里手填报价。"
+                if edit_intent else (claim or "我在呢，想怎么改？")
+            )
             for ev in _reply_events(
                 tr,
                 _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未产出改动"),
-                {"reply": reply_text or "我在呢，想怎么改？", "intent": "chitchat", "route": None},
+                {"reply": reply, "intent": "chitchat", "route": None},
             ):
                 yield ev
             return
