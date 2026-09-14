@@ -5,7 +5,7 @@ import Timeline from "../components/Timeline";
 import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../components/PlaceForm";
 import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../components/HotelForm";
 import { useTripHistory } from "../hooks/useTripHistory";
-import type { PlaceType, RouteJSON } from "../types/route";
+import type { Hotel, PlaceType, PriceItem, RouteJSON } from "../types/route";
 import CalendarPicker from "../components/CalendarPicker";
 import { exportHtml, chatStream, dateCheck, geocode as geocodeApi, mergeTrace, recheckRoute, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
@@ -74,7 +74,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [relocating, setRelocating] = useState(false);
   const [relocateMsg, setRelocateMsg] = useState("");
   const [hotelForm, setHotelForm] = useState<{ target: { di: number }; hasCoord: boolean } | null>(null);
-  const [hotelDraft, setHotelDraft] = useState<HotelDraft>({ name: "", note: "", lat: 0, lng: 0 });
+  const [hotelDraft, setHotelDraft] = useState<HotelDraft>({ name: "", note: "", lat: 0, lng: 0, prices: [] });
   const [picking, setPicking] = useState<null | { purpose: "add" } | { purpose: "repick"; target: { di: number; pi: number } } | { purpose: "repick-hotel"; target: { di: number } }>(null);
   const lastActiveDayRef = useRef(0);
   /* M16：地图显示设置（纯前端视图态，持久化到 localStorage） */
@@ -462,7 +462,10 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     const h = route.days[di]?.hotel;
     if (!h) return;
     lastActiveDayRef.current = di;
-    setHotelDraft({ name: h.name || "", note: h.note || "", lat: h.lat, lng: h.lng });
+    setHotelDraft({
+      name: h.name || "", note: h.note || "", lat: h.lat, lng: h.lng,
+      prices: (h.prices || []).map((pr) => ({ ...pr })),
+    });
     setHotelForm({ target: { di }, hasCoord: h.lat != null && (h.lat !== 0 || h.lng !== 0) });
   };
   const startHotelRepick = () => {
@@ -473,15 +476,25 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   };
   const saveHotel = (scope: "day" | "all") => {
     if (!hotelForm) return;
-    const d = { name: hotelDraft.name, note: hotelDraft.note, lat: hotelDraft.lat, lng: hotelDraft.lng };
+    // 只留真正填了价格的报价；平台留空补「手动录入」（与后端 _sanitize_prices 的兜底口径一致）
+    const prices = (hotelDraft.prices || [])
+      .filter((pr) => Number(pr.price) > 0)
+      .map((pr) => ({
+        platform: (pr.platform || "").trim() || "手动录入",
+        price: Number(pr.price),
+        breakfast: !!pr.breakfast,
+        note: (pr.note || "").trim(),
+      }));
+    const d = { name: hotelDraft.name, note: hotelDraft.note, lat: hotelDraft.lat, lng: hotelDraft.lng, prices };
     if (!d.name.trim()) return;
     const t = hotelForm.target;
     mutate((r) => {
       const base = r.days[t.di];
       if (!base) return;
-      const apply = (hh: { name: string; note?: string; lat: number; lng: number }) => {
+      const apply = (hh: Hotel) => {
         hh.name = d.name; hh.note = d.note;
         hh.lat = d.lat; hh.lng = d.lng;
+        hh.prices = d.prices.map((pr) => ({ ...pr }));
       };
       if (scope === "all") {
         // 设为所有天默认酒店：复制到每一个有酒店（或所有）天
@@ -497,6 +510,32 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     });
     lastActiveDayRef.current = t.di;
     setHotelForm(null);
+  };
+
+  /* ---------- M22.1：搜索到的酒店报价「存入行程」---------- */
+  /**
+   * 「🔍 搜索网络报价」此前只把结果拼在表格里给人看，一刷新就没了 —— 用户搜到价格却存不下来。
+   * 这里按「平台 + 价格」去重后并入该天的 hotel.prices（走同一条撤销栈）。
+   */
+  const saveHotelPrices = (di: number, incoming: PriceItem[]) => {
+    if (!incoming.length) return;
+    mutate((r) => {
+      const h = r.days[di]?.hotel;
+      if (!h) return;
+      const merged: PriceItem[] = (h.prices || []).map((pr) => ({ ...pr }));
+      for (const pr of incoming) {
+        const price = Number(pr.price);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        const platform = (pr.platform || "").trim() || "搜索来源";
+        if (merged.some((x) => x.platform === platform && Number(x.price) === price)) continue;
+        merged.push({
+          platform, price,
+          breakfast: !!pr.breakfast,
+          note: (pr.note || "").trim(),
+        });
+      }
+      h.prices = merged;
+    });
   };
 
   /* ---------- Esc：关表单 / 退选点 ---------- */
@@ -892,6 +931,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             onEditPlace={openEditForm}
             onDropMove={handleDropMove}
             onEditHotel={openHotelForm}
+            onSaveHotelPrices={saveHotelPrices}
             view={mapView}
           />
         </div>

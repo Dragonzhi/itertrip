@@ -19,7 +19,7 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 - 💬 **Conversational planning**: say "Chengdu, 3 days", paste guide text, or **drop screenshots** (VLM reads images straight into a route, up to 4)
 - ❓ **Clarifying questions**: when info is missing the AI asks first (date picker / budget choice / preference multi-select), then generates
 - ✋ **Dual-track editing**: conversational edits ("move the museum to day 1 afternoon") + hands-on editing (drag reorder / cross-day / edit form / map re-pick / undo-redo)
-- 🏨 **Hotel price card**: prices supplied manually by the user (neutral, no scraping), lowest auto-highlighted
+- 🏨 **Hotel price card**: prices supplied manually by the user (neutral, no scraping) — add or edit quotes right in "✎ Edit hotel", or store the results of "🔍 Search online quotes" with one click; lowest auto-highlighted
 - 📦 **Export & import**: editable HTML opens by double-click — sharing is the product experience; JSON / exported HTML can be re-imported for further editing
 - 🧠 **Travel memory (RAG, opt-in)**: extracted guides are chunked per entity into a memory store, so a later chat about the same destination gets answers that **cite your past guides**; coordinates you fix by hand on the map are remembered and reused directly (retrieval-augmented geocoding)
 - 🧭 **Visible decisions** (M19): every AI turn expands into a "decision trace" — which model, whether past guides were hit, where each place's coordinate came from (AMap POI vs model guess), and which were replaced or snapped to the POI

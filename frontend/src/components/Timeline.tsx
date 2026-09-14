@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { RouteJSON } from "../types/route";
+import type { PriceItem, RouteJSON } from "../types/route";
 import { dayColor, emojiFor } from "../mapCore";
 import type { MapSettings } from "../lib/settings";
 import { BADGE_CLASS, coordBadge } from "../lib/coordSource";
@@ -20,6 +20,8 @@ interface TimelineProps {
   onHotelFocus?: (di: number) => void;
   /** 编辑酒店（M16：逐天自定义） */
   onEditHotel?: (di: number) => void;
+  /** 把「搜索网络报价」的结果存入行程（M22.1：此前搜出来只能看、存不下来） */
+  onSaveHotelPrices?: (di: number, prices: PriceItem[]) => void;
   /** 地图显示设置（M16）：showSummary/showMeta 控制展示 */
   view?: MapSettings;
 }
@@ -28,7 +30,7 @@ interface TimelineProps {
 export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onPlaceFocus, onHotelFocus,
-  onEditHotel,
+  onEditHotel, onSaveHotelPrices,
   view,
 }: TimelineProps) {
   const showSummary = view?.showSummary !== false;
@@ -202,7 +204,7 @@ export default function Timeline({
                 })}
 
                 {day.hotel && day.hotel.name && (
-                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} />
+                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
                 )}
               </div>
             )}

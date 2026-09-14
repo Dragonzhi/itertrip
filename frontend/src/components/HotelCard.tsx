@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Hotel } from "../types/route";
+import type { Hotel, PriceItem } from "../types/route";
 import { searchHotel, type SearchResult } from "../api/client";
 
 interface HotelCardProps {
@@ -12,13 +12,16 @@ interface HotelCardProps {
   showMeta?: boolean;
   /** 编辑酒店（M16：逐天自定义） */
   onEdit?: () => void;
+  /** 把搜索结果里的报价存进行程（M22.1：此前搜出来只能看、存不下来） */
+  onSavePrices?: (prices: PriceItem[]) => void;
 }
 
 /** 酒店比价卡：最低价平台自动高亮 + 「最低」标签。 */
-export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit }: HotelCardProps & { city?: string }) {
+export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit, onSavePrices }: HotelCardProps & { city?: string }) {
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const prices = hotel.prices || [];
   const best = prices.length ? prices.reduce((a, b) => (a.price <= b.price ? a : b)) : null;
   return (
@@ -60,6 +63,22 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
             {searching ? "搜索中…" : "🔍 搜索网络报价"}
           </button>
           {searchErr && <span className="text-[11px] text-[#B85C5C] ml-2">{searchErr}</span>}
+          {searchResult && searchResult.prices.length > 0 && onSavePrices && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSavePrices(searchResult.prices.map((p) => ({ ...p, breakfast: p.breakfast ?? false })));
+                setSaved(true);
+              }}
+              disabled={saved}
+              title="把这些搜索到的报价记进行程（之后可在「编辑酒店」里改）"
+              data-testid="hotel-save-prices"
+              className="ml-2 border border-moss bg-moss-soft text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-white disabled:opacity-50"
+            >
+              {saved ? "✓ 已存入" : "＋ 存入行程"}
+            </button>
+          )}
         </div>
         </>}
       </div>}

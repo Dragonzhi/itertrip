@@ -58,6 +58,18 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
 }
 .place-item.dragging { opacity: 0.35; }
 
+/* ===== 时间线条目的「编辑 ✎ / 删除 ✕」按钮 =====
+ * 这两个按钮带 opacity-0（默认隐藏、避免干扰），但 **Web 端一直漏了显形规则**，
+ * 于是它们永久不可见 —— 导出模板里同样的规则是有的（route_map.html）。
+ * 悬停显形 + 键盘聚焦显形；触屏没有 hover，降到半透明常驻，否则根本点不到。 */
+.place-item:hover .place-edit,
+.place-item:hover .place-del,
+.place-edit:focus-visible,
+.place-del:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .place-edit, .place-del { opacity: 0.55; }
+}
+
 /* ===== 对话改路线：变化高亮（DESIGN §7 M14 前置，M13 已接入 pin-key 通道）===== */
 @keyframes placeFlash {
   0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.85); }
