@@ -351,6 +351,27 @@
     .trip-title h1 { font-size: 14px; }
     #toggle-panel { padding: 7px 11px; font-size: 12px; }
     #legend { display: none; }
+
+    /* M23：手机顶栏收紧——品牌只留图标、元信息进抽屉，否则标题会把「☰ 行程」挤出屏外 */
+    #topbar { top: 8px; left: 8px; right: 8px; gap: 6px; }
+    .brand { padding: 7px 9px; }
+    .brand .name { display: none; }
+    .trip-title { flex: 1 1 auto; padding: 6px 10px; }
+    .trip-title .meta { display: none; }
+
+    /* M23：手机把右侧栏改成底部抽屉——先看到地图，行程从下面拉出。
+       宽度交给 CSS（见 initPanelResize 的 mobile 短路，避免内联 400px 半屏）。 */
+    #panel {
+      top: auto; bottom: 0; left: 0; right: 0;
+      width: 100% !important; max-width: none !important; height: 62dvh;
+      border-left: 0; border-top: 1px solid var(--line);
+      border-radius: 16px 16px 0 0;
+      padding-bottom: env(safe-area-inset-bottom);
+      box-shadow: 0 -10px 40px rgba(43,43,40,.15);
+    }
+    #panel.collapsed { transform: translateY(calc(100% + 2px)); }
+    .panel-resize { display: none; }          /* 横拖在手机上没意义 */
+    .place-edit, .place-del { width: 28px; height: 28px; }   /* 20px 点不中 */
   }
 </style>
 </head>
@@ -1161,6 +1182,12 @@ if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 64
   function clamp(w){ const b = bounds(); return Math.round(Math.min(Math.max(w, b.minW), b.maxW)); }
   let curW = 0;   /* 已应用宽度：收手/夹边/键盘都以它为准，避免二次 DOM 测量把刚拖出的宽度盖掉 */
   function applyWidth(w){
+    if (window.matchMedia && window.matchMedia('(max-width: 640px)').matches){
+      /* 手机是底部抽屉：宽度/最大宽度交回 CSS，别留下桌面拖出来的内联宽度 */
+      panel.style.width = ''; panel.style.maxWidth = '';
+      curW = currentWidth();
+      return curW;
+    }
     w = clamp(w);
     panel.style.width = w + 'px';
     panel.style.maxWidth = 'none';   /* 覆盖 CSS max-width，改由 JS 夹边控制 */
