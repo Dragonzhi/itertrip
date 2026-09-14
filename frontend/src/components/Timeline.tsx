@@ -209,24 +209,27 @@ export default function Timeline({
                           </button>
                         </>
                       )}
-                      {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存） */}
+                      {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存）。
+                          两枚合成一个 28×56 胶囊 + 发丝分隔线：卡片右侧只多"一个控件"，
+                          不再和 ✎✕ 混成三颗同形散键；图标由 ↑↓ 文字换成细描边箭头
+                          （文字箭头在 12px 下不等宽也不垂直居中）。 */}
                       {editing && onMovePlace && (
-                        <div className="reorder-btns flex-col gap-1 absolute top-[7px] right-[64px]">
+                        <div className="reorder-btns flex-col absolute top-[7px] right-[64px] rounded-md border border-line bg-white overflow-hidden">
                           <button
                             type="button"
                             title="上移（到上一天末位）"
                             onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, -1); }}
-                            className="w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center"
+                            className="w-7 h-7 flex items-center justify-center cursor-pointer text-ink-soft transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
                           >
-                            ↑
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
                           </button>
                           <button
                             type="button"
                             title="下移（到下一天首位）"
                             onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, 1); }}
-                            className="w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center"
+                            className="w-7 h-7 flex items-center justify-center cursor-pointer text-ink-soft border-t border-line transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
                           >
-                            ↓
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
                           </button>
                         </div>
                       )}
