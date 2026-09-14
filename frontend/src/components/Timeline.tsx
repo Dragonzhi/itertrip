@@ -155,8 +155,36 @@ export default function Timeline({
                       }}
                       className={`place-item flex gap-2.5 py-2.5 pr-2 pl-1 border-b border-dashed border-line cursor-pointer rounded-lg transition-colors relative ${isActive ? "bg-gold-soft" : "hover:bg-white"}`}
                     >
-                      <div className="w-[34px] h-[34px] rounded-[10px] shrink-0 flex items-center justify-center text-lg bg-white border border-line">
-                        {emojiFor(p)}
+                      <div className="flex flex-col items-center shrink-0">
+                        <div className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center text-lg bg-white border border-line">
+                          {emojiFor(p)}
+                        </div>
+                        {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存）。
+                            放在缩略图这一列的下方空位里：轨道与缩略图同心（轨-图标 3px），
+                            正文/标题/缩略图的横坐标一个都不动；代价是编辑态该列固定 34+3+56=93，
+                            所有地点行统一到 111px（矮行因此变高）。
+                            无边框，用 #F1EDE4 铺成凹槽 —— 不加线条所以不违和，常驻底色又让
+                            触屏一眼看出能点（这档底色现有「AI 推测」徽标在用）。 */}
+                        {editing && onMovePlace && (
+                          <div className="reorder-btns flex-col mt-[3px] w-7 rounded-[9px] bg-[#F1EDE4] overflow-hidden">
+                            <button
+                              type="button"
+                              title="上移（到上一天末位）"
+                              onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, -1); }}
+                              className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft transition-colors hover:bg-[#E7E0D3] hover:text-ink active:bg-[#E7E0D3]"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
+                            </button>
+                            <button
+                              type="button"
+                              title="下移（到下一天首位）"
+                              onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, 1); }}
+                              className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft border-t border-[#E4DCCE] transition-colors hover:bg-[#E7E0D3] hover:text-ink active:bg-[#E7E0D3]"
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
@@ -208,32 +236,6 @@ export default function Timeline({
                             ✕
                           </button>
                         </>
-                      )}
-                      {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存）。
-                          两枚合成一枚 56×28 横向胶囊（发丝分隔线），并与 ✎✕ 统一成 28 高、
-                          同一条上基线、间距 4px —— 卡片右上角读作"一条工具排"，
-                          而不是"一座 56 高的塔 + 两颗 20 的扣"。
-                          图标是 13px 细描边 chevron（12px 文字箭头不等宽也不垂直居中）。
-                          容器用 ring 而非 border 画外框：ring 不占布局，56×28 正好容纳两枚 28。 */}
-                      {editing && onMovePlace && (
-                        <div className="reorder-btns absolute top-[7px] right-[68px] w-14 h-7 rounded-md bg-white overflow-hidden ring-1 ring-line">
-                          <button
-                            type="button"
-                            title="上移（到上一天末位）"
-                            onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, -1); }}
-                            className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
-                          </button>
-                          <button
-                            type="button"
-                            title="下移（到下一天首位）"
-                            onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, 1); }}
-                            className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft border-l border-line transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-                          </button>
-                        </div>
                       )}
                     </motion.div>
                   );
