@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Hotel, PriceItem } from "../types/route";
 import { searchHotel, type SearchResult } from "../api/client";
+import { NumberTicker } from "./magicui/number-ticker";
 
 interface HotelCardProps {
   hotel: Hotel;
@@ -106,7 +107,10 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
                   {pr.platform}
                   {isBest && <span className="bg-gold text-white text-[10px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">最低</span>}
                 </td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums">¥{pr.price}</td>
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums">
+                  {/* Magic UI NumberTicker：价格滚入视口时滚数（整数不补小数位） */}
+                  ¥<NumberTicker value={pr.price} decimalPlaces={Number.isInteger(pr.price) ? 0 : 1} />
+                </td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.breakfast ? "含早" : "无早"}</td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.note || ""}</td>
               </tr>

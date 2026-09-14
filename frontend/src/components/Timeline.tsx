@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { motion } from "motion/react";
 import type { DragEvent } from "react";
+import { BlurFade } from "./magicui/blur-fade";
 import type { PriceItem, RouteJSON } from "../types/route";
 import { dayColor, emojiFor } from "../mapCore";
 import type { MapSettings } from "../lib/settings";
@@ -103,6 +104,8 @@ export default function Timeline({
               }}
               className={`mb-7 ${dragOverDay === di ? "outline-2 outline-dashed outline-moss rounded-lg" : ""}`}
             >
+            {/* Magic UI BlurFade：天分组滚入视口时淡入（错峰，避免整屏同时闪） */}
+            <BlurFade inView delay={Math.min(di * 0.04, 0.2)}>
             <button
               type="button"
               onClick={() => toggle(di)}
@@ -236,6 +239,7 @@ export default function Timeline({
                 )}
               </div>
             )}
+            </BlurFade>
           </div>
         );
       })}

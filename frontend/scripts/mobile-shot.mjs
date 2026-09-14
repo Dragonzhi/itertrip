@@ -1,6 +1,7 @@
 // M23：零依赖 CDP 验收脚本（复用本机 Edge，不需要 playwright）。
 // 用法: node scripts/mobile-shot.mjs [375x667 ...]     输出: frontend/test-artifacts/*.png
 // 前置: 另开终端跑  npx vite --host 127.0.0.1 --port 5173
+// 量别的页面（如导出的自包含 HTML）:  $env:SHOT_URL='file:///.../export.html'; node scripts/mobile-shot.mjs 390x844
 // 三件事：① 各尺寸截图（含两个抽屉打开态）② 探针（横向溢出 + 关键控件是否在视口内）
 // ③ 手机尺寸下的功能断言：点"下移"真能跨天移动、撤销能还原。
 import { spawn } from "node:child_process";
@@ -11,7 +12,8 @@ import { fileURLToPath } from "node:url";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = 9333;
-const BASE = "http://127.0.0.1:5173/itertrip/";
+// SHOT_URL 可指向任意页面（如导出的自包含 HTML）来量它的布局
+const BASE = process.env.SHOT_URL || "http://127.0.0.1:5173/itertrip/";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "test-artifacts");
 
 // 最小合法 RouteJSON（够 Plan 页渲染；2 天 / 3 个带坐标地点 / 1 家带报价酒店）
@@ -99,7 +101,7 @@ const shoot = async (label, w, h) => {
 };
 
 /** 探针：横向溢出 + 关键控件是否在视口内可达（手机验收的核心断言） */
-const PROBES = ["[data-testid=settings-gear]", "[data-testid=chat-toggle]", "[data-testid=panel-toggle]", "[data-testid=export-trigger]", "[data-testid=date-picker-trigger]"];
+const PROBES = ["[data-testid=settings-gear]", "[data-testid=chat-toggle]", "[data-testid=panel-toggle]", "[data-testid=export-trigger]", "[data-testid=date-picker-trigger]", "#topbar", ".brand", ".trip-title", "#toggle-panel", "#panel"];
 const probe = async (w, h) => {
   const out = await evalIn(`(() => {
     const de = document.documentElement;
@@ -157,6 +159,20 @@ const checkSheetDrag = async () => {
   const ok = opened === "false" && bounced === "false" && after === "true";
   console.log("  " + (ok ? "✓" : "✗") + " 拖手柄下滑关闭(" + how + "): opened=" + opened + " 小拖后=" + bounced + " 大拖后=" + after);
   return ok;
+};
+
+/** 功能断言：价格数字最终必须落在真值（NumberTicker 从 0 滚上来，卡住就是"¥0"谎言） */
+const checkPrice = async () => {
+  for (let i = 0; i < 12; i++) {
+    const t = await evalIn(`(() => {
+      const td = [...document.querySelectorAll("td")].find((x) => /^¥\\d/.test(x.textContent));
+      return td ? td.textContent.trim() : null;
+    })()`);
+    if (t === "¥468") { console.log("  ✓ 价格滚数落定:", t); return true; }
+    if (i === 11) { console.log("  ✗ 价格滚数未落定:", t); return false; }
+    await sleep(250);
+  }
+  return false;
 };
 
 /** 抽屉打开后：表头/工具条控件必须可达（手机验收项） */
@@ -222,6 +238,7 @@ for (const [w, h] of sizes) {
   await sleep(mobile ? 1800 : 1200);          // 等瓦片与布局稳定
   await shoot("plan", w, h);
   await probe(w, h);
+  if (!mobile && !(await checkPrice())) failures++;   // 手机上酒店行在抽屉外，单独不查
   // 抽屉打开态：用 testid 点（md:hidden 的元素 .click() 依然有效）
   if (await evalIn("(() => { const b = document.querySelector('[data-testid=chat-toggle]'); if (!b) return false; b.click(); return true; })()")) {
     await sleep(700); await shoot("plan-chat-open", w, h);
