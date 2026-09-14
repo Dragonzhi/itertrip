@@ -1,2 +1,3 @@
+# pnpm 11：只允许 esbuild 跑 postinstall（其余依赖的构建脚本一律忽略）
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
