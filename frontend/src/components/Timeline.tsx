@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { motion } from "motion/react";
+import type { DragEvent } from "react";
 import type { PriceItem, RouteJSON } from "../types/route";
 import { dayColor, emojiFor } from "../mapCore";
 import type { MapSettings } from "../lib/settings";
@@ -126,7 +128,8 @@ export default function Timeline({
                   const isActive = activeKey === key;
                   const badge = showMeta ? coordBadge(p.source, p.confidence) : null;
                   return (
-                    <div
+                    <motion.div
+                      layout
                       key={key}
                       data-key={key}
                       onClick={(e) => { e.stopPropagation(); onPlaceClick(di, pi); }}
@@ -134,9 +137,11 @@ export default function Timeline({
                       draggable={editing}
                       onDragStart={(e) => {
                         if (!editing) return;
+                        // motion.div 的 onDragStart 类型是手势事件联合，实际的 HTML5 拖拽事件仍是 DragEvent
+                        const ev = e as unknown as DragEvent<HTMLDivElement>;
                         dragRef.current = { di, pi };
-                        e.dataTransfer.effectAllowed = "move";
-                        try { e.dataTransfer.setData("text/plain", key); } catch { /* noop */ }
+                        ev.dataTransfer.effectAllowed = "move";
+                        try { ev.dataTransfer.setData("text/plain", key); } catch { /* noop */ }
                       }}
                       onDragEnd={() => { dragRef.current = null; setDragOverDay(null); }}
                       onDragOver={(e) => {
@@ -222,7 +227,7 @@ export default function Timeline({
                           </button>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
                 })}
 

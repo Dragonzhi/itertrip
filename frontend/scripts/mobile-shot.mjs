@@ -55,7 +55,15 @@ const events = [];
 ws.onmessage = (m) => {
   const msg = JSON.parse(m.data);
   if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  else if (msg.method) events.push(msg);
+  else if (msg.method) {
+    if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") {
+      console.log("  ! 页面 console.error:", msg.params.args.map((a) => a.value || a.description || a.type).join(" ").slice(0, 300));
+    }
+    if (msg.method === "Runtime.exceptionThrown") {
+      console.log("  ! 页面异常:", JSON.stringify(msg.params.exceptionDetails).slice(0, 300));
+    }
+    events.push(msg);
+  }
 };
 const send = (method, params = {}, sessionId) => new Promise((res) => {
   const id = ++seq;
@@ -95,7 +103,7 @@ const PROBES = ["[data-testid=settings-gear]", "[data-testid=chat-toggle]", "[da
 const probe = async (w, h) => {
   const out = await evalIn(`(() => {
     const de = document.documentElement;
-    const res = { size: "${w}x${h}", overflowX: de.scrollWidth - de.clientWidth, bodyOverflow: document.body.scrollWidth - window.innerWidth, items: {} };
+    const res = { size: "${w}x${h}", overflowX: de.scrollWidth - de.clientWidth, bodyOverflow: document.body.scrollWidth - window.innerWidth, rootKids: (document.getElementById("root") || {}).childElementCount ?? -1, testids: document.querySelectorAll("[data-testid]").length, items: {} };
     for (const sel of ${JSON.stringify(PROBES)}) {
       const el = [...document.querySelectorAll(sel)].find((e) => e.getBoundingClientRect().width > 0);
       res.items[sel] = el ? (() => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), inView: r.width > 0 && r.x >= 0 && r.right <= window.innerWidth + 1 && r.y >= 0 && r.bottom <= window.innerHeight + 1 }; })() : null;
@@ -105,6 +113,50 @@ const probe = async (w, h) => {
   const bad = out.overflowX > 1 || out.bodyOverflow > 1;
   console.log("  " + (bad ? "✗" : "✓") + " 无横向溢出:", JSON.stringify({ overflowX: out.overflowX, bodyOverflow: out.bodyOverflow }));
   console.log("  控件:", JSON.stringify(out.items));
+};
+
+/** 功能断言：拖抽屉手柄下滑 → 关闭（Motion dragControls + 阈值），并顺带验证没被拖时能弹回 */
+const checkSheetDrag = async () => {
+  const opened = await evalIn("document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden')");
+  const box = await evalIn(`(() => {
+    const h = [...document.querySelectorAll(".sheet-handle")].find((e) => e.getBoundingClientRect().width > 0);
+    if (!h) return null;
+    const r = h.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  })()`);
+  if (!box) { console.log("  ✗ 拖拽: 找不到手柄"); return false; }
+  const drag = async (useTouch, dy) => {
+    if (useTouch) {
+      await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x, y: box.y }] }, S);
+      for (let i = 1; i <= 4; i++) {
+        await send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: box.x, y: box.y + (dy * i) / 4 }] }, S);
+        await sleep(50);
+      }
+      await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }, S);
+    } else {
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x: box.x, y: box.y, button: "left", clickCount: 1 }, S);
+      for (let i = 1; i <= 4; i++) {
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y + (dy * i) / 4, button: "left" }, S);
+        await sleep(50);
+      }
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x, y: box.y + dy, button: "left", clickCount: 1 }, S);
+    }
+  };
+  const hidden = () => evalIn("document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden')");
+  // 先小幅拖（30px，不该关）再大幅拖（200px，该关）
+  await drag(true, 30); await sleep(500);
+  const bounced = await hidden();
+  await drag(true, 200); await sleep(700);
+  let after = await hidden();
+  let how = "touch";
+  if (after !== "true") {                       // 触屏事件没生效时退一步试鼠标
+    await drag(false, 200); await sleep(700);
+    after = await hidden();
+    how = "mouse";
+  }
+  const ok = opened === "false" && bounced === "false" && after === "true";
+  console.log("  " + (ok ? "✓" : "✗") + " 拖手柄下滑关闭(" + how + "): opened=" + opened + " 小拖后=" + bounced + " 大拖后=" + after);
+  return ok;
 };
 
 /** 抽屉打开后：表头/工具条控件必须可达（手机验收项） */
@@ -173,7 +225,9 @@ for (const [w, h] of sizes) {
   // 抽屉打开态：用 testid 点（md:hidden 的元素 .click() 依然有效）
   if (await evalIn("(() => { const b = document.querySelector('[data-testid=chat-toggle]'); if (!b) return false; b.click(); return true; })()")) {
     await sleep(700); await shoot("plan-chat-open", w, h);
-    await evalIn("document.querySelector('[data-testid=chat-toggle]').click()"); await sleep(400);
+    if (mobile && !(await checkSheetDrag())) failures++;
+    const stillOpen = await evalIn("document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden') === 'false'");
+    if (stillOpen) { await evalIn("document.querySelector('[data-testid=chat-toggle]').click()"); await sleep(400); }
   }
   if (await evalIn("(() => { const b = document.querySelector('[data-testid=panel-toggle]'); if (!b) return false; b.click(); return true; })()")) {
     await sleep(700); await shoot("plan-panel-open", w, h);

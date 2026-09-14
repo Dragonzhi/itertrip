@@ -17,6 +17,7 @@ import { distanceKm } from "../lib/coordSource";
 import { exportFilename } from "../lib/exportName";
 import { isMobile } from "../lib/viewport";
 import { moveTarget } from "../lib/reorder";
+import { animate, motion, MotionConfig, useDragControls, useMotionValue } from "motion/react";
 import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
 import {
   clearPlanChatHistory,
@@ -662,6 +663,14 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     if (next && isMobile()) setChatOpen(false);
     setPanelOpen(next);
   };
+  /* M23 P4：抽屉拖拽手柄（只手机；桌面侧栏是左右滑出，纵向拖会撕裂）。
+     dragListener=false → 只有手柄起拖，内部滚动列表照常滚。 */
+  const draggable = isMobile();
+  const chatDrag = useDragControls();
+  const panelDrag = useDragControls();
+  const chatY = useMotionValue(0);
+  const panelY = useMotionValue(0);
+
   /** 手机上点地图收起抽屉（桌面两个侧栏可常驻，不动） */
   const closeSheets = () => {
     if (!isMobile()) return;
@@ -733,6 +742,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   );
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="h-[100dvh] overflow-hidden">
       <MapView
         route={route}
@@ -811,13 +821,29 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
       {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈） */}
       <aside
-        className={`fixed z-[400] bg-cream flex flex-col transition-transform duration-300 shadow-[10px_0_40px_rgba(43,43,40,0.15)] max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:top-0 md:left-0 md:bottom-0 md:right-auto md:w-[380px] md:border-r ${
+        className={`fixed z-[400] transition-transform duration-300 max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] md:top-0 md:left-0 md:bottom-0 md:right-auto md:w-[380px] ${
           chatOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:-translate-x-[calc(100%+2px)] md:translate-y-0"
         }`}
         data-testid="ai-drawer"
         aria-hidden={!chatOpen}
       >
-        <div className="sheet-handle md:hidden h-1.5 w-10 rounded-full bg-line mx-auto mt-2 shrink-0" />
+        {/* M23 P4：可见的"纸面"是这层 —— 拖手柄下滑关闭（松手弹回，越阈值则关） */}
+        <motion.div
+          drag={draggable ? "y" : false}
+          dragListener={false}
+          dragControls={chatDrag}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={{ top: 0, bottom: 0.4 }}
+          style={{ y: chatY }}
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 90 || info.velocity.y > 500) setChatOpen(false);
+            animate(chatY, 0, { type: "spring", stiffness: 400, damping: 40 });
+          }}
+          className="h-full flex flex-col bg-cream overflow-hidden shadow-[10px_0_40px_rgba(43,43,40,0.15)] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:border-r"
+        >
+        <div className="sheet-handle md:hidden shrink-0 flex justify-center pt-2 pb-1.5" onPointerDown={(e) => chatDrag.start(e)}>
+          <span className="h-1.5 w-10 rounded-full bg-line" />
+        </div>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
           <span className="text-lg">🤖</span>
           <h2 className="text-sm font-bold">AI 改行程</h2>
@@ -947,6 +973,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </button>
           </div>
         </form>
+        </motion.div>
       </aside>
 
       {/* 选点提示条 */}
@@ -959,13 +986,28 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       {/* 右侧滑出面板 */}
       <aside
         data-testid="timeline-panel"
-        className={`fixed z-[400] bg-cream flex flex-col transition-transform duration-300 shadow-[-10px_0_40px_rgba(43,43,40,0.15)] max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] md:border-l ${
+        className={`fixed z-[400] transition-transform duration-300 max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] ${
           panelOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:translate-x-[calc(100%+2px)] md:translate-y-0"
         }`}
       >
+        <motion.div
+          drag={draggable ? "y" : false}
+          dragListener={false}
+          dragControls={panelDrag}
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={{ top: 0, bottom: 0.4 }}
+          style={{ y: panelY }}
+          onDragEnd={(_, info) => {
+            if (info.offset.y > 90 || info.velocity.y > 500) setPanelOpen(false);
+            animate(panelY, 0, { type: "spring", stiffness: 400, damping: 40 });
+          }}
+          className="h-full flex flex-col bg-cream overflow-hidden shadow-[-10px_0_40px_rgba(43,43,40,0.15)] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:border-l"
+        >
         {/* M23：手机抽屉固定表头（日期/元信息；桌面这些在顶栏） */}
         <div className="md:hidden shrink-0 border-b border-line">
-          <div className="sheet-handle h-1.5 w-10 rounded-full bg-line mx-auto mt-2 mb-2" />
+          <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1" onPointerDown={(e) => panelDrag.start(e)}>
+            <span className="h-1.5 w-10 rounded-full bg-line" />
+          </div>
           <div className="px-[18px] pb-3 flex flex-col gap-1.5">
             {dateCardJsx}
             {metasJsx}
@@ -1056,6 +1098,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           )}
           <div className="mt-2 text-[11px] text-[#A8A298] text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div>
+        </motion.div>
       </aside>
 
       {/* M16：右下角地图显示设置 */}
@@ -1095,5 +1138,6 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         />
       )}
     </div>
+    </MotionConfig>
   );
 }
