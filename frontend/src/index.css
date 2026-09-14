@@ -83,3 +83,27 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
   to { opacity: 0; }
 }
 .place-item.removed { animation: fadeRemoved 1.2s ease-out forwards; }
+
+/* ===== M23 移动端（<768px）=====
+ * 断点与 pages/Plan.tsx 的 isMobile()（max-width:767px）保持一致。
+ * 原则：手机只改"够得着/点得中/不被系统栏压住"，桌面字号与间距一律不动。 */
+@media (max-width: 767px) {
+  /* iOS Safari 聚焦 <16px 输入框会缩放整页 */
+  input, textarea, select { font-size: 16px; }
+  /* 手机靠双指缩放；底部控件本来就被抽屉盖住 */
+  .leaflet-control-zoom { display: none; }
+  /* 时间线"✎/✕"触点从 20px 放大到 28px（视觉仍是小图标） */
+  .place-edit, .place-del { width: 28px; height: 28px; top: 7px; }
+  .place-edit { right: 34px; }
+  .place-del { right: 2px; }
+}
+/* 去掉双击缩放的 300ms 延迟（地图自身 touch-action 不受影响） */
+button, .place-item { touch-action: manipulation; }
+/* 在地图上纵向拖拽不触发浏览器下拉刷新 */
+body { overscroll-behavior-y: none; }
+/* 底部抽屉的拖拽手柄：拖它不滚内容（P4 Motion 用） */
+.sheet-handle { touch-action: none; }
+/* 排序按钮：所有设备都显示。理由：触屏 iPad 上 HTML5 拖拽同样不触发，
+ * 而 hover 能力检测在"触屏笔记本"这类混合设备上并不可靠 —— 常驻最省心（也顺带键盘可达）。 */
+.reorder-btns { display: flex; }
+

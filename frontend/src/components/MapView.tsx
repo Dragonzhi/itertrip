@@ -24,6 +24,10 @@ interface MapViewProps {
   viewOffset?: number;
   /** 地图显示设置（M16）：源自 MapSettings，纯前端视图态 */
   view: MapSettings;
+  /** M23：底部被抽屉遮住的高度（px）→ Leaflet setPadding，让 fitBounds/panTo 落在可见区 */
+  bottomPadding?: number;
+  /** M23：空白处点击地图（非选点态）——手机用它收起底部抽屉 */
+  onMapClick?: () => void;
 }
 
 /** 地点弹窗 HTML（showMeta=false 时只留地名）。 */
@@ -76,7 +80,7 @@ function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
 export default function MapView({
   route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
-  onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0, view,
+  onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0, view, bottomPadding = 0, onMapClick,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -88,6 +92,20 @@ export default function MapView({
   const osmRef = useRef<L.TileLayer | null>(null);
   const cbRef = useRef({ onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus });
   cbRef.current = { onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus };
+
+  /** M23：底部抽屉遮挡的高度（px）。用 ref 读，避免 fitBounds 的 [route] 依赖被撑开 */
+  const padRef = useRef(0);
+  padRef.current = bottomPadding;
+  /**
+   * M23：把目标点算到"未被抽屉遮住"的可见区中心（Leaflet 1.9 没有 setPadding）。
+   * 即把待 panTo 的锚点向南偏移半个遮挡高度 —— 等价于 panBy([0, pad/2])，但可直接喂给 setView/panTo。
+   */
+  const visibleCenter = (map: L.Map, latlng: L.LatLng) => {
+    const pad = padRef.current;
+    if (!pad) return latlng;
+    const p = map.latLngToContainerPoint(latlng);
+    return map.containerPointToLatLng([p.x, p.y + pad / 2]);
+  };
 
   // 初始化（仅一次）
   useEffect(() => {
@@ -171,7 +189,13 @@ export default function MapView({
       }
     });
 
-    if (bounds.length) map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [60, 60] });
+    // M23：底部抽屉打开时把下边距算进去，避免整条路线被 fit 到抽屉后面
+    if (bounds.length) {
+      map.fitBounds(bounds as L.LatLngBoundsExpression, {
+        paddingTopLeft: [60, 60],
+        paddingBottomRight: [60, 60 + padRef.current],
+      });
+    }
   }, [route]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // popup 详情刷新（M16 showMeta）：不重建 marker、不重绘视野
@@ -269,7 +293,7 @@ export default function MapView({
         const day = route?.days[Number(m2[1])];
         const place = day?.places?.[Number(m2[2])];
         if (place && place.lat != null && place.lng != null) {
-          map.panTo([place.lat, place.lng], { animate: true, duration: 0.8 });
+          map.panTo(visibleCenter(map, L.latLng(place.lat, place.lng)), { animate: true, duration: 0.8 });
         }
       }
     }
@@ -282,7 +306,7 @@ export default function MapView({
     const marker = markersRef.current.get(focus.key);
     if (!marker) return;
     if (focus.mode === "zoom") {
-      const latlng = marker.getLatLng();
+      const latlng = visibleCenter(map, marker.getLatLng());
       map.setView(latlng, Math.max(map.getZoom(), 14), { animate: true, duration: 0.5 });
       const pin = marker.getElement();
       if (pin) {
@@ -311,6 +335,17 @@ export default function MapView({
 
   // 抽屉开合不再自动 pan 地图
   void viewOffset;
+
+  // M23：非选点态点击地图 → 通知外层（手机收抽屉）；用 ref 避免每次渲染重绑
+  const mapClickRef = useRef(onMapClick);
+  mapClickRef.current = onMapClick;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const handler = () => { if (!picking) mapClickRef.current?.(); };
+    map.on("click", handler);
+    return () => { map.off("click", handler); };
+  }, [picking]);
 
   // 选点模式：crosshair + 禁拖动/双击缩放
   useEffect(() => {

@@ -15,6 +15,8 @@ import { useElapsed } from "../hooks/useElapsed";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import { distanceKm } from "../lib/coordSource";
 import { exportFilename } from "../lib/exportName";
+import { isMobile } from "../lib/viewport";
+import { moveTarget } from "../lib/reorder";
 import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
 import {
   clearPlanChatHistory,
@@ -60,7 +62,7 @@ type FormState =
 export default function Plan({ route: initialRoute, source, onRouteChange, onRestart, settings }: PlanProps) {
   const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(() => !isMobile());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   /** M20：整条路线坐标重校准（修历史遗留的错坐标） */
@@ -85,7 +87,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①）；M19：对话与决策轨迹持久化 ---------- */
   const fp = useMemo(() => routeFingerprint(initialRoute), [initialRoute]);
   const bootMsgs = useMemo(() => loadPlanChatHistory(fp), [fp]);
-  const [chatOpen, setChatOpen] = useState(bootMsgs.length > 0);
+  const [chatOpen, setChatOpen] = useState(() => !isMobile() && bootMsgs.length > 0);
   const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>(bootMsgs);
   const [chatInput, setChatInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -644,69 +646,39 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   );
 
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
+  /** M23：手机上两个抽屉都是底部 sheet，必须互斥（同时开就互相盖住） */
   const toggleChat = () => {
-    setChatOpen((v) => {
-      if (!v) setTimeout(() => chatInputRef.current?.focus(), 320);
-      else setFlashKeys([]);
-      return !v;
-    });
+    const next = !chatOpen;
+    if (next) {
+      if (isMobile()) setPanelOpen(false);
+      setTimeout(() => chatInputRef.current?.focus(), 320);
+    } else {
+      setFlashKeys([]);
+    }
+    setChatOpen(next);
+  };
+  const togglePanel = () => {
+    const next = !panelOpen;
+    if (next && isMobile()) setChatOpen(false);
+    setPanelOpen(next);
+  };
+  /** 手机上点地图收起抽屉（桌面两个侧栏可常驻，不动） */
+  const closeSheets = () => {
+    if (!isMobile()) return;
+    setChatOpen(false);
+    setPanelOpen(false);
   };
   const pickHint = picking ? (picking.purpose === "repick-hotel" ? PICK_HINT_REPICK_HOTEL : picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
-  return (
-    <div className="h-screen overflow-hidden">
-      <MapView
-        route={route}
-        activeDay={activeDay}
-        picking={!!picking}
-        onPick={handlePick}
-        onPlaceClick={handlePlaceClick}
-        onHotelClick={handleHotelClick}
-        onPlaceFocus={handlePlaceFocus}
-        onHotelFocus={handleHotelFocus}
-        flashKeys={flashKeys}
-        focus={focus}
-        viewOffset={(chatOpen ? 380 : 0) + (panelOpen ? 400 : 0)}
-        view={mapView}
-      />
-
-      {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
-      <button
-        onClick={toggleChat}
-        className={
-          "fixed top-1/2 -translate-y-1/2 z-[420] flex items-center justify-center w-[26px] h-[92px] rounded-r-[14px] rounded-l-none bg-moss text-white shadow-card transition-all duration-300 hover:bg-[#175740] hover:w-[30px] " +
-          (chatOpen ? "left-[380px]" : "left-0")
-        }
-        title={chatOpen ? "收起 AI 对话" : "打开 AI 对话（让 AI 改行程）"}
-        data-testid="chat-reentry"
-      >
-        <span className={"text-[15px] transition-transform duration-300 " + (chatOpen ? "rotate-180" : "")}>
-          {chatOpen ? "◂" : "▸"}
-        </span>
-      </button>
-
-      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡） */}
-      <div
-        className="fixed top-3.5 right-3.5 z-[500] flex items-center gap-3 pointer-events-none transition-[left] duration-300"
-        style={{ left: chatOpen ? 396 : 14 }}
-      >
-        <div className="bg-white border border-line rounded-[14px] px-3.5 py-2 shadow-card flex items-center gap-2 pointer-events-auto">
-          <span className="text-lg">🧭</span>
-          <button onClick={onRestart} className="text-sm font-bold tracking-wide hover:text-moss" title="重新规划">
-            IterTrip
-            <span className="block text-[10px] font-normal text-ink-soft tracking-[1px]">LATIN · ITER · ROAD</span>
-          </button>
-        </div>
-        <div className="bg-white border border-line rounded-[14px] px-4 py-2 shadow-card min-w-0 overflow-hidden pointer-events-auto">
-          <h1 className="text-base font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
-          <div className="text-xs text-ink-soft mt-0.5">
-            {metas.map((m, i) => (
-              <span key={i}>{i > 0 && <span className="mx-1.5 text-[#C9C2B4]">·</span>}{m}</span>
-            ))}
-          </div>
-        </div>
-        {/* M22：出发日期（算星期用）+ 闭馆日冲突状态。刻意放在标题卡外侧的同层，
-            避免被标题卡的 overflow-hidden 裁掉日历弹层 */}
+  /** M23：这两个元素描述在桌面顶栏与手机抽屉表头各渲染一份，由 CSS（max-md:hidden / md:hidden）决定谁可见。 */
+  const metasJsx = (
+    <div className="text-xs text-ink-soft mt-0.5">
+      {metas.map((m, k) => (
+        <span key={k}>{k > 0 && <span className="mx-1.5 text-[#C9C2B4]">·</span>}{m}</span>
+      ))}
+    </div>
+  );
+  const dateCardJsx = (
         <div
           className="bg-white border border-line rounded-[14px] px-3 py-2 shadow-card pointer-events-auto shrink-0"
           data-testid="date-card"
@@ -757,13 +729,81 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </div>
           )}
         </div>
-        <div className="ml-auto flex gap-2 pointer-events-auto">
+
+  );
+
+  return (
+    <div className="h-[100dvh] overflow-hidden">
+      <MapView
+        route={route}
+        activeDay={activeDay}
+        picking={!!picking}
+        onPick={handlePick}
+        onPlaceClick={handlePlaceClick}
+        onHotelClick={handleHotelClick}
+        onPlaceFocus={handlePlaceFocus}
+        onHotelFocus={handleHotelFocus}
+        flashKeys={flashKeys}
+        focus={focus}
+        viewOffset={(chatOpen ? 380 : 0) + (panelOpen ? 400 : 0)}
+        bottomPadding={isMobile() && (chatOpen || panelOpen) ? Math.round(window.innerHeight * 0.7) : 0}
+        onMapClick={closeSheets}
+        view={mapView}
+      />
+
+      {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
+      <button
+        onClick={toggleChat}
+        className={
+          "max-md:hidden fixed top-1/2 -translate-y-1/2 z-[420] flex items-center justify-center w-[26px] h-[92px] rounded-r-[14px] rounded-l-none bg-moss text-white shadow-card transition-all duration-300 hover:bg-[#175740] hover:w-[30px] " +
+          (chatOpen ? "left-[380px]" : "left-0")
+        }
+        title={chatOpen ? "收起 AI 对话" : "打开 AI 对话（让 AI 改行程）"}
+        data-testid="chat-reentry"
+      >
+        <span className={"text-[15px] transition-transform duration-300 " + (chatOpen ? "rotate-180" : "")}>
+          {chatOpen ? "◂" : "▸"}
+        </span>
+      </button>
+
+      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡） */}
+      <div
+        className="fixed top-3 right-3 z-[500] flex items-center gap-2 md:gap-3 md:top-3.5 md:right-3.5 pointer-events-none transition-[left] duration-300"
+        style={{ left: isMobile() ? 12 : chatOpen ? 396 : 14 }}
+      >
+        <div className="bg-white border border-line rounded-[14px] px-2.5 md:px-3.5 py-2 shadow-card flex items-center gap-2 pointer-events-auto shrink-0">
+          <button onClick={onRestart} className="flex items-center gap-2 text-sm font-bold tracking-wide hover:text-moss" title="重新规划">
+            <span className="text-lg">🧭</span>
+            <span className="max-md:hidden">
+              IterTrip
+              <span className="block text-[10px] font-normal text-ink-soft tracking-[1px]">LATIN · ITER · ROAD</span>
+            </span>
+          </button>
+        </div>
+        <div className="bg-white border border-line rounded-[14px] px-3 md:px-4 py-2 shadow-card min-w-0 flex-1 md:flex-none overflow-hidden pointer-events-auto">
+          <h1 className="text-sm md:text-base font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
+          <div className="max-md:hidden">{metasJsx}</div>
+        </div>
+        {/* M22：出发日期（算星期用）+ 闭馆日冲突状态。刻意放在标题卡外侧的同层，
+            避免被标题卡的 overflow-hidden 裁掉日历弹层。
+            M23：手机上这一份隐藏，改在「行程」抽屉表头渲染同款（同一 JSX 变量） */}
+        <div className="max-md:hidden flex shrink-0">{dateCardJsx}</div>
+        <div className="ml-auto flex gap-2 pointer-events-auto shrink-0">
           {source === "mock" && (
-            <span className="bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
+            <span className="max-md:hidden bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
               mock 草稿
             </span>
           )}
-          <button onClick={() => setPanelOpen((v) => !v)} className="border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
+          {/* M23：手机专用入口（桌面手柄/侧栏按钮在窄屏够不着） */}
+          <button onClick={toggleChat} data-testid="chat-toggle" title="AI 改行程"
+            className="md:hidden border border-line bg-white text-moss rounded-full w-9 h-9 text-[15px] font-semibold shadow-card">
+            🤖
+          </button>
+          <button onClick={togglePanel} data-testid="panel-toggle" title={panelOpen ? "收起行程" : "展开行程"}
+            className="md:hidden border border-line bg-white text-moss rounded-full w-9 h-9 text-[15px] font-semibold shadow-card">
+            🗺
+          </button>
+          <button onClick={togglePanel} className="max-md:hidden border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
             {panelOpen ? "▸ 收起" : "☰ 行程"}
           </button>
         </div>
@@ -771,12 +811,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
       {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈） */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 w-[380px] max-w-[calc(100vw-96px)] bg-cream z-[400] shadow-[10px_0_40px_rgba(43,43,40,0.15)] border-r border-line flex flex-col transition-transform duration-300 ${
-          chatOpen ? "translate-x-0" : "-translate-x-[calc(100%+2px)]"
+        className={`fixed z-[400] bg-cream flex flex-col transition-transform duration-300 shadow-[10px_0_40px_rgba(43,43,40,0.15)] max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:top-0 md:left-0 md:bottom-0 md:right-auto md:w-[380px] md:border-r ${
+          chatOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:-translate-x-[calc(100%+2px)] md:translate-y-0"
         }`}
         data-testid="ai-drawer"
         aria-hidden={!chatOpen}
       >
+        <div className="sheet-handle md:hidden h-1.5 w-10 rounded-full bg-line mx-auto mt-2 shrink-0" />
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
           <span className="text-lg">🤖</span>
           <h2 className="text-sm font-bold">AI 改行程</h2>
@@ -910,7 +951,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
       {/* 选点提示条 */}
       {pickHint && (
-        <div className="fixed top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-white px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
+        <div className="fixed top-[110px] md:top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-white px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
           {pickHint}
         </div>
       )}
@@ -918,9 +959,22 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       {/* 右侧滑出面板 */}
       <aside
         data-testid="timeline-panel"
-        className={`fixed top-0 right-0 bottom-0 w-[400px] max-w-[calc(100vw-96px)] bg-cream z-[400] shadow-[-10px_0_40px_rgba(43,43,40,0.15)] border-l border-line flex flex-col transition-transform duration-300 ${panelOpen ? "translate-x-0" : "translate-x-[calc(100%+2px)]"}`}
+        className={`fixed z-[400] bg-cream flex flex-col transition-transform duration-300 shadow-[-10px_0_40px_rgba(43,43,40,0.15)] max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] md:border-l ${
+          panelOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:translate-x-[calc(100%+2px)] md:translate-y-0"
+        }`}
       >
-        <div className="flex-1 overflow-y-auto px-[18px] pb-10 pt-2">
+        {/* M23：手机抽屉固定表头（日期/元信息；桌面这些在顶栏） */}
+        <div className="md:hidden shrink-0 border-b border-line">
+          <div className="sheet-handle h-1.5 w-10 rounded-full bg-line mx-auto mt-2 mb-2" />
+          <div className="px-[18px] pb-3 flex flex-col gap-1.5">
+            {dateCardJsx}
+            {metasJsx}
+            {source === "mock" && (
+              <span className="self-start bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-1">mock 草稿</span>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           <Timeline
             route={route}
             activeKey={activeKey}
@@ -932,6 +986,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             onDeletePlace={handleDelete}
             onEditPlace={openEditForm}
             onDropMove={handleDropMove}
+            onMovePlace={(di, pi, dir) => { const t = moveTarget(route.days, di, pi, dir); if (t) handleDropMove(di, pi, t[0], t[1]); }}
             onEditHotel={openHotelForm}
             onSaveHotelPrices={saveHotelPrices}
             view={mapView}

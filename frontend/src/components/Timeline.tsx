@@ -14,6 +14,8 @@ interface TimelineProps {
   onDeletePlace?: (di: number, pi: number) => void;
   onEditPlace?: (di: number, pi: number) => void;
   onDropMove?: (srcDi: number, srcPi: number, dstDi: number, dstPi: number) => void;
+  /** M23：触屏排序（桌面 HTML5 拖拽在触屏不触发）——dir=-1 上移 / 1 下移，可跨天 */
+  onMovePlace?: (di: number, pi: number, dir: -1 | 1) => void;
   /** 双击地点 → 地图聚焦（与单击弹框区分） */
   onPlaceFocus?: (di: number, pi: number) => void;
   /** 双击酒店 → 地图聚焦 */
@@ -29,7 +31,7 @@ interface TimelineProps {
 /** 时间线面板：按天分组、可折叠；点击条目与地图双向联动。 */
 export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
-  editing = false, onDeletePlace, onEditPlace, onDropMove, onPlaceFocus, onHotelFocus,
+  editing = false, onDeletePlace, onEditPlace, onDropMove, onMovePlace, onPlaceFocus, onHotelFocus,
   onEditHotel, onSaveHotelPrices,
   view,
 }: TimelineProps) {
@@ -198,6 +200,27 @@ export default function Timeline({
                             ✕
                           </button>
                         </>
+                      )}
+                      {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存） */}
+                      {editing && onMovePlace && (
+                        <div className="reorder-btns flex-col gap-1 absolute top-[7px] right-[64px]">
+                          <button
+                            type="button"
+                            title="上移（到上一天末位）"
+                            onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, -1); }}
+                            className="w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            title="下移（到下一天首位）"
+                            onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, 1); }}
+                            className="w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center"
+                          >
+                            ↓
+                          </button>
+                        </div>
                       )}
                     </div>
                   );

@@ -18,7 +18,7 @@ interface IndexProps {
 export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, hasRoute, onImportRoute }: IndexProps) {
   const importRef = useRef<HTMLInputElement | null>(null);
   return (
-    <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-6 gap-6">
+    <div className="min-h-[100dvh] bg-cream flex flex-col items-center justify-center p-6 gap-6">
       <header className="w-full max-w-xl flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <span className="text-2xl">🧭</span>

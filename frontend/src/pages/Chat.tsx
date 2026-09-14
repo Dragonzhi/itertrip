@@ -123,7 +123,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
   }
 
   return (
-    <div className="h-screen bg-cream flex flex-col">
+    <div className="h-[100dvh] bg-cream flex flex-col">
       <header className="flex items-center gap-3 px-4 py-3 border-b border-line bg-white">
         <button onClick={onBack} className="text-ink-soft hover:text-ink text-sm font-semibold" title="返回首页">
           ← 返回

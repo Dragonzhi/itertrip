@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MapSettings as MapSettingsType } from "../lib/settings";
+import { isMobile } from "../lib/viewport";
 
 interface MapSettingsProps {
   value: MapSettingsType;
@@ -98,7 +99,11 @@ export default function MapSettings({ value, onChange, panelOpen }: MapSettingsP
   const arrowScale = value.arrowScale;
 
   return (
-    <div ref={ref} className="fixed bottom-4 z-[500] flex flex-col items-end gap-2" style={{ right }}>
+    <div
+      ref={ref}
+      className="fixed z-[500] flex flex-col items-end gap-2 max-md:flex-col-reverse max-md:top-[60px] max-md:right-3 max-md:bottom-auto md:bottom-4"
+      style={{ right: isMobile() ? 12 : right }}
+    >
       {open && (
         <div
           data-testid="map-settings-panel"
@@ -161,7 +166,7 @@ export default function MapSettings({ value, onChange, panelOpen }: MapSettingsP
         aria-label="地图显示设置"
         aria-expanded={open}
         data-testid="settings-gear"
-        className="w-11 h-11 rounded-full bg-white border border-line shadow-card text-moss text-xl flex items-center justify-center transition-colors hover:bg-moss-soft"
+        className="w-11 h-11 max-md:w-9 max-md:h-9 rounded-full bg-white border border-line shadow-card text-moss text-xl max-md:text-base flex items-center justify-center transition-colors hover:bg-moss-soft"
       >
         ⚙️
       </button>
