@@ -195,7 +195,7 @@ export default function Timeline({
                             type="button"
                             title="编辑此地点"
                             onClick={(e) => { e.stopPropagation(); onEditPlace?.(di, pi); }}
-                            className="place-edit absolute top-[9px] right-[28px] w-5 h-5 rounded-md border border-line bg-white text-ink-soft text-[11px] leading-none cursor-pointer opacity-0 transition-opacity hover:bg-moss-soft hover:text-moss"
+                            className="place-edit absolute top-[7px] right-9 w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center cursor-pointer opacity-0 transition-opacity hover:bg-moss-soft hover:text-moss"
                           >
                             ✎
                           </button>
@@ -203,23 +203,25 @@ export default function Timeline({
                             type="button"
                             title="删除此地点"
                             onClick={(e) => { e.stopPropagation(); onDeletePlace?.(di, pi); }}
-                            className="place-del absolute top-[9px] right-1 w-5 h-5 rounded-md border border-line bg-white text-ink-soft text-[11px] leading-none cursor-pointer opacity-0 transition-opacity hover:bg-[#F6E7E7] hover:text-[#B85C5C]"
+                            className="place-del absolute top-[7px] right-1 w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center cursor-pointer opacity-0 transition-opacity hover:bg-[#F6E7E7] hover:text-[#B85C5C]"
                           >
                             ✕
                           </button>
                         </>
                       )}
                       {/* M23：上/下移排序（触屏靠它；桌面也能用，与拖拽并存）。
-                          两枚合成一个 28×56 胶囊 + 发丝分隔线：卡片右侧只多"一个控件"，
-                          不再和 ✎✕ 混成三颗同形散键；图标由 ↑↓ 文字换成细描边箭头
-                          （文字箭头在 12px 下不等宽也不垂直居中）。 */}
+                          两枚合成一枚 56×28 横向胶囊（发丝分隔线），并与 ✎✕ 统一成 28 高、
+                          同一条上基线、间距 4px —— 卡片右上角读作"一条工具排"，
+                          而不是"一座 56 高的塔 + 两颗 20 的扣"。
+                          图标是 13px 细描边 chevron（12px 文字箭头不等宽也不垂直居中）。
+                          容器用 ring 而非 border 画外框：ring 不占布局，56×28 正好容纳两枚 28。 */}
                       {editing && onMovePlace && (
-                        <div className="reorder-btns flex-col absolute top-[7px] right-[64px] rounded-md border border-line bg-white overflow-hidden">
+                        <div className="reorder-btns absolute top-[7px] right-[68px] w-14 h-7 rounded-md bg-white overflow-hidden ring-1 ring-line">
                           <button
                             type="button"
                             title="上移（到上一天末位）"
                             onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, -1); }}
-                            className="w-7 h-7 flex items-center justify-center cursor-pointer text-ink-soft transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
+                            className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
                           >
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6" /></svg>
                           </button>
@@ -227,7 +229,7 @@ export default function Timeline({
                             type="button"
                             title="下移（到下一天首位）"
                             onClick={(e) => { e.stopPropagation(); onMovePlace(di, pi, 1); }}
-                            className="w-7 h-7 flex items-center justify-center cursor-pointer text-ink-soft border-t border-line transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
+                            className="w-7 h-7 shrink-0 flex items-center justify-center cursor-pointer text-ink-soft border-l border-line transition-colors hover:bg-[#F1EDE4] hover:text-ink active:bg-[#EAE4D8]"
                           >
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
                           </button>

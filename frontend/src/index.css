@@ -92,10 +92,8 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
   input, textarea, select { font-size: 16px; }
   /* 手机靠双指缩放；底部控件本来就被抽屉盖住 */
   .leaflet-control-zoom { display: none; }
-  /* 时间线"✎/✕"触点从 20px 放大到 28px（视觉仍是小图标） */
-  .place-edit, .place-del { width: 28px; height: 28px; top: 7px; }
-  .place-edit { right: 34px; }
-  .place-del { right: 2px; }
+  /* 注：时间线"✎/✕/↑↓"三种触点自 M23 起已统一 28×28（right-36 / right-68 / right-4），
+     手机不再需要单独放大 —— 一套几何两端通用。 */
 }
 /* 去掉双击缩放的 300ms 延迟（地图自身 touch-action 不受影响） */
 button, .place-item { touch-action: manipulation; }
@@ -104,6 +102,7 @@ body { overscroll-behavior-y: none; }
 /* 底部抽屉的拖拽手柄：拖它不滚内容（P4 Motion 用） */
 .sheet-handle { touch-action: none; }
 /* 排序按钮：所有设备都显示。理由：触屏 iPad 上 HTML5 拖拽同样不触发，
- * 而 hover 能力检测在"触屏笔记本"这类混合设备上并不可靠 —— 常驻最省心（也顺带键盘可达）。 */
+ * 而 hover 能力检测在"触屏笔记本"这类混合设备上并不可靠 —— 常驻最省心（也顺带键盘可达）。
+ * 布局：横向胶囊（↑|↓ 各 28×28），与 ✎✕ 同高同基线。 */
 .reorder-btns { display: flex; }
 
