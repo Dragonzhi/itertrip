@@ -65,9 +65,7 @@ itertrip/
 ├── DESIGN.md          # design doc (positioning / architecture / roadmap)
 ├── AGENTS.md          # AI-agent architecture guide (agents / protocols / config)
 ├── DEPLOY.md          # deploy guide (local / cloud)
-├── M19_TRUST_PLAN.md  # M19 record (coordinate trust / decision trace / chat persistence)
-├── M20_GEO_REGION_PLAN.md # M20 record (coordinate region gating / full re-calibration)
-├── M21_DEST_CONFLICT_PLAN.md # M21 record (autonomous fix when a place is far from the requested destination)
+├── docs/              # milestone records (M19 trust / M20 region gating / M21 destination conflict)
 └── LICENSE            # MIT
 ```
 

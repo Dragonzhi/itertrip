@@ -68,9 +68,7 @@ itertrip/
 ├── DESIGN.md          # 设计文档（定位/架构/路线图）
 ├── AGENTS.md          # AI 代理架构指南（代理协作/协议/配置详表）
 ├── DEPLOY.md          # 部署指南（本地/云）
-├── M19_TRUST_PLAN.md  # M19 实施记录（坐标可信度 / 决策轨迹 / 对话留存）
-├── M20_GEO_REGION_PLAN.md # M20 实施记录（坐标区域校验 / 整条重校准）
-├── M21_DEST_CONFLICT_PLAN.md # M21 实施记录（地点自主改回：判据锚定用户指定的目的地）
+├── docs/              # 里程碑实施记录（M19 坐标可信度 / M20 区域校验 / M21 目的地冲突）
 └── LICENSE            # MIT
 ```
 
