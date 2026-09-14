@@ -14,6 +14,7 @@ import DecisionTrace from "../components/DecisionTrace";
 import { useElapsed } from "../hooks/useElapsed";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import { distanceKm } from "../lib/coordSource";
+import { exportFilename } from "../lib/exportName";
 import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
 import {
   clearPlanChatHistory,
@@ -556,7 +557,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     const blob = new Blob([JSON.stringify(route, null, 2)], { type: "application/json;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "my_trip.json";
+    // 文件名 = 当前行程的规划名（trip.title），与页面标题一致
+    a.download = `${exportFilename(route)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -564,7 +566,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     setExporting(true);
     setExportError("");
     try {
-      await exportHtml(route, "itertrip_" + trip.destination + "_edited");
+      await exportHtml(route, exportFilename(route));
       setExportOpen(false);
     } catch (e) {
       // 失败必须可见（此前静默无反应）：后端 422 detail / 网络错误均落到这里
