@@ -776,7 +776,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         </span>
       </button>
 
-      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡） */}
+      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡）：
+          左侧让位给 AI 抽屉（left 随 chatOpen 变）。
+          右侧**不**让位：试过让浮条避开行程面板，但 1280 上面板占 400px，浮条宽度掉到 852 后
+          内容装不下，要么折行（加 flex-wrap：浮条从 60px 涨到 128px 甚至 214px 的多行堆），
+          要么标题被压到只剩省略号 —— 都比现在难看。
+          改为**面板自己让出顶部**：见下方「面板顶部让位带」。浮条照旧横铺，面板内容从带下沿开始。 */}
       <div
         className="fixed top-3 right-3 z-[500] flex items-center gap-2 md:gap-3 md:top-3.5 md:right-3.5 pointer-events-none transition-[left] duration-300"
         style={{ left: isMobile() ? 12 : chatOpen ? 396 : 14 }}
@@ -790,9 +795,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </span>
           </button>
         </div>
-        <div className="bg-white border border-line rounded-[14px] px-3 md:px-4 py-2 shadow-card min-w-0 flex-1 md:flex-none overflow-hidden pointer-events-auto">
+        <div className="bg-white border border-line rounded-[14px] px-3 md:px-4 py-2 shadow-card min-w-0 flex-1 md:flex-initial overflow-hidden pointer-events-auto">
           <h1 className="text-sm md:text-base font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
-          <div className="max-md:hidden">{metasJsx}</div>
+          {/* 元信息必须**单行**：顶栏在 AI 抽屉打开时会被挤窄（left 让到 396），
+              这一行一换行，整条浮条就从 60px 涨到 76px，而面板顶部让位带是固定 74px ——
+              2px 缝隙会让综合建议卡露头。改为 nowrap + 省略号：浮条高度恒定，
+              让位带才算得准（顺带修好「抽屉打开时日期卡被挤出屏幕」的老问题）。 */}
+          <div className="max-md:hidden whitespace-nowrap overflow-hidden text-ellipsis">{metasJsx}</div>
         </div>
         {/* M22：出发日期（算星期用）+ 闭馆日冲突状态。刻意放在标题卡外侧的同层，
             避免被标题卡的 overflow-hidden 裁掉日历弹层。
@@ -1003,6 +1012,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           }}
           className="h-full flex flex-col bg-cream overflow-hidden shadow-[-10px_0_40px_rgba(43,43,40,0.15)] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:border-l"
         >
+        {/* 面板顶部让位带（桌面）：浮条= top-3.5(14) + 高 60 = 底边 74，所以留 74。
+            关键是它属于滚动区**之前**的兄弟节点 —— 滚动视口因此从 74px 开始，
+            「🧠 AI 综合建议」「第 1 天」在带下沿被裁掉，而不会钻到日期卡/「收起」的白卡底下
+            （改动前实测：浮条压住综合建议卡顶部 363×60，滚动后第 1 天卡也被压 16px）。 */}
+        <div className="max-md:hidden shrink-0 h-[74px]" data-testid="panel-top-gap" />
+
         {/* M23：手机抽屉固定表头（日期/元信息；桌面这些在顶栏） */}
         <div className="md:hidden shrink-0 border-b border-line">
           <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1" onPointerDown={(e) => panelDrag.start(e)}>
