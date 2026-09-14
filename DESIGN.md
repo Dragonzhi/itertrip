@@ -248,6 +248,20 @@ route JSON 契约维持现状（trip / days[] / places[] / hotel / summary），
   - 后端**语义重试**：用户明显要改路线（命中 `_EDIT_INTENT_HINTS`）而模型只回叙述时，带纠错提示再问一次；
     两次都没产出则终帧明说「行程一个字都没变」，并把模型的「已设置」标注为不算数
   - 实测：`check_trace` 12/12（新增 3 例）、`probe_price_edit_e2e` 11/11（假 SSE 供应商走完整 HTTP 通路）
+- [x] M22.3：酒店报价「说了没做」修复（真根因在**前端把改动丢了**）
+  - 用户第二次报：「把第一天酒店的价格改为100块」→ 模型 `changed=true`、轨迹显示「已应用路线改动」，
+    但比价卡纹丝不动。排查发现**真根因在前端**：`lib/routeDiff.ts` 的 `changed` 只统计
+    「增删/移动/坐标/主题」，**酒店与报价完全没参与** → 只改报价的编辑被判「无变化」，
+    `Plan.sendAiEdit` 里 `if (diff.changed)` 直接把整条新路线丢掉。**同类漏洞还波及门票/备注/时间/交通**：
+    任何“只改字段”的修改都会被静默丢弃
+  - 前端：`routeDiff` 新增 `updated`（地点时间/交通/门票/备注）与 `hotels`（名称/备注/位置/报价）两个维度，
+    都计入 `changed` 并写进「我改了什么」叙述（「把第 1 天酒店的报价设为 ¥100」）
+  - 后端：新增 `engine/hotel_price.py` —— 祈使句确定性解析 + upsert「手动录入」报价（保留平台报价、
+    没酒店的天不动），三条路径（只回叙述 / changed=false / changed=true 但报价没动）都兜住，
+    轨迹记 `price-fallback`；`Hotel._sanitize_prices` 从**静默丢弃**改为**尽量修好**
+    （`"100元"`/`amount`/`price_per_night`/对象形态/平台别名/早餐中文）
+  - 实测：`check_hotel_price` 9 段全绿、`check_routediff` 18/18、`probe_price_ui_e2e` 9/9
+    （真机 UI：BYOK 指向本机假供应商，场景 A 模型给对 / 场景 B 模型只回叙述 → 比价卡都出现 ¥100）
 
 ## 8. 边界（明确不做）
 

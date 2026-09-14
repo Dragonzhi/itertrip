@@ -3,7 +3,55 @@
 契约定义见 DESIGN.md §6。LLM 输出、API 请求/响应、HTML 注入均以此为准。
 """
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+#: 报价字段的常见别名（模型各写各的：amount / price_per_night / 房价…）
+_PRICE_KEYS = ("price", "amount", "price_per_night", "nightly_price", "avg_price", "average_price",
+               "value", "cost", "价格", "房价")
+#: 平台名常见别名（模型有时用 name / channel / source 代替 platform）
+_PLATFORM_KEYS = ("platform", "name", "source", "channel", "vendor", "type", "平台")
+_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+_TRUE_WORDS = ("true", "1", "yes", "y", "含早", "有早", "含早餐", "包早", "是")
+
+
+def _pick(item: dict, keys: tuple[str, ...]) -> str:
+    """按别名顺序取第一个非空字符串值。"""
+    for k in keys:
+        if k in item:
+            v = item.get(k)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+    return ""
+
+
+def _coerce_price(raw) -> float | None:
+    """把模型五花八门的写法收敛成一个数：`100` / `"100"` / `"¥100元"` / `"约100/晚"` → 100.0。
+
+    取不出数字返回 None（此时该条不是报价，调用方丢弃）。
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip()
+    if not s:
+        return None
+    m = _NUM_RE.search(s)
+    return float(m.group(0)) if m else None
+
+
+def _coerce_bool(raw) -> bool:
+    """早餐标记：接受 True/1/"true"/"含早"/"是"，其余（"false"/"无早"/""）为 False。
+
+    显式收敛，避免 `breakfast: "否"` 这类写法直接抛 ValidationError 把整条路线打掉。
+    """
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw != 0
+    return str(raw or "").strip().lower() in _TRUE_WORDS
 
 
 class PriceItem(BaseModel):
@@ -32,34 +80,42 @@ class Hotel(BaseModel):
     @field_validator("prices", mode="before")
     @classmethod
     def _sanitize_prices(cls, v):
-        """容错清洗 LLM 幻觉的 prices：兼容 type→platform、缺 price 时直接丢弃。"""
-        if v is None:
-            return []
+        """把 LLM 写出的报价**尽量修好**，只有「压根没有价格」的条目才丢弃。
+
+        M22.3 之前这里是**静默丢弃**：`price: "100元"` / `amount: 100` / `prices` 给成对象
+        都会被无声吃掉 —— 于是模型在 reply 里说「已设为 100 元」，数据里却什么都没有，
+        用户看到的就是「说了没做」。现在按别名与数值解析修复；真正丢了会打印一行日志。
+        """
+        dropped = 0
+        if isinstance(v, dict):  # 有些模型把单条报价写成了对象而不是数组
+            v = [v]
         if not isinstance(v, list):
             return []
         cleaned: list[dict] = []
         for item in v:
             if not isinstance(item, dict):
+                dropped += 1
                 continue
-            # 兼容部分模型把 {type: "...", note: "..."} 当报价
-            if "platform" not in item and "type" in item:
-                item = {**item, "platform": str(item.get("type", "")).strip()}
-                # 避免保留原 type 干扰后续 extra ignore 可不删
-            platform = str(item.get("platform", "") or "").strip()
-            raw_price = item.get("price", None)
-            # price 缺失/不可转浮点 -> 视为无效报价，直接丢弃（而非让校验抛错导致整条路线失败）
-            if raw_price is None or raw_price == "":
+            raw_price = None
+            for k in _PRICE_KEYS:
+                if k in item and item.get(k) not in (None, ""):
+                    raw_price = item.get(k)
+                    break
+            price_val = _coerce_price(raw_price)
+            if price_val is None:
+                dropped += 1  # 没有价格的条目（如 {type, note} 的纯备注）本就不算报价
                 continue
-            try:
-                price_val = float(raw_price)
-            except (TypeError, ValueError):
-                continue
-            # 平台名空但有价格 -> 补一个兜底名，保留报价
+            platform = _pick(item, _PLATFORM_KEYS)
             if not platform:
-                item = {**item, "platform": "AI 生成"}
-            # 统一回写合法的 price 浮点，避免字符串残留
-            item = {**item, "price": price_val}
-            cleaned.append(item)
+                platform = "AI 生成"  # 平台名缺失但价格有效 → 兜底名，保留报价
+            cleaned.append({
+                "platform": platform,
+                "price": price_val,
+                "breakfast": _coerce_bool(item.get("breakfast")),
+                "note": str(item.get("note") or "").strip(),
+            })
+        if dropped:
+            print(f"[schema] 报价清洗：修复/保留了 {len(cleaned)} 条，丢弃 {dropped} 条无价格条目")
         return cleaned
 
 

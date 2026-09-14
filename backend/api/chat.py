@@ -36,6 +36,7 @@ M19 决策轨迹（让 AI 的过程不再是盲盒）：
 
 import asyncio
 import base64
+import copy
 import json
 import time
 from collections import Counter
@@ -687,6 +688,11 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             if edit_mode else (req.prompt + ("\n\n" + mem_ref if mem_ref else ""))
         )
         system = SYSTEM_EDIT if edit_mode else SYSTEM_EXTRACT
+        # M22.3：报价类祈使句（「把第X天/每天 酒店报价改为 N 元」）先做确定性解析。
+        # 有了它，无论模型偷懒、写错键名还是压根不动，这个单值意图都能真正落到 hotel.prices。
+        from ..engine import hotel_price as _hp
+
+        price_spec = _hp.parse_price_request(req.prompt) if edit_mode else None
 
         reply_text = ""
         data: dict | None = None
@@ -947,6 +953,33 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         # ---- 改路线模式 ----
         yield _sse("stage", {"stage": "done", "label": "完成"})
         if data is None:
+            # M22.3：如果这是个能确定性执行的报价设置请求，就别只报「什么都没变」——
+            # 直接改出来给用户（这是本条请求第一次被报「说了没做」的路径）。
+            if price_spec:
+                try:
+                    fixed_route = copy.deepcopy(req.route)
+                    recs = _hp.apply_price(fixed_route, price_spec)
+                    if recs:
+                        yield emit(_trace_step(
+                            "price-fallback", "edit", "done", "报价已按你的要求直接设置",
+                            f"模型这轮没给出可执行的改动，后端确定性写入：{_hp.summary_text(recs)}",
+                        ))
+                        for ev in _reply_events(
+                            tr,
+                            _summary_step(tr, t_start, attempts=attempts, model=model_name,
+                                          source=cfg_source, note="报价由后端直接写入"),
+                            {
+                                "reply": f"模型这轮只回了文字、没真的动手，我直接给你改了："
+                                         f"{_hp.summary_text(recs)}（平台记为「手动录入」，可在「✎ 编辑酒店」里再改）。",
+                                "intent": "route_edit",
+                                "route": fixed_route,
+                            },
+                        ):
+                            yield ev
+                        return
+                except Exception as _ep:
+                    print(f"[chat] 报价确定性写入失败(忽略): {_ep}")
+                    yield emit(_trace_step("price-fallback", "edit", "fail", "报价直接写入失败（已忽略）", str(_ep)[:140]))
             # M22.2：用户要的是改路线、模型却只回了叙述（还常自称「已改好」）——
             # 必须明说「行程一个字都没变」，不能把模型那句「已设置」原样递给用户。
             claim = (reply_text or "").strip()
@@ -1021,6 +1054,32 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 except Exception as _e:
                     print(f"[chat] 坐标修正兜底失败: {_e}")
                     yield emit(_trace_step("coord-fallback", "edit", "fail", "坐标兜底修正失败（已忽略）", str(_e)[:140]))
+            # M22.3：模型说 changed=false，但用户明确要求设报价 → 用确定性写入兜住这个单值意图。
+            if price_spec:
+                try:
+                    fixed_route = copy.deepcopy(req.route)
+                    recs = _hp.apply_price(fixed_route, price_spec)
+                    if recs:
+                        yield emit(_trace_step(
+                            "price-fallback", "edit", "done", "报价已按你的要求直接设置",
+                            f"模型返回 changed=false，后端确定性写入：{_hp.summary_text(recs)}",
+                        ))
+                        for ev in _reply_events(
+                            tr,
+                            _summary_step(tr, t_start, attempts=attempts, model=model_name,
+                                          source=cfg_source, note="报价由后端直接写入"),
+                            {
+                                "reply": f"已按你的要求设置：{_hp.summary_text(recs)}"
+                                         f"（平台记为「手动录入」，可在「✎ 编辑酒店」里再改）。",
+                                "intent": "route_edit",
+                                "route": fixed_route,
+                            },
+                        ):
+                            yield ev
+                        return
+                except Exception as _ep:
+                    print(f"[chat] 报价确定性写入失败(忽略): {_ep}")
+                    yield emit(_trace_step("price-fallback", "edit", "fail", "报价直接写入失败（已忽略）", str(_ep)[:140]))
             qs = data.get("questions") or []
             yield emit(_trace_step("edit", "edit", "skip", "未改动路线", "聊天/咨询类请求（changed=false）"))
             for ev in _reply_events(
@@ -1113,10 +1172,30 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             print(f"[chat] 坐标二次校验失败(忽略): {_e3}")
             yield emit(_trace_step("coord-recheck", "edit", "warn", "坐标二次校验失败（已忽略）", str(_e3)[:140]))
         edited_places = sum(len(d.get("places") or []) for d in (data["__route"].get("days") or []))
-        yield emit(_trace_step(
-            "edit", "edit", "done", "已应用路线改动",
-            f"{len(data['__route'].get('days') or [])} 天 · {edited_places} 个地点",
-        ))
+        # M22.3：「模型说了改了报价、实际没动」—— 用确定性写入补上，并在轨迹里如实说清
+        # （用户线上第二次踩到的就是这个：changed=true、轨迹显示「已应用路线改动」，但报价没变）。
+        price_recs: list[dict] = []
+        if price_spec:
+            try:
+                old_sig = _hp.price_signature(req.route.get("days"))
+                new_sig = _hp.price_signature(data["__route"].get("days"))
+                if old_sig == new_sig:
+                    price_recs = _hp.apply_price(data["__route"], price_spec)
+                    if price_recs:
+                        data["__route"] = RouteJSON.model_validate(data["__route"]).model_dump()
+                        yield emit(_trace_step(
+                            "price-fallback", "edit", "done", "模型说改了报价、实际没动，已直接设置",
+                            _hp.summary_text(price_recs),
+                        ))
+                else:
+                    price_recs = [{"day": None, "price": price_spec["price"]}]  # 模型自己改成了，只做提示
+            except Exception as _ep:
+                print(f"[chat] 报价校验/写入失败(忽略): {_ep}")
+                yield emit(_trace_step("price-fallback", "edit", "warn", "报价校验失败（已忽略）", str(_ep)[:140]))
+        edit_detail = f"{len(data['__route'].get('days') or [])} 天 · {edited_places} 个地点"
+        if price_recs:
+            edit_detail += f" · 报价已设为 ¥{price_spec['price']:.0f}"
+        yield emit(_trace_step("edit", "edit", "done", "已应用路线改动", edit_detail))
         for ev in _reply_events(
             tr,
             _summary_step(
