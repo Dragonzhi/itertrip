@@ -38,6 +38,9 @@ IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**
 ```powershell
 # Windows：一条命令（首次自动构建前端 + 创建 venv）
 powershell -ExecutionPolicy Bypass -File start.ps1
+
+# 想双击启动：start.cmd（等价于上面这条 + 自动打开浏览器）
+# 改前端代码要热更：start.ps1 -Dev（后端 8100 + vite 5173，各起一个新窗口）
 ```
 
 打开 http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → 设置里填入你的 LLM API key（OpenAI 兼容，**推荐多模态模型以支持截图**）→ 开始对话。

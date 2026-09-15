@@ -35,6 +35,9 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 ```powershell
 # Windows: one command (first run auto-builds the frontend + creates the venv)
 powershell -ExecutionPolicy Bypass -File start.ps1
+
+# Double-clickable: start.cmd (same thing + opens the browser)
+# Frontend hot reload: start.ps1 -Dev (backend 8100 + vite 5173, one window each)
 ```
 
 Open http://127.0.0.1:8100 (子路径 /itertrip/ 部署，避开 8787 游戏 WS) → fill in your LLM API key in Settings (OpenAI-compatible, **multimodal recommended for screenshots**) → start chatting.
