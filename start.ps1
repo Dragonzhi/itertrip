@@ -23,6 +23,13 @@ function Test-Busy([int]$p) {
     [bool](Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue)
 }
 
+# 端口上跑的到底是不是本项目的服务（拿 /api/health 认领）
+function Test-Itertrip([int]$p) {
+    try {
+        (Invoke-WebRequest "http://127.0.0.1:$p/api/health" -UseBasicParsing -TimeoutSec 5).Content -match "itertrip-api"
+    } catch { $false }
+}
+
 Write-Host "== IterTrip 一键启动 ==" -ForegroundColor Green
 
 # 1. Python 环境（venv + 依赖）
@@ -63,7 +70,15 @@ if ($Dev) {
         Write-Host "  开发模式后端固定 8100（vite 的 /api 代理写死 8100），已忽略 -Port $Port" -ForegroundColor Yellow
         $Port = 8100
     }
-    if (Test-Busy $Port) { throw "端口 $Port 已被占用，请先停止占用它的进程" }
+    if ((Test-Busy $Port) -and (Test-Busy 5173)) {
+        Write-Host "  开发模式已在运行（后端 $Port + 前端 5173），不再重复启动" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "  http://127.0.0.1:5173/itertrip/" -ForegroundColor Green
+        Write-Host ""
+        if ($Open) { Start-Process "http://127.0.0.1:5173/itertrip/" }
+        return
+    }
+    if (Test-Busy $Port) { throw "端口 $Port 已被占用（可能已在生产模式运行：http://127.0.0.1:$Port/itertrip/），请先停止它" }
     if (Test-Busy 5173) { throw "端口 5173 已被占用（vite 可能已在运行）" }
 
     Write-Host "[3/4] 启动后端 $Port + 前端 5173（两个新窗口，关掉窗口即停止）..." -ForegroundColor Yellow
@@ -85,6 +100,18 @@ if ($Dev) {
 }
 
 # ---- 生产模式：构建前端 + 单进程起整站 ----
+if (Test-Busy $Port) {
+    if (Test-Itertrip $Port) {
+        Write-Host "  服务已在运行（端口 $Port），不再重复启动" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "  http://127.0.0.1:$Port/itertrip/" -ForegroundColor Green
+        Write-Host ""
+        if ($Open) { Start-Process "http://127.0.0.1:$Port/itertrip/" }
+        return
+    }
+    throw "端口 $Port 已被占用（不是 IterTrip 服务），请先停止占用它的进程"
+}
+
 if ($Rebuild -or -not (Test-Path (Join-Path $dist "index.html"))) {
     Write-Host "[3/4] 构建前端 (npm run build)..." -ForegroundColor Yellow
     Push-Location $web
@@ -95,8 +122,6 @@ if ($Rebuild -or -not (Test-Path (Join-Path $dist "index.html"))) {
 } else {
     Write-Host "[3/4] 前端构建产物已存在（-Rebuild 可强制重建）" -ForegroundColor Gray
 }
-
-if (Test-Busy $Port) { throw "端口 $Port 已被占用，请先停止占用它的进程" }
 
 Write-Host "[4/4] 启动服务 (端口 $Port)..." -ForegroundColor Yellow
 Write-Host ""

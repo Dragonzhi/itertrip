@@ -22,7 +22,7 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Rebuild # 改了前端代码
 powershell -ExecutionPolicy Bypass -File start.ps1 -Dev     # 开发模式：后端 8100(--reload) + vite 5173(HMR) 各起一个窗口
 ```
 
-> 双击仓库根目录的 `start.cmd` 也能启动（等价于无参数运行 `start.ps1` 并自动打开浏览器）。
+> 双击仓库根目录的 `start.cmd` 也能启动（等价于无参数运行 `start.ps1` 并自动打开浏览器）。服务**已在运行**时不会再重复启动（用 `/api/health` 认领端口），直接给你开浏览器。
 
 - 本机访问：`http://127.0.0.1:8100`
 - 手机真机（同一 Wi-Fi）：启动时打印的 `http://<局域网IP>:8100`

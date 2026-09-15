@@ -39,7 +39,7 @@ IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**
 # Windows：一条命令（首次自动构建前端 + 创建 venv）
 powershell -ExecutionPolicy Bypass -File start.ps1
 
-# 想双击启动：start.cmd（等价于上面这条 + 自动打开浏览器）
+# 想双击启动：start.cmd（等价于上面这条 + 自动打开浏览器；已在运行就不再重复启动）
 # 改前端代码要热更：start.ps1 -Dev（后端 8100 + vite 5173，各起一个新窗口）
 ```
 

@@ -36,7 +36,7 @@ IterTrip does exactly one thing: **guide → structured route → editable map**
 # Windows: one command (first run auto-builds the frontend + creates the venv)
 powershell -ExecutionPolicy Bypass -File start.ps1
 
-# Double-clickable: start.cmd (same thing + opens the browser)
+# Double-clickable: start.cmd (same thing + opens the browser; if it is already running, it just reopens the browser)
 # Frontend hot reload: start.ps1 -Dev (backend 8100 + vite 5173, one window each)
 ```
 
