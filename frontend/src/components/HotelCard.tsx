@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Hotel, PriceItem } from "../types/route";
 import { searchHotel, type SearchResult } from "../api/client";
-import { NumberTicker } from "./magicui/number-ticker";
+
+/** 报价展示：整数不带小数位，非整数保留 1 位（与行情场景一致，不做任何计数动效）。 */
+const fmtPrice = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
 interface HotelCardProps {
   hotel: Hotel;
@@ -25,6 +27,23 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
   const [saved, setSaved] = useState(false);
   const prices = hotel.prices || [];
   const best = prices.length ? prices.reduce((a, b) => (a.price <= b.price ? a : b)) : null;
+  const rows = searchResult
+    ? [...prices, ...searchResult.prices.map((p) => ({ ...p, breakfast: p.breakfast ?? false }))]
+    : prices;
+  /**
+   * 价格动效（优化③）：原来用 Magic UI NumberTicker 从 0 滚到目标价 —— 读起来像「这个价格正在涨」，
+   * 而且它是**滚入视口**触发（切天/展开/重挂载都重播），跟「新数据到了」毫无关系。
+   * 现在：价格静态渲染 + 报价到达时整行淡入一次 + 最低价行一次性金色描边脉冲；
+   * 只比较「本轮渲染的报价指纹」，**首屏与无关重渲染都不播**，只有报价真的变了才播一次。
+   */
+  const rowsSig = rows.map((p) => p.platform + "|" + p.price).join(",");
+  const [anim, setAnim] = useState(0);
+  const prevSig = useRef(rowsSig);
+  useEffect(() => {
+    if (prevSig.current === rowsSig) return;
+    prevSig.current = rowsSig;
+    setAnim((n) => n + 1); // key 变化 → tbody 重挂载 → CSS 动画从头播一次
+  }, [rowsSig]);
   return (
     <div
       onClick={onClick}
@@ -93,23 +112,23 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
             ))}
           </tr>
         </thead>
-        <tbody>
-          {prices.length === 0 && (
+        <tbody key={anim}>
+          {rows.length === 0 && (
             <tr>
               <td colSpan={4} className="px-2 py-2 text-[#A8A298]">暂无报价（可稍后手动补充）</td>
             </tr>
           )}
-          {(searchResult ? [...prices, ...searchResult.prices.map((p) => ({ ...p, breakfast: p.breakfast ?? false }))] : prices).map((pr, i) => {
+          {rows.map((pr, i) => {
             const isBest = pr === best;
             return (
-              <tr key={i} className={isBest ? "bg-gold-soft" : ""}>
+              <tr key={i} className={(isBest ? "bg-gold-soft " : "") + "price-row" + (isBest ? " price-row-best" : "")}>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-semibold align-middle">
                   {pr.platform}
                   {isBest && <span className="bg-gold text-white text-[10px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">最低</span>}
                 </td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums">
-                  {/* Magic UI NumberTicker：价格滚入视口时滚数（整数不补小数位） */}
-                  ¥<NumberTicker value={pr.price} decimalPlaces={Number.isInteger(pr.price) ? 0 : 1} />
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums text-ink">
+                  {/* 静态渲染：价格必须一眼可读、可直接上下比较（不做 0→N 的计数动效） */}
+                  ¥{fmtPrice(pr.price)}
                 </td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.breakfast ? "含早" : "无早"}</td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.note || ""}</td>

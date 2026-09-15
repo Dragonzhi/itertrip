@@ -107,6 +107,47 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
 .heart-dots i:nth-child(3) {
   animation-delay: 0.44s;
 }
+/* 优化③：酒店报价到达时整行淡入一次（只在**报价数据变化**时播放；首屏/滚动/切天都不重播） */
+.price-row {
+  animation: price-row-in 0.42s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.price-row:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.price-row:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.price-row:nth-child(4) {
+  animation-delay: 0.18s;
+}
+@keyframes price-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 最低价行：一次性金色描边脉冲（把视线落到该看的那一行，而不是让数字去动） */
+.price-row-best {
+  animation: price-row-in 0.42s cubic-bezier(0.22, 0.9, 0.3, 1) both,
+    price-row-best-ring 1.6s ease-out 0.22s 1 both;
+}
+@keyframes price-row-best-ring {
+  0% {
+    box-shadow: inset 0 0 0 0 rgba(200, 144, 60, 0);
+  }
+  30% {
+    box-shadow: inset 0 0 0 2px rgba(200, 144, 60, 0.85);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(200, 144, 60, 0);
+  }
+}
+
 @keyframes heart-beat {
   0%,
   100% {

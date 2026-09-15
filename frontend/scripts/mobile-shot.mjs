@@ -161,17 +161,35 @@ const checkSheetDrag = async () => {
   return ok;
 };
 
-/** 功能断言：价格数字最终必须落在真值（NumberTicker 从 0 滚上来，卡住就是"¥0"谎言） */
+/**
+ * 功能断言（优化③起）：价格必须**第一次读到就是真值** —— 静态渲染，不再从 0 滚上来；
+ * 同时断言「报价行淡入 + 最低价行描边」两段动画确实挂在行上（防止 class/keyframes 名字写错）。
+ */
 const checkPrice = async () => {
   for (let i = 0; i < 12; i++) {
     const t = await evalIn(`(() => {
       const td = [...document.querySelectorAll("td")].find((x) => /^¥\\d/.test(x.textContent));
       return td ? td.textContent.trim() : null;
     })()`);
-    if (t === "¥468") { console.log("  ✓ 价格滚数落定:", t); return true; }
-    if (i === 11) { console.log("  ✗ 价格滚数未落定:", t); return false; }
+    if (t !== null) {
+      const ok = t === "¥468";
+      console.log("  " + (ok ? "✓" : "✗") + " 价格立即可读:", t);
+      const anims = await evalIn(`(() => {
+        const names = (el) => (el ? getComputedStyle(el).animationName : "");
+        return [...document.querySelectorAll("tr.price-row")].map((r) => ({
+          name: names(r),
+          best: r.classList.contains("price-row-best"),
+        }));
+      })()`);
+      const okAnim = Array.isArray(anims) && anims.length > 0
+        && anims.every((a) => String(a.name).includes("price-row-in"))
+        && anims.some((a) => a.best && String(a.name).includes("price-row-best-ring"));
+      console.log("  " + (okAnim ? "✓" : "✗") + " 报价行动效已挂上:", JSON.stringify(anims));
+      return ok && okAnim;
+    }
     await sleep(250);
   }
+  console.log("  ✗ 没找到价格单元格");
   return false;
 };
 
@@ -258,3 +276,4 @@ await send("Browser.close");
 await sleep(300);
 child.kill();
 console.log(failures === 0 ? "done ✓ 全部通过 -> " + OUT : "done ✗ 失败 " + failures + " 项 -> " + OUT);
+process.exit(failures === 0 ? 0 : 1); // 红了就要真的红：此前无论失败都 exit 0，脚本会给出「假绿」
