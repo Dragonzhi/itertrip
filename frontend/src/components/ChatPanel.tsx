@@ -1,25 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { compressImage } from "../lib/imageCompress";
-import { useElapsed } from "../hooks/useElapsed";
 import CalendarPicker from "./CalendarPicker";
 import ThinkingBlock from "./ThinkingBlock";
 import DecisionTrace from "./DecisionTrace";
-import type { ChatMessage, ClarifyQuestion, TraceStep } from "../types/chat";
+import { SendStopButton, StreamStatus } from "./StreamControls";
+import type { ChatStreamState } from "../hooks/useChatStream";
+import type { ChatMessage, ClarifyQuestion } from "../types/chat";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  loading: boolean;
+  /** 优化②：流式状态统一由 useChatStream 提供（含 sending/阶段/心跳/停止） */
+  stream: ChatStreamState;
   hasRoute: boolean;
   onSend: (text: string, images?: string[]) => void;
   /** M15 视觉能力（来自「测试连接」探测）：false 时截图入口置灰 */
   vision?: "unknown" | boolean;
-  /** 流式过程（优化①）：阶段播报 + 正在流出的回复文本 */
-  stageLabel?: string | null;
-  streamText?: string;
-  /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
-  streamThinking?: string;
-  /** M19 实时决策轨迹（流式期间逐步下发，终帧后落到消息上持久化） */
-  liveTrace?: TraceStep[];
   /** M19：澄清卡提交后回写「已回答」，避免刷新后已答的卡复活 */
   onAnswered?: (id: string) => void;
 }
@@ -293,20 +288,20 @@ export function ClarifyCard({
 }
 
 /** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。M19 加决策轨迹。 */
-export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLabel, streamText, streamThinking, vision, liveTrace, onAnswered }: ChatPanelProps) {
+export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, onAnswered }: ChatPanelProps) {
   const [text, setText] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [imgBusy, setImgBusy] = useState(false);
   const [imgError, setImgError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const elapsed = useElapsed(loading);
+  const loading = stream.sending;
   const MAX_IMAGES = 4;
   const visionOff = vision === false;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages.length, loading, streamText, stageLabel, streamThinking]);
+  }, [messages.length, loading, stream.text, stream.stageLabel, stream.thinking, stream.trace.length, stream.health]);
 
   /** M15：压缩并追加截图（文件选择 / 剪贴板粘贴共用），上限 4 张 */
   const addImages = async (files: (File | Blob)[]) => {
@@ -399,6 +394,11 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
               {m.role === "assistant" && m.changed && (
                 <div className="text-[11px] text-ink-soft mt-1">地图已更新 · 可撤销</div>
               )}
+              {m.role === "assistant" && m.interrupted && (
+                <div className="text-[11px] text-gold mt-1 font-medium" data-testid="msg-interrupted">
+                  ■ 已中断 · 以上是已生成的部分
+                </div>
+              )}
             </div>
             {m.role === "assistant" && m.questions && m.questions.length > 0 && (
               <div className="w-full max-w-[90%]">
@@ -421,28 +421,23 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
         ))}
         {loading && (
           <div className="space-y-1.5" data-testid="ai-streaming">
-            <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
-              {stageLabel || "AI 正在思考…"}
-              <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {elapsed}s</span>
-            </div>
-            {liveTrace && liveTrace.length > 0 && <DecisionTrace steps={liveTrace} live />}
-            {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
-            {streamText && (
+            <StreamStatus
+              active={loading}
+              stageLabel={stream.stageLabel}
+              text={stream.text}
+              idleMs={stream.idleMs}
+              health={stream.health}
+              sawPing={stream.sawPing}
+              variant="extract"
+            />
+            {stream.trace.length > 0 && <DecisionTrace steps={stream.trace} live />}
+            {stream.thinking && <ThinkingBlock text={stream.thinking} streaming />}
+            {stream.text && (
               <div className="flex justify-start">
                 <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
-                  {streamText}
+                  {stream.text}
                   <span className="inline-block w-[2px] h-[14px] bg-moss align-middle ml-0.5 animate-pulse" />
                 </div>
-              </div>
-            )}
-            {!streamText && (
-              <div className="text-[11px] text-ink-soft/70 px-1 leading-relaxed" data-testid="wait-hint">
-                {elapsed < 8
-                  ? "模型排队中，免费源首字常需 10–30 秒…"
-                  : elapsed < 45
-                    ? "仍在生成中，长攻略 / 多张截图会更久，请稍候…"
-                    : "快好了，复杂解析需要更长时间；若超过 3 分钟可重试…"}
               </div>
             )}
           </div>
@@ -512,17 +507,15 @@ export default function ChatPanel({ messages, loading, hasRoute, onSend, stageLa
               }
             }}
             rows={2}
+            data-testid="chat-input"
             placeholder="粘贴攻略文字或截图，或说「想去成都 3 天」…"
             className="flex-1 resize-none border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
-          <button
-            type="submit"
-            disabled={(!text.trim() && !pendingImages.length) || loading || imgBusy}
-            className="bg-moss text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-[#175740] disabled:opacity-40 disabled:cursor-not-allowed"
-            data-testid="send-btn"
-          >
-            发送
-          </button>
+          <SendStopButton
+            sending={loading}
+            disabled={(!text.trim() && !pendingImages.length) || imgBusy}
+            onStop={stream.stop}
+          />
         </div>
         <p className="text-[10px] text-[#A8A298] mt-1.5">
           {hasRoute ? "当前行程可继续对话修改 · Enter 发送 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}

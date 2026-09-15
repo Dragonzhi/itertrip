@@ -56,6 +56,8 @@ export interface ChatMessage {
   changed?: boolean;
   /** 出错标记 */
   error?: boolean;
+  /** 优化②：这一轮被中断（用户点停止 / 看门狗超时）；content 是已生成的部分，不算错误 */
+  interrupted?: boolean;
   /** AI 执行了哪些修改的短叙述（由前端 diff 生成，DESIGN §2「我改了什么」） */
   changeSummary?: string[];
   /** AI 待答问题卡（M17，仅 assistant 携带） */

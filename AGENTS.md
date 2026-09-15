@@ -428,7 +428,8 @@ RouteJSON
 
 | event | data 内容 | 语义 |
 |-------|----------|------|
-| `stage` | `{stage: understand\|memory\|retry\|geocode\|done\|thinking-steps, label}` | 阶段播报（驱动前端状态文案）；`memory` = 已检索到历史攻略并注入（M18） |
+| `stage` | `{stage: understand\|memory\|thinking-steps\|streaming\|retry\|parse\|geocode\|done, label}` | 阶段播报（驱动前端状态文案）；`memory` = 已检索到历史攻略并注入（M18）；`streaming` = 首字到达；`parse` = 正在整理结构化结果；`geocode` 带「正在核验坐标 3/7：某地点…」逐点进度（优化②） |
+| `ping` | `{ms: int, stage: str\|null}` | **心跳（优化②）**：任何静默阶段（模型等待 / 坐标批处理 / 事实检查）每 ~2s 一次，只证明服务端还活着、不携带内容；前端据此把「多久没收到事件」判成慢 / 停滞 / 断开 |
 | `trace` | `{step: {id, kind, status, title, detail, ms, meta}}` | **M19 决策轨迹**：逐步下发，同 `id` 为 upsert；`kind=provider\|memory\|llm\|retry\|geocode\|facts\|edit\|summary`，`status=run\|done\|warn\|fail\|skip`（见 §4.A 能力 7） |
 | `thinking` | `{thinking}` | 推理模型思考链增量（前端淡色小字滚动，不混入正文） |
 | `delta` | `{text}` | 回复正文增量（已剥离协议标记，可直接追加渲染） |
@@ -436,6 +437,8 @@ RouteJSON
 | `error` | `{detail}` | 流开始后的错误（预检失败仍是 HTTP 400） |
 
 `reply` 与 `error` 各只出现一次且必为最后一个事件；前端断流容错：网关不支持 stream 时自动回退非流式一次性取回。
+**优化②护栏**：流结束却没有 `reply`/`error` → 客户端直接报「连接中断」（此前会安静返回空回复，界面出现**空气泡**）；
+响应头已带 `Cache-Control: no-cache` + `X-Accel-Buffering: no`（中间层不得缓冲 SSE，否则心跳失去意义）。
 轨迹步上限 60（随消息进 localStorage，超出只计数并在 summary 步里提示省略条数）；轨迹不含 prompt/响应原文与任何 key。
 
 ### 6.3 前端持久化（localStorage，key 前缀 `itertrip:`）
@@ -534,6 +537,8 @@ RouteJSON
 | 离谱检测触发 / 离谱替换门槛 | 偏离中位数 100km / 差 10km 才替换 | `planner._OUTLIER_KM` / `_OUTLIER_REPLACE_KM` |
 | 事实告警前缀 / 日期推断口径 | `闭馆日：` / 完整日期=user，月日或阳历节日=就近未来（inferred） | `facts.WARN_PREFIX` / `facts.resolve_start_date` |
 | 决策轨迹步数上限 | 60 步 | `chat._TRACE_MAX` |
+| SSE 心跳间隔 | 2.0s | `chat._PING_INTERVAL` |
+| 看门狗阈值（慢 / 停滞 / 自动中断） | 6s / 15s / 60s（且必须收到过 ping 才允许自动中断） | `frontend/src/lib/streamWatch.ts` |
 | 规划页对话留存 | 30 条（按行程指纹隔离） | `settings.savePlanChatHistory` |
 
 ---
@@ -623,6 +628,7 @@ RouteJSON
 | 同名连锁/分店歧义 | 数据源固有歧义：高德同品牌多分店时按「名称分 + 括号分支名 + 离目的地/现有坐标更近」裁决，不保证选中用户心里那一家；界面给来源徽标与「按名称重新定位」兜底 |
 | 坐标来源可信度分级 | `memory`/`user`（用户手点，最高）> `amap`（POI 核验）> `llm`（模型推测、未核验）> `search`/`city`（低置信兜底）；徽标如实展示，**不做「已核验」的过度声明**（弱匹配但接近时不升级来源标注） |
 | 决策可见性 | 每条 AI 回复都可展开「🧭 决策过程」（≤60 步）；静默兜底（坐标转换失败、补全失败、解析重试）一律以 warn/fail 步暴露；轨迹不含 prompt/响应原文与任何 key |
+| 中断语义（优化②） | 「发送」运行时**原位**变「■ 停止」（幂等，Esc 同效）：前端 abort fetch，starlette 1.6 在客户端断开时取消流任务，正在跑的 httpx 流随之关闭；**已排队的后台记忆入库不回滚**（fire-and-forget，不做「取消即回滚一切」的承诺）。中断保留已生成的部分文本并标「已中断」，**不应用任何路线改动**（改动的唯一载体是终帧 route，服务端无状态）。旧后端没有心跳时不自动中断（`sawPing` 门控），只降级提示 |
 | 上下文护栏 | 历史仅 8 轮 + 当前 route 快照；无 route 时历史对提取模式作用有限 |
 | 长期记忆（M18，默认关闭） | opt-in：`ITERTRIP_MEMORY_ENABLED=1` + 装 `fastembed`（或 provider=api）才生效；按匿名档案隔离、可一键清空；注入 ≤6 条/≤1200 字；检索/入库异常只记日志不影响主线；不跨档案共享（隐私红线） |
 | 「说了没做」的三类兜底 | ① **坐标**：prompt 含坐标类措辞而模型 `changed=false` → 后端强制重跑坐标代理真改（§5.4）；② **改路线**（M22.2）：命中改路线意图词但模型**只回叙述、没给 `<<<JSON>>>`** → 自动带纠错重试一次，仍未产出则明说「行程一个字都没变」并把模型的「已设置」标为不算数；③ **酒店报价**（M22.3）：祈使句命中报价意图时**确定性写入** `hotel.prices`（upsert「手动录入」、保留平台报价），无论模型偷懒/写错键名/压根不动都能落到数据里。三类都不静默、不假装成功 |
@@ -650,6 +656,7 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 - [x] 后台管理配置（热更新 + 脱敏 + token 鉴权）
 - [x] 截图解析（M15）：VLM 直出 route JSON（一次调用，不做图→文中转）；`vision` 字段驱动
       前端置灰/开启截图入口；原图不进持久化历史与后续上下文（§4.3 护栏①）
+- [x] **流式体验②（进度可见 + 可中断）**：无思考链的模型不再「只能看总计时」——`event: ping` 心跳盖住**所有**静默阶段（模型等待 / 坐标批处理 / 事实检查），首字播报 `streaming`、结构整理播报 `parse`、坐标阶段逐点播报「正在核验 3/7：某地点」（`planner._enrich_coordinates(on_progress=…)` + `chat._enrich_progress`）；前端看门狗把「多久没收到事件」判成慢（6s，金）/ 停滞（15s，红，明说可能已断开）/ 自动中断（60s 且必须收到过心跳，老后端不误杀）；「发送」运行时原位变「■ 停止」（幂等、Esc 同效），中断保留已生成部分并标「已中断」、**不产生假成功**；流结束却没有终帧 → 报「连接中断」而不是空气泡。验证：`backend/_probe_stream.py` 19/19（含「心跳不得掐死内层 LLM 调用」护栏）、`node src/lib/stream.check.ts` 14/14、`node scripts/chat-stream.mjs` 17/17（假 SSE + 真前端，覆盖正常 / 停止 / 断流 / 长静默四条路径）
 - [x] 等待体验与导入导出补全：流式期间计时（⏱ Ns）+ 分时段提示文案 + 思考链流式强制展开；
       HTML 导出失败可见（catch + 后端 detail 透出）+ 导出副本坐标清洗；首页新增导入
       （支持 .json 与导出的自包含 .html，括号状态机提取内嵌 TRIP）

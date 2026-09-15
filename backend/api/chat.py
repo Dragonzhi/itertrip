@@ -4,7 +4,8 @@
     输入  { prompt: str, history: [{role, content}], route: RouteJSON | null,
             images?: [data:image/*;base64 …] }  # M15 截图，仅提取模式接受
     输出  text/event-stream：
-        event: stage    data: {"stage": "understand|memory|retry|geocode|thinking-steps|done", "label": str}
+        event: stage    data: {"stage": "understand|memory|thinking-steps|streaming|retry|parse|geocode|done", "label": str}
+        event: ping     data: {"ms": int, "stage": str|null}   # 优化②：静默阶段每 ~2s 一次心跳（不发内容，只证明服务端还活着）
         event: trace    data: {"step": {id, kind, status, title, detail, ms, meta}}  # M19 决策轨迹（按 id upsert）
         event: thinking data: {"thinking": str}    # 推理模型思考链增量（前端淡色小字实时滚动）
         event: delta    data: {"text": str}        # <<<REPLY>>> 段的增量（客户端追加）
@@ -392,6 +393,100 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+# ---------------- 优化②：心跳与逐点进度（让「还在跑吗」随时有答案） ----------------
+
+_PING_INTERVAL = 2.0  # 心跳间隔（秒）
+
+
+async def _with_heartbeat(inner, started_at: float):
+    """给 SSE 流套一层心跳：任何阶段只要安静超过 _PING_INTERVAL 就吐一帧 ping。
+
+    为什么不逐阶段手写 ping：静默点太多（模型等待、坐标批处理、事实检查、记忆检索），
+    逐处插入既漏又乱；包一层就等于「任何阶段安静 2s，前端就收到一次心跳」，
+    于是前端可以用「多久没收到任何事件」反过来判定连接是不是已经死了。
+
+    为什么必须走队列：不能对 inner 直接 asyncio.wait_for(anext(inner)) —— wait_for 超时会
+    取消被等待的协程，等于把正在跑的 LLM 调用掐死。队列超时只取消一次 queue.get()，
+    内层生成器照跑。reply 之后不会再吐 ping（end 标记紧随其后入队，不会等到超时）。
+    """
+    q: asyncio.Queue = asyncio.Queue()
+    end = object()
+
+    async def _pump():
+        try:
+            async for frame in inner:
+                await q.put((frame, None))
+        except Exception as e:  # noqa: BLE001 —— 内层异常转成错误帧，别让流无声结束
+            await q.put((None, e))
+        finally:
+            await q.put((end, None))
+
+    task = asyncio.create_task(_pump())
+    last_stage: str | None = None
+    try:
+        while True:
+            try:
+                frame, err = await asyncio.wait_for(q.get(), _PING_INTERVAL)
+            except asyncio.TimeoutError:
+                yield _sse("ping", {
+                    "ms": int((time.perf_counter() - started_at) * 1000),
+                    "stage": last_stage,
+                })
+                continue
+            if err is not None:
+                yield _sse("error", {"detail": f"服务端异常：{str(err)[:160]}"})
+                break
+            if frame is end:
+                break
+            if isinstance(frame, str) and frame.startswith("event: stage"):
+                # 记住最近的阶段名，随心跳一起下发（前端错过某帧也能显示当前阶段）
+                try:
+                    last_stage = json.loads(frame.split("data:", 1)[1]).get("stage")
+                except Exception:  # noqa: BLE001
+                    pass
+            yield frame
+    finally:
+        task.cancel()
+
+
+async def _enrich_progress(
+    route,
+    destination: str,
+    *,
+    overrides: dict | None = None,
+    traveler: str = "",
+    records: list[dict] | None = None,
+    force_verify: bool = False,
+):
+    """跑 _enrich_coordinates 并逐点播报进度（优化②）。
+
+    yield ("stage", "正在核验坐标 3/7：湖南博物院…")，最后 yield ("done", filled)。
+    为什么要队列：_enrich_coordinates 的进度回调是同步函数，没法直接 yield 出去；
+    也不能用 wait_for 催它（会取消正在跑的网络调用），所以用「任务 + 队列」把边跑边报抽出来。
+    异常照原样抛给调用方（调用点已有自己的降级兜底）。
+    """
+    from ..engine.planner import _enrich_coordinates
+
+    q: asyncio.Queue = asyncio.Queue()
+
+    def _on_progress(done: int, total: int, name: str) -> None:
+        q.put_nowait((done, total, name))
+
+    task = asyncio.create_task(_enrich_coordinates(
+        route, destination, overrides=overrides, traveler=traveler,
+        records=records, force_verify=force_verify, on_progress=_on_progress,
+    ))
+    while True:
+        try:
+            done, total, name = await asyncio.wait_for(q.get(), 1.5)
+        except asyncio.TimeoutError:
+            if task.done():
+                break
+            continue
+        yield ("stage", f"正在核验坐标 {done}/{total}：{name}…")
+    yield ("done", await task)
+
+
 # ---------------- M19 决策轨迹（把「盲盒」摊开成可读的决策步） ----------------
 
 _TRACE_MAX = 60  # 单轮步数上限（轨迹随消息持久化，必须防膨胀）
@@ -771,6 +866,11 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                         break
                     if not started:
                         ttft_ms = int((time.perf_counter() - t_llm) * 1000)
+                        # 优化②：首字到达即播报「已经在出字了」——无思考链的模型也有可见进展
+                        yield _sse("stage", {
+                            "stage": "streaming",
+                            "label": f"模型已开始输出（首字 {ttft_ms / 1000:.1f}s）",
+                        })
                     started = True
                     if kind == "thinking":
                         # 思考链实时下发到 thinking 通道（前端淡色小字滚动，不混入正文）
@@ -801,6 +901,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 ms=int((time.perf_counter() - t_llm) * 1000), chars=len(full), ttft_ms=ttft_ms,
             ))
 
+            # 优化②：模型已返回、还在解析/清洗结构化数据，这段也可能是几百毫秒到几秒的静默
+            yield _sse("stage", {"stage": "parse", "label": "正在整理模型返回的路线…"})
             reply_text, json_part = _split_reply_json(full)
             if not json_part:
                 # 无 <<<JSON>>> 标记：可能模型没遵协议，直接把 JSON 混在正文里（免费模型常见）。
@@ -903,12 +1005,14 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 })
                 t_geo = time.perf_counter()
                 try:
-                    from ..engine.planner import _enrich_coordinates
-
-                    filled = await _enrich_coordinates(
+                    async for _kind, _val in _enrich_progress(
                         route, route.trip.destination, overrides=cfg if is_user_key else None,
                         traveler=traveler, records=geo_records,
-                    )
+                    ):
+                        if _kind == "stage":
+                            yield _sse("stage", {"stage": "geocode", "label": _val})
+                        else:
+                            filled = _val
                 except Exception as e:
                     print(f"[chat] 坐标补全失败（忽略）: {e}")
                     yield emit(_trace_step("geo-error", "geocode", "warn", "坐标补全失败（已忽略）", str(e)[:140]))
@@ -1114,14 +1218,21 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         edit_filled = 0
         edit_facts: dict = {}
         try:
-            from ..engine.planner import _enrich_coordinates
             from ..engine.schema import RouteJSON as _RJ2
             _route_obj = _RJ2.model_validate(data["__route"])
             t_geo2 = time.perf_counter()
-            edit_filled = await _enrich_coordinates(
+            yield _sse("stage", {
+                "stage": "geocode",
+                "label": f"正在核验 {sum(len(d.places) for d in _route_obj.days)} 个地点的坐标…",
+            })
+            async for _kind2, _val2 in _enrich_progress(
                 _route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None,
                 traveler=traveler, records=edit_records,
-            )
+            ):
+                if _kind2 == "stage":
+                    yield _sse("stage", {"stage": "geocode", "label": _val2})
+                else:
+                    edit_filled = _val2
             # M22：日期/事实检查独立兜底，避免自己的异常被上面那层误标成「坐标补全失败」
             try:
                 from ..engine import facts as _facts
@@ -1212,8 +1323,10 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         ):
             yield ev
 
+    # 优化②：外面套一层心跳。任何静默阶段（模型等待 / 坐标批处理 / 事实检查）都会吐 ping，
+    # 前端据此区分「还在跑」与「已经断了」——无思考链的模型也不再只能干看总计时。
     return StreamingResponse(
-        gen(),
+        _with_heartbeat(gen(), time.perf_counter()),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -7,18 +7,20 @@ import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../component
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { Hotel, PlaceType, PriceItem, RouteJSON } from "../types/route";
 import CalendarPicker from "../components/CalendarPicker";
-import { exportHtml, chatStream, dateCheck, geocode as geocodeApi, mergeTrace, recheckRoute, reportPlaceEntity, type ChatStreamEvent } from "../api/client";
+import { exportHtml, dateCheck, geocode as geocodeApi, recheckRoute, reportPlaceEntity } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
 import DecisionTrace from "../components/DecisionTrace";
-import { useElapsed } from "../hooks/useElapsed";
+import { useChatStream } from "../hooks/useChatStream";
+import { SendStopButton, StreamStatus } from "../components/StreamControls";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
+import { describeStreamError } from "../lib/streamWatch";
 import { distanceKm } from "../lib/coordSource";
 import { exportFilename } from "../lib/exportName";
 import { isMobile } from "../lib/viewport";
 import { moveTarget } from "../lib/reorder";
 import { animate, motion, MotionConfig, useDragControls, useMotionValue } from "motion/react";
-import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
+import type { ChatMessage, TraceStats } from "../types/chat";
 import {
   clearPlanChatHistory,
   loadMapSettings,
@@ -91,22 +93,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const [chatOpen, setChatOpen] = useState(() => !isMobile() && bootMsgs.length > 0);
   const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>(bootMsgs);
   const [chatInput, setChatInput] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
-  /** 流式过程：当前阶段播报 label + 正在流出的回复文本 */
-  const [stageLabel, setStageLabel] = useState<string | null>(null);
-  const [streamText, setStreamText] = useState("");
-  /** 实时思考链（推理模型 reasoning_content，淡色小字滚动） */
-  const [streamThinking, setStreamThinking] = useState("");
-  /** M19 实时决策轨迹（逐步 upsert，终帧后落到消息上） */
-  const [liveTrace, setLiveTrace] = useState<TraceStep[]>([]);
-  const liveTraceRef = useRef<TraceStep[]>([]);
+  /** 优化②：对话流态（sending / 中断 / 心跳）统一由 useChatStream 提供，不再各自复制一份 */
   const [flashKeys, setFlashKeys] = useState<string[]>([]);
   /** 优化④：地点交互 {key, seq, mode}；peek=单击弹框，zoom=双击聚焦 */
   const [focus, setFocus] = useState<{ key: string; seq: number; mode: "peek" | "zoom" } | null>(null);
   /** 右侧工具条：导出二级菜单开合 */
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement | null>(null);
-  const aiElapsed = useElapsed(aiBusy);
 
   // 点击工具条外部关闭导出菜单
   useEffect(() => {
@@ -121,75 +114,18 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-  useEffect(() => {
-    if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
-  }, [chatMsgs.length, aiBusy, chatOpen, streamText, stageLabel, streamThinking, liveTrace.length]);
-
-  /* M19：抽屉对话持久化（此前只存内存，刷新即失；按行程指纹隔离，换行程自动开新会话） */
-  useEffect(() => {
-    savePlanChatHistory(chatMsgs, fp);
-  }, [chatMsgs, fp]);
-
-  /** 澄清卡提交/跳过后标记「已回答」，刷新恢复时不再重复渲染 */
-  const markAnswered = (id: string) => {
-    setChatMsgs((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
-  };
-
-  const clearPlanChat = () => {
-    if (aiBusy || !chatMsgs.length) return;
-    if (!window.confirm("确定清空当前对话记录吗？此操作不影响行程本身。")) return;
-    clearPlanChatHistory();
-    setChatMsgs([]);
-    setStageLabel(null);
-    setStreamText("");
-    setStreamThinking("");
-    setLiveTrace([]);
-    liveTraceRef.current = [];
-  };
-
-  /** 最近一轮的实际模型/来源（抽屉标题栏徽标：回答「这轮到底在用谁」） */
-  const lastStats: TraceStats | null = useMemo(() => {
-    for (let i = chatMsgs.length - 1; i >= 0; i -= 1) {
-      const s = chatMsgs[i].stats;
-      if (s && (s.model || s.provider)) return s;
-    }
-    return null;
-  }, [chatMsgs]);
-
-  const sendAiEdit = async (text: string) => {
-    const t = text.trim();
-    if (!t || aiBusy) return;
-    const userMsg: ChatMessage = { id: uid(), role: "user", content: t };
-    const history = chatMsgs
-      .filter((m) => !m.error)
-      .slice(-8)
-      .map((m) => ({ role: m.role, content: m.content }));
-    setChatMsgs((prev) => [...prev, userMsg]);
-    setChatInput("");
-    setAiBusy(true);
-    setStageLabel(null);
-    setStreamText("");
-    setStreamThinking("");
-    setLiveTrace([]);
-    liveTraceRef.current = [];
-    const onEvent = (ev: ChatStreamEvent) => {
-      if (ev.event === "stage") setStageLabel(ev.label || null);
-      else if (ev.event === "thinking") setStreamThinking((prev) => prev + (ev.thinking || ""));
-      else if (ev.event === "delta") setStreamText((prev) => prev + (ev.text || ""));
-      else if (ev.event === "trace") {
-        liveTraceRef.current = mergeTrace(liveTraceRef.current, ev.step);
-        setLiveTrace(liveTraceRef.current);
-      }
-    };
-    try {
-      const r = await chatStream({ prompt: t, history, route }, settings, onEvent);
-      setStageLabel(null);
+  /**
+   * 优化②：流式状态与中断统一交给 useChatStream（与首页共用同一套心跳/看门狗/停止语义）。
+   * 只有真终帧（onReply）才走 diffRoute + mutate；中断**不动行程** ——
+   * 改动的唯一载体是 reply 帧里的新 route，服务端无状态，没有东西需要回滚。
+   */
+  const stream = useChatStream({
+    onReply: (r, partial, trace) => {
       const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
-      const trace = r.trace && r.trace.length ? r.trace : liveTraceRef.current;
       const reply: ChatMessage = {
         id: uid(),
         role: "assistant",
-        content: r.reply || streamText,
+        content: r.reply || partial,
         route: r.route || undefined,
         changed: !!(diff && diff.changed),
         changeSummary: diff && diff.changed ? diff.summary : undefined,
@@ -197,10 +133,6 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         trace: trace.length ? trace : undefined,
         stats: r.stats,
       };
-      setStreamText("");
-      setStreamThinking("");
-      setLiveTrace([]);
-      liveTraceRef.current = [];
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
         mutate((draft) => {
@@ -215,23 +147,73 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         ];
         setFlashKeys(keys);
       }
-    } catch (e) {
-      setStageLabel(null);
-      setStreamText("");
-      setStreamThinking("");
+    },
+    onError: (e, _partial, trace) => {
       setChatMsgs((prev) => [
         ...prev,
         {
           id: uid(), role: "assistant", error: true,
-          content: e instanceof Error ? e.message : String(e),
-          trace: liveTraceRef.current.length ? liveTraceRef.current : undefined,
+          content: describeStreamError(e),
+          trace: trace.length ? trace : undefined,
         },
       ]);
-    } finally {
-      setLiveTrace([]);
-      liveTraceRef.current = [];
-      setAiBusy(false);
+    },
+    onInterrupt: (partial, reason, trace) => {
+      setChatMsgs((prev) => [
+        ...prev,
+        {
+          id: uid(),
+          role: "assistant",
+          content: partial || (reason === "watchdog" ? "服务端长时间没有响应，已自动中断。" : "已停止生成。"),
+          interrupted: true,
+          trace: trace.length ? trace : undefined,
+        },
+      ]);
+    },
+  });
+
+  useEffect(() => {
+    if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
+  }, [chatMsgs.length, stream.sending, chatOpen, stream.text, stream.stageLabel, stream.thinking, stream.trace.length, stream.health]);
+
+  /* M19：抽屉对话持久化（此前只存内存，刷新即失；按行程指纹隔离，换行程自动开新会话） */
+  useEffect(() => {
+    savePlanChatHistory(chatMsgs, fp);
+  }, [chatMsgs, fp]);
+
+  /** 澄清卡提交/跳过后标记「已回答」，刷新恢复时不再重复渲染 */
+  const markAnswered = (id: string) => {
+    setChatMsgs((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
+  };
+
+  const clearPlanChat = () => {
+    if (stream.sending || !chatMsgs.length) return;
+    if (!window.confirm("确定清空当前对话记录吗？此操作不影响行程本身。")) return;
+    clearPlanChatHistory();
+    setChatMsgs([]);
+  };
+
+  /** 最近一轮的实际模型/来源（抽屉标题栏徽标：回答「这轮到底在用谁」） */
+  const lastStats: TraceStats | null = useMemo(() => {
+    for (let i = chatMsgs.length - 1; i >= 0; i -= 1) {
+      const s = chatMsgs[i].stats;
+      if (s && (s.model || s.provider)) return s;
     }
+    return null;
+  }, [chatMsgs]);
+
+  /** 攒历史 + 交给钩子；成功/中断/报错三种收尾都在上面的 onReply/onInterrupt/onError 里 */
+  const sendAiEdit = (text: string) => {
+    const t = text.trim();
+    if (!t || stream.sending) return;
+    const userMsg: ChatMessage = { id: uid(), role: "user", content: t };
+    const history = chatMsgs
+      .filter((m) => !m.error)
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
+    setChatMsgs((prev) => [...prev, userMsg]);
+    setChatInput("");
+    void stream.send({ prompt: t, history, route }, settings);
   };
 
   const activeDay = useMemo(() => {
@@ -868,7 +850,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           <span className="text-[10px] text-ink-soft ml-auto">改动可撤销 · 地图实时更新</span>
           <button
             onClick={clearPlanChat}
-            disabled={aiBusy || !chatMsgs.length}
+            disabled={stream.sending || !chatMsgs.length}
             title="清空当前对话记录（不影响行程本身）"
             data-testid="plan-clear-chat"
             className="text-ink-soft hover:text-[#B85C5C] disabled:opacity-30 leading-none px-1"
@@ -878,7 +860,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           <button onClick={toggleChat} className="text-ink-soft hover:text-ink leading-none" aria-label="关闭对话抽屉">✕</button>
         </div>
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-3.5 py-3 space-y-2.5 min-h-0">
-          {chatMsgs.length === 0 && !aiBusy && (
+          {chatMsgs.length === 0 && !stream.sending && (
             <div className="text-center pt-8 px-3">
               <div className="text-3xl mb-2">🪄</div>
               <p className="text-sm font-bold mb-1">让 AI 动手改</p>
@@ -915,11 +897,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   <ClarifyCard
                     questions={m.questions}
                     msgId={m.id}
-                    disabled={aiBusy}
+                    disabled={stream.sending}
                     answered={m.answered}
                     onSend={sendAiEdit}
                     onAnswered={markAnswered}
                   />
+                </div>
+              )}
+              {m.role === "assistant" && m.interrupted && (
+                <div className="text-[10px] text-gold mt-1 font-medium" data-testid="msg-interrupted">
+                  ■ 已中断 · 以上是已生成的部分
                 </div>
               )}
               {m.role === "assistant" && m.trace && m.trace.length > 0 && (
@@ -929,26 +916,25 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               )}
             </div>
           ))}
-          {aiBusy && (
+          {stream.sending && (
             <div className="space-y-1.5" data-testid="ai-streaming">
-              <div className="flex items-center gap-1.5 text-xs text-moss font-medium px-1">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-moss animate-pulse" />
-                {stageLabel || "AI 正在思考…"}
-                <span className="ml-1 font-mono text-[11px] text-ink-soft/70" data-testid="elapsed">⏱ {aiElapsed}s</span>
-              </div>
-              {liveTrace.length > 0 && <DecisionTrace steps={liveTrace} live />}
-              {streamThinking && <ThinkingBlock text={streamThinking} streaming />}
-              {streamText && (
+              <StreamStatus
+                active={stream.sending}
+                stageLabel={stream.stageLabel}
+                text={stream.text}
+                idleMs={stream.idleMs}
+                health={stream.health}
+                sawPing={stream.sawPing}
+                variant="edit"
+              />
+              {stream.trace.length > 0 && <DecisionTrace steps={stream.trace} live />}
+              {stream.thinking && <ThinkingBlock text={stream.thinking} streaming />}
+              {stream.text && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-white border border-line rounded-2xl rounded-bl-sm px-3 py-1.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words">
-                    {streamText}
+                    {stream.text}
                     <span className="inline-block w-[2px] h-[14px] bg-moss align-middle ml-0.5 animate-pulse" />
                   </div>
-                </div>
-              )}
-              {!streamText && (
-                <div className="text-[11px] text-ink-soft/70 px-1 leading-relaxed">
-                  {aiElapsed < 8 ? "模型排队中，通常 10–30 秒…" : "仍在生成中，复杂改动会更久，请稍候…"}
                 </div>
               )}
             </div>
@@ -970,16 +956,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                 }
               }}
               rows={2}
+              data-testid="plan-chat-input"
               placeholder="告诉 AI 怎么改，例如「第二天加点美食」…"
               className="flex-1 resize-none border border-line rounded-xl px-3 py-2 text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
             />
-            <button
-              type="submit"
-              disabled={!chatInput.trim() || aiBusy}
-              className="bg-moss text-white rounded-xl px-3.5 py-2.5 text-[13px] font-bold hover:bg-[#175740] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              发送
-            </button>
+            <SendStopButton
+              sending={stream.sending}
+              disabled={!chatInput.trim()}
+              onStop={stream.stop}
+              size="sm"
+            />
           </div>
         </form>
         </motion.div>

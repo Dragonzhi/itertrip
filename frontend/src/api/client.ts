@@ -37,12 +37,17 @@ export async function planTrip(
   return { route, source: resp.headers.get("X-IterTrip-Source") || "?" };
 }
 
-/** 对话流式事件（优化①）：stage=阶段播报 trace=决策轨迹 delta=回复增量 reply=终帧 error=流内错误 */
+/**
+ * 对话流式事件（优化①）：stage=阶段播报 trace=决策轨迹 delta=回复增量 reply=终帧 error=流内错误
+ * 优化②新增 ping=心跳（静默阶段每 ~2s 一次，只证明服务端还活着，不携带内容）。
+ */
 export interface ChatStreamEvent {
-  event: "stage" | "trace" | "thinking" | "delta" | "reply" | "error";
+  event: "stage" | "ping" | "trace" | "thinking" | "delta" | "reply" | "error";
   stage?: string;
   label?: string;
   text?: string;
+  /** 心跳：本轮已耗时（毫秒）与最近的阶段名（前端只用它证明「还活着」） */
+  ms?: number;
   /** M19 决策轨迹的单步（按 step.id upsert 到本轮轨迹） */
   step?: TraceStep;
   /** 推理模型思考链增量（实时滚动，淡色小字展示，不混入正文） */
@@ -68,20 +73,39 @@ export function mergeTrace(prev: TraceStep[], step?: TraceStep | null): TraceSte
   return next;
 }
 
+export interface ChatStreamRequest {
+  prompt: string;
+  route?: RouteJSON | null;
+  history?: { role: "user" | "assistant"; content: string }[];
+  images?: string[];
+}
+
+export interface ChatStreamResult {
+  reply: string;
+  intent: "route_edit" | "chitchat";
+  route: RouteJSON | null;
+  questions?: ClarifyQuestion[];
+  trace?: TraceStep[];
+  stats?: TraceStats;
+}
+
 /**
- * 对话入口（SSE 流式）：prompt 为空 = 只初始化。
- * onEvent 按序回调 stage/delta 事件；reply/error 只出现一次且为最后事件。
- * 返回终帧数据（reply/error 合一的 dict）。
+ * 对话入口（SSE 流式）。
+ * onEvent 按序回调 stage/ping/delta 事件；reply/error 只出现一次且为最后事件。
+ * signal：优化②中断支持（用户点「停止」或看门狗自动中断时由调用方 abort）。
+ * 返回终帧数据；**流结束却没有终帧时抛错**（此前会安静地返回空回复 → 空气泡）。
  */
 export async function chatStream(
-  req: { prompt: string; route?: RouteJSON | null; history?: { role: "user" | "assistant"; content: string }[]; images?: string[] },
+  req: ChatStreamRequest,
   settings: LlmSettings | null | undefined,
   onEvent?: (ev: ChatStreamEvent) => void,
-): Promise<{ reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[]; trace?: TraceStep[]; stats?: TraceStats }> {
+  signal?: AbortSignal,
+): Promise<ChatStreamResult> {
   const resp = await fetch(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify(req),
+    signal,
   });
   if (!resp.ok || !resp.body) {
     const detail = await resp.text();
@@ -94,10 +118,11 @@ export async function chatStream(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
-  let final: { reply: string; intent: "route_edit" | "chitchat"; route: RouteJSON | null; questions?: ClarifyQuestion[]; trace?: TraceStep[]; stats?: TraceStats } = {
+  let final: ChatStreamResult = {
     reply: "", intent: "chitchat", route: null,
   };
   let failed = false;
+  let gotReply = false;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -123,6 +148,7 @@ export async function chatStream(
       }
       onEvent?.(payload);
       if (event === "reply") {
+        gotReply = true;
         final = {
           reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null,
           questions: payload.questions || undefined, trace: payload.trace, stats: payload.stats,
@@ -131,6 +157,11 @@ export async function chatStream(
     }
   }
   if (failed) throw new Error("对话失败");
+  if (!gotReply) {
+    // 优化②：流结束了却没有 reply/error —— 后端进程退出、连接被代理截断等。
+    // 以前这里会安静返回空回复，用户看到一个空气泡还以为模型没话说；现在明确报错。
+    throw new Error("连接中断：后端没有返回完整结果（后端可能已退出，或网络被切断）");
+  }
   return final;
 }
 

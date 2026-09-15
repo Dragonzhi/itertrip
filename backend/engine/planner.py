@@ -332,6 +332,34 @@ def convert_new_coords(new: RouteJSON, old: RouteJSON) -> RouteJSON:
     return new
 
 
+def _day_targets(d, di: int) -> list[tuple[str, object, str]]:
+    """阶段③的核验对象：该天所有地点 + 有名字的酒店（顺序与原实现逐字一致）。"""
+    out: list[tuple[str, object, str]] = [
+        (f"geo:d{di}-p{pi}", p, getattr(p, "type", "")) for pi, p in enumerate(d.places)
+    ]
+    if d.hotel is not None and (d.hotel.name or "").strip():
+        out.append((f"geo:d{di}-hotel", d.hotel, ""))
+    return out
+
+
+def _verify_eligible(obj, anchor, force_verify: bool, traveler: str, destination: str) -> bool:
+    """阶段③「这个点要不要查高德」的判定（进度总数与主循环共用同一份口径）。
+
+    跳过条件（M20 事故的教训）：标签 + **位置与用户要求的目的地自洽** 两个条件同时成立才跳过 ——
+    被写坏的坐标恰好也标着 amap/high，若只看标签它就永远躲过复核。
+    """
+    if not _has_coord(obj):
+        return False
+    if obj.source in ("user", "memory") or _is_user_truth(traveler, obj.name, destination):
+        return False
+    # 目的地锚点：判断「这个点看着就不在用户要的地方」的参照物（M21）
+    dest_far = anchor is not None and \
+        haversine_km(obj.lat, obj.lng, anchor[0], anchor[1]) > _VERIFY_WRONG_KM
+    if not force_verify and obj.source == "amap" and obj.confidence == "high" and not dest_far:
+        return False
+    return True
+
+
 async def _enrich_coordinates(
     route: RouteJSON,
     destination: str,
@@ -340,6 +368,7 @@ async def _enrich_coordinates(
     records: list[dict] | None = None,
     session: AmapSession | None = None,
     force_verify: bool = False,
+    on_progress=None,
 ) -> int:
     """对缺失/离谱/不可信坐标做补全与核验；返回处理（写入坐标）个数。
 
@@ -377,6 +406,11 @@ async def _enrich_coordinates(
     rec: list[dict] = records if records is not None else []
     filled = 0
 
+    def _prog(done: int, total: int, name: str) -> None:
+        """进度播报（优化②）：调用方给了 on_progress 时，每次网络调用前报「第 done/共 total：name」。"""
+        if on_progress is not None:
+            on_progress(done, total, name)
+
     # ---- 阶段①：离谱检测 ----
     valid = [(p.lat, p.lng) for d in route.days for p in d.places if _has_coord(p)]
     mlat = mlng = None
@@ -386,16 +420,24 @@ async def _enrich_coordinates(
 
         mlat, mlng = median(v[0] for v in valid), median(v[1] for v in valid)
         china_trip = in_china(mlat, mlng, 4.0)
+    def _suspicious(p) -> bool:
+        """阶段①判定：已有坐标、非用户真值，且偏离中位数 >100km 或（境内行程里）落在境外。"""
+        if not _has_coord(p):
+            return False  # 缺失交给阶段②
+        if p.source in ("user", "memory") or _is_user_truth(traveler, p.name, destination):
+            return False
+        dist_center = haversine_km(p.lat, p.lng, mlat, mlng) if mlat is not None else 0.0
+        outside_china = not in_china(p.lat, p.lng, 2.0) and china_trip
+        return dist_center > _OUTLIER_KM or outside_china
+
+    _s1_total = sum(1 for d in route.days for p in d.places if _suspicious(p))
+    _s1_done = 0
     for di, d in enumerate(route.days):
         for pi, p in enumerate(d.places):
-            if not _has_coord(p):
-                continue  # 缺失交给阶段②
-            if p.source in ("user", "memory") or _is_user_truth(traveler, p.name, destination):
+            if not _suspicious(p):
                 continue
-            dist_center = haversine_km(p.lat, p.lng, mlat, mlng) if mlat is not None else 0.0
-            outside_china = not in_china(p.lat, p.lng, 2.0) and china_trip
-            if dist_center <= _OUTLIER_KM and not outside_china:
-                continue
+            _s1_done += 1
+            _prog(_s1_done, _s1_total, p.name)
             t0 = time.perf_counter()
             result = await geocode(
                 p.name, destination, llm_overrides=overrides, traveler=traveler,
@@ -426,10 +468,16 @@ async def _enrich_coordinates(
                          confidence=result["confidence"], dist_km=moved, ms=ms)
 
     # ---- 阶段②：缺失补全 ----
+    _s2_total = sum(1 for d in route.days for p in d.places if not _has_coord(p)) + sum(
+        1 for d in route.days if d.hotel is not None and not _has_coord(d.hotel)
+    )
+    _s2_done = 0
     for di, d in enumerate(route.days):
         for pi, p in enumerate(d.places):
             if _has_coord(p):
                 continue
+            _s2_done += 1
+            _prog(_s2_done, _s2_total, p.name)
             t0 = time.perf_counter()
             result = await geocode(
                 p.name, destination, llm_overrides=overrides, traveler=traveler,
@@ -449,6 +497,8 @@ async def _enrich_coordinates(
                      confidence=result["confidence"], ms=ms)
         h = d.hotel
         if h is not None and not _has_coord(h):
+            _s2_done += 1
+            _prog(_s2_done, _s2_total, h.name)
             t0 = time.perf_counter()
             result = await geocode(h.name, destination, llm_overrides=overrides, traveler=traveler, session=sess)
             ms = int((time.perf_counter() - t0) * 1000)
@@ -471,26 +521,20 @@ async def _enrich_coordinates(
         envelope_strict = mlat is not None and spread <= _OUTLIER_KM
         drift_limit = max(spread, 50.0) + _VERIFY_DRIFT_KM
         anchor = destination_anchor(destination)
+        # 进度总数：与主循环共用 _day_targets / _verify_eligible，避免两处口径漂移
+        _v_total = sum(
+            1
+            for _di, _d in enumerate(route.days)
+            for _rid, _obj, _hint in _day_targets(_d, _di)
+            if _verify_eligible(_obj, anchor, force_verify, traveler, destination)
+        )
+        _v_done = 0
         for di, d in enumerate(route.days):
-            targets: list[tuple[str, object, str]] = [
-                (f"geo:d{di}-p{pi}", p, getattr(p, "type", "")) for pi, p in enumerate(d.places)
-            ]
-            if d.hotel is not None and (d.hotel.name or "").strip():
-                targets.append((f"geo:d{di}-hotel", d.hotel, ""))
-            for rid, obj, hint in targets:
-                if not _has_coord(obj):
+            for rid, obj, hint in _day_targets(d, di):
+                if not _verify_eligible(obj, anchor, force_verify, traveler, destination):
                     continue
-                if obj.source in ("user", "memory") or _is_user_truth(traveler, obj.name, destination):
-                    continue
-                # 目的地锚点：判断「这个点看着就不在用户要的地方」的参照物（M21）
-                dest_far = anchor is not None and \
-                    haversine_km(obj.lat, obj.lng, anchor[0], anchor[1]) > _VERIFY_WRONG_KM
-                if not force_verify and obj.source == "amap" and obj.confidence == "high" \
-                        and not dest_far:
-                    # 「本次刚由高德写入」不再用来源标签推断（M20 事故里被写坏的坐标恰好也标着
-                    # amap/high，于是永远躲过复核）——改为：标签 + **位置与用户要求的目的地自洽**
-                    # 两个条件同时成立才跳过。离目的地 200km 以上的 amap 标签一律重新核验。
-                    continue
+                _v_done += 1
+                _prog(_v_done, _v_total, obj.name)
                 t0 = time.perf_counter()
                 ref = (obj.lat, obj.lng)
                 # 现有坐标是否「可信」：离行程中位数 >100km，或离目的地城市中心 >200km，
