@@ -13,39 +13,54 @@ interface StatusProps {
   variant: "extract" | "edit";
 }
 
+/** 三颗呼吸点：只在收到过心跳时出现，等于把「服务端每 ~2s 回一次」画出来。 */
+function HeartDots({ slow }: { slow: boolean }) {
+  return (
+    <span className="heart-dots shrink-0" aria-hidden="true" style={slow ? { opacity: 0.5 } : undefined}>
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
 /**
- * 运行中的状态块（优化②）：阶段名 + 计时 + **服务端心跳** + 静默告警。
+ * 运行中的状态块（优化②，方向乙「状态胶囊」）：阶段名 + 心跳点 + 计时收成一枚胶囊；
+ * 静默时整枚变金/变红，其中红态直接写明「可能已断开 · 可点停止后重试」。
  * 无思考链的模型以前只能靠总计时判断是否还在跑；现在「多久没收到服务端消息」直接可见。
  */
 export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing, variant }: StatusProps) {
   const elapsed = useElapsed(active);
-  const dotClass =
-    health === "stalled" ? "bg-[#B85C5C]" : health === "slow" ? "bg-gold" : "bg-moss animate-pulse";
+  const stalled = health === "stalled";
+  const slow = health === "slow";
+  const pill = "inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full border " +
+    (stalled ? "border-[#E0C3C3] bg-[#FDF4F4] text-[#B85C5C]" : slow ? "border-[#E4CEA6] bg-[#FDF9F1] text-[#8A6428]" : "border-line bg-white text-ink");
+  const dot = stalled ? "bg-[#B85C5C]" : slow ? "bg-gold" : "bg-moss animate-pulse";
   return (
     <div className="space-y-1.5" data-testid="stream-status">
-      <div className="flex items-center gap-1.5 text-xs font-medium px-1 min-w-0 text-ink">
-        <span className={"inline-block w-1.5 h-1.5 rounded-full shrink-0 " + dotClass} />
-        <span className="truncate">{stageLabel || "AI 正在思考…"}</span>
-        <span className="ml-1 font-mono text-[11px] text-ink-soft/70 shrink-0" data-testid="elapsed">
+      <div className={pill}>
+        <span className={"inline-block w-1.5 h-1.5 rounded-full shrink-0 " + dot} />
+        <span className="truncate text-xs font-semibold">{stageLabel || "AI 正在思考…"}</span>
+        {sawPing && !stalled && <HeartDots slow={slow} />}
+        <span className="ml-0.5 font-mono text-[11px] text-ink-soft/70 shrink-0" data-testid="elapsed">
           ⏱ {elapsed}s
         </span>
-        {sawPing && (
-          <span className="ml-1 text-[10px] text-ink-soft/60 shrink-0" data-testid="stream-idle">
-            {idleMs < 2500 ? "服务端刚刚有响应" : Math.floor(idleMs / 1000) + "s 前有响应"}
-          </span>
-        )}
+        {stalled && <span className="font-mono text-[11px] shrink-0">{Math.floor(idleMs / 1000)}s 无响应</span>}
       </div>
+      {health === "ok" && sawPing && (
+        <div className="text-[10px] text-ink-soft/70 px-1" data-testid="stream-idle">
+          {idleMs < 2500 ? "服务端刚刚有响应" : Math.floor(idleMs / 1000) + "s 前有响应"}
+        </div>
+      )}
       {health !== "ok" && (
         <div
           data-testid="stream-stalled"
           className={
             "text-[11px] px-2 py-1.5 rounded-lg leading-relaxed mx-1 " +
-            (health === "slow"
-              ? "bg-gold-soft/60 text-[#8A6428]"
-              : "bg-[#F6E7E7] text-[#B85C5C] border border-[#E0C3C3]")
+            (slow ? "bg-gold-soft/60 text-[#8A6428]" : "bg-[#F6E7E7] text-[#B85C5C] border border-[#E0C3C3]")
           }
         >
-          {health === "slow"
+          {slow
             ? "服务端这一跳变慢了，仍在等待…"
             : "已经 " + Math.floor(idleMs / 1000) + " 秒没有任何服务端响应，可能已断开 —— 可点「停止」后重试"}
         </div>

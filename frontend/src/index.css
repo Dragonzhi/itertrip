@@ -87,6 +87,38 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
 /* ===== M23 移动端（<768px）=====
  * 断点与 pages/Plan.tsx 的 isMobile()（max-width:767px）保持一致。
  * 原则：手机只改"够得着/点得中/不被系统栏压住"，桌面字号与间距一律不动。 */
+/* 优化②：状态胶囊里的心跳点（只在收到过服务端 ping 时渲染，等于把「还活着」画出来） */
+.heart-dots {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+.heart-dots i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #1f6b54;
+  animation: heart-beat 1.4s ease-in-out infinite;
+}
+.heart-dots i:nth-child(2) {
+  animation-delay: 0.22s;
+}
+.heart-dots i:nth-child(3) {
+  animation-delay: 0.44s;
+}
+@keyframes heart-beat {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 767px) {
   /* iOS Safari 聚焦 <16px 输入框会缩放整页 */
   input, textarea, select { font-size: 16px; }

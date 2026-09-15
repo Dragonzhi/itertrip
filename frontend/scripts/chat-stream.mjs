@@ -184,6 +184,7 @@ try {
   check("运行时没有发送按钮（原位切换）", !(await evalIn("!!document.querySelector('[data-testid=send-btn]')")));
   check("状态块在（阶段名 + 计时）", !!(await until("!!document.querySelector('[data-testid=stream-status]') && !!document.querySelector('[data-testid=elapsed]')", 3000)));
   await sleep(2200); // 让阶段跑几拍，确保「停止」停的是真的进行中的流
+  await shot("stream-running");
   const t0 = Date.now();
   await evalIn("document.querySelector('[data-testid=stop-btn]').click(); true");
   const interrupted = await until("!!document.querySelector('[data-testid=msg-interrupted]')", 5000);
