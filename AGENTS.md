@@ -638,7 +638,7 @@ RouteJSON
 | 管理后台 | 未配置 `ITERTRIP_ADMIN_TOKEN` 即整体关闭；单 provider 无多 key 轮换 |
 | 单进程形态 | 规划/对话长请求阻塞 uvicorn worker 数有限；无队列/限流，多人并发共享同一免费源时可能 429 |
 
-**非功能性约束**：移动端适配（M23）：<768px 顶栏单行 + 两个侧栏改底部抽屉（互斥、可拖手柄下滑关闭）、日期卡移入抽屉表头、触屏用 ↑/↓ 跨天排序（桌面 HTML5 拖拽保留）、输入框 16px 防 iOS 缩放、`100dvh` + safe-area、Leaflet 下边距补偿；验收脚本 `frontend/scripts/mobile-shot.mjs`（零依赖 CDP，截图 + 溢出/可达性探针 + 拖拽/排序/价格功能断言，支持 `SHOT_URL` 量任意页面）。**包管理器只选一个**：npm 与 pnpm 混装会让 node_modules 出现两份 react（Invalid hook call）——切换后先删 `node_modules` 再装；
+**非功能性约束**：移动端适配（M23）：<768px 顶栏单行 + 两个侧栏改底部抽屉（互斥、可拖手柄下滑关闭）、日期卡移入抽屉表头、触屏用 ↑/↓ 跨天排序（桌面 HTML5 拖拽保留）、输入框 16px 防 iOS 缩放、`100dvh` + safe-area、Leaflet 下边距补偿；验收脚本 `frontend/scripts/mobile-shot.mjs`（零依赖 CDP，截图 + 溢出/可达性探针 + 拖拽/排序/价格功能断言，支持 `SHOT_URL` 量任意页面）。**包管理器只选一个：本仓已统一为 npm**（`frontend/package-lock.json` 是唯一锁文件；pnpm 的 `pnpm-lock.yaml` 与 `pnpm-workspace.yaml` 已于 2026-09-15 清除）——历史教训：npm 与 pnpm 混装会让 node_modules 出现两份 react（Invalid hook call），切换后先删 `node_modules` 再装；
 key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；导出文件名按 RFC 5987 双写
 （HTTP 头仅 latin-1，中文目的地走 `filename*=UTF-8''` 百分号编码，ASCII 兜底）；admin token 常量时间比较。
 
@@ -690,6 +690,7 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 
 **近期规划**
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
+- [ ] **见 `docs/TODO.md`（等反馈的两件事）**：① 记忆档案 id（tid）的可携带性 —— 导出/导入，否则清站点数据后服务端那份记忆就成孤儿；② 静默自动中断（`PING_ABORT_MS` = 60s）是否需要降级为「只告警不自动停」
 
 **v1 后扩展（待用户反馈决定）**
 
