@@ -199,15 +199,27 @@ Timeline 的地点行（`Timeline.tsx:134-157`）内部有 ✎/✕/↑↓，Hote
 ```tsx
 // Timeline.tsx:191：<span data-testid="place-name"> → <button type="button"
 <button type="button" data-testid="place-name" onClick={(e) => { e.stopPropagation(); onPlaceClick(di, pi); }}
-  className="text-left rounded focus-visible:outline-2 focus-visible:outline-moss focus-visible:outline-offset-2">
+  className="text-left rounded focus-ring">
   {p.name}
 </button>
 ```
 
 `HotelCard.tsx:55` 的 `<h3>` 同法（`onClick` 内 `e.stopPropagation()`，避免冒泡到卡片重复调用）。
-行的 `onClick` 保留（鼠标/触屏便利），卡片补 `hover:shadow-card`（`HotelCard.tsx:51` 现在只有 `transition-shadow` 没有 hover）；`Index.tsx:91`「配置模型」内联钮补 hover + `focus-visible`。
+行的 `onClick` 保留（鼠标/触屏便利），卡片补 `hover:shadow-card`（`HotelCard.tsx:51` 现在只有 `transition-shadow` 没有 hover）；`Index.tsx:91`「配置模型」内联钮补 hover + `.focus-ring`。
 
-> focus ring 用 `outline-moss`（moss/cream 5.4:1）。仓库里 `focus:outline-2 focus:outline-moss-soft` 那套只在「同时改 border 色」的输入框上成立，别直接照抄。
+> **焦点环踩过的坑（施工时实测，代码已按此落地）**：按 Tailwind 直觉写的
+> `focus-visible:outline-2 focus-visible:outline-moss` **一个像素都看不见** —— tailwindcss 3.4.19 的产物里
+> `outline-2` 只生成 `outline-width:2px`、`outline-moss` 只生成 `outline-color`，
+> 而 `outline-style` 的初值是 `none`，没有 style 就不画环。本仓既有 19 处 `focus:outline-2 focus:outline-moss-soft`
+> 的 outline 部分同样是死代码，只因为它们都同时挂了 `focus:border-moss`，靠 border 变色才「看起来有焦点」。
+> 地点名 / 酒店名 / 内联链接是纯文字、没有 border 可改 —— 所以 `index.css` 尾部加了一条统一规则：
+>
+> ```css
+> .focus-ring:focus-visible { outline: 2px solid #1f6b54; outline-offset: 2px; }   /* #1F6B54 = moss token，压 cream 5.4:1 */
+> ```
+>
+> 三处统一用 `.focus-ring`；改完核对了 `dist/assets/*.css` 里规则确实生成（旧写法已 0 命中）。
+> **视觉确认仍属 §7 里「键盘 Tab 走查」那一项真人手测**。
 
 ### D3 菜单 / 折叠钮语义
 
@@ -267,21 +279,38 @@ Timeline 的地点行（`Timeline.tsx:134-157`）内部有 ✎/✕/↑↓，Hote
 6. 移动端 375×667：无横向滚动；ChatPanel 删图钮实测 ≥24px；
 7. 回归：「生成行程 → 选点 → 酒店 → 导出」主路径手测一遍。
 
-## 7. 施工记录（2026-09 · 已全部落地）
+## 7. 施工记录（2026-09 · 已落地）
 
-19 个文件 · +153 / −111 行。全部验证通过：
+前端改造合计 **19 个文件 · +168 / −113 行**（`git diff 046713e HEAD -- frontend/` 实算，不含启动脚本那次提交；下表逐次提交相加会多 3 行 —— focus 那次改的正是 ui 那次刚写的 3 行 class，同一行被两次提交各算一次）。切法：批次 A 里 10 个「纯主题」文件单独成一次提交；其余含行为改动的 9 个文件合并成一次 —— `role="status"` 与 `text-danger` 落在同一行，硬拆 hunk 只会把 diff 做成半截。
+
+| commit | 内容 | 规模 |
+|---|---|---|
+| `5cc8982` fix(theme) | 批次 A 纯主题部分：2 个 token + 金/灰/红三系替换 + 最小字号 11px | 10 文件 +31/−29 |
+| `8c4ed02` fix(ui) | 批次 A 尾巴 + B（IME / 抽屉 inert / App hooks）+ D（live region / 键盘可达 / 动效降级 / 触控目标）+ C2 / C4 + 删 viewOffset | 9 文件 +124/−84 |
+| fix(a11y) | 焦点环修正 `.focus-ring`（Tailwind 的 `outline-2` 只给宽度，环其实看不见 —— 见 §4 D2） | 4 文件 +16/−3 |
+| `6ad07ff` docs(plan) | 本文件 | 1 文件 +296 |
+
+另有一次与本次 UI 改造无关的提交 `8c52ace` fix(dev)：`start.cmd` 回 CRLF、`start.ps1` 补 UTF-8 BOM、新增 `.gitattributes` 锁 `*.cmd eol=crlf`、AGENTS.md §9 补硬约束（4 文件 +5/−2）。
+
+**机器跑过的**（真跑过，不是「应该没问题」）：
 
 | 验证 | 命令 | 结果 |
 |---|---|---|
 | 类型 + 构建 | `cd frontend && npm run build` | exit 0（`tsc -b` 无错，gzip 176.53KB） |
 | 流式看门狗自检 | `node src/lib/stream.check.ts` | **14/14** |
 | 流式交互 CDP（真前端 + 假 SSE） | `node scripts/chat-stream.mjs` | **17/17** |
-| 移动端 CDP + 探针 | `node scripts/mobile-shot.mjs 375x667` | 全部通过（无横向溢出 / 抽屉内控件可达 / 跨天下移+撤销） |
+| 移动端 CDP + 探针 | `node scripts/mobile-shot.mjs 375x667 320x568` | 两个宽度全部通过（无横向溢出 / 抽屉内控件可达 / 跨天下移+撤销） |
 | 验收 grep 四条 | 见 §1 A1 验收 | `text-[10` 0、`A8A298` 0、`text-gold[^-a-z]` 仅 Timeline:63、`text-ink-soft/` 仅 CalendarPicker:176 |
-| token 真的进了产物 | grep `dist/assets/*.css` | `text-danger` / `text-gold-deep` 均已生成（rgb 138 94 30 / 156 64 56） |
+| token / 规则真的进了产物 | grep `dist/assets/*.css` | `text-danger`、`text-gold-deep`、`.focus-ring:focus-visible` 均已生成（rgb 138 94 30 / 156 64 56 / #1f6b54） |
 
-未做的手测项（需真人）：IME 组词回车（微软拼音 / 搜狗）、键盘 Tab 走查、
-「生成行程 → 选点 → 酒店 → 导出」主路径。
+**没做的 / 别当成已通过**：
+
+- §3 里标「可选」的那一项**没做**：`Index.tsx:83` 的 `window.alert` 仍是原生 alert（未改成卡片内联错误行）。
+- §6 第 6 条的「ChatPanel 删图钮**实测** ≥24px」**没实测** —— 那 24px 由 `w-6 h-6` 这个 class 决定，`mobile-shot.mjs` 不量它（它只在有待发截图时才渲染）。
+- §6 第 4 条（键盘 Tab 走查，含新加的焦点环视觉确认）、第 5 条（IME 组词回车，微软拼音 / 搜狗）、第 7 条（主路径）都**还没真人跑过**。
+- §6 第 1 条（对比度）以 §0 的实算值为基线，没有再量渲染后的像素。
+- `.place-item.removed` / `fadeRemoved` 是**删掉**的（不是「降级」）：将来真要做「移除项淡出」，得连 JSX 一起补。
+- 既有的 19 处 `focus:outline-2 focus:outline-moss-soft`（各表单输入框）没动：outline 部分同样是死代码，但它们都同时改 `focus:border-moss`，焦点有可见反馈，属于「能看，但写法会误导下一个人」。
 
 ## 8. 明确不做（v1 砍掉的 + 原有红线）
 
