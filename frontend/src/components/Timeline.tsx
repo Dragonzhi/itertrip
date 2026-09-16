@@ -194,7 +194,7 @@ export default function Timeline({
                             type="button"
                             data-testid="place-name"
                             onClick={(e) => { e.stopPropagation(); onPlaceClick(di, pi); }}
-                            className="text-left rounded focus-visible:outline-2 focus-visible:outline-moss focus-visible:outline-offset-2"
+                            className="text-left rounded focus-ring"
                           >
                             {p.name}
                           </button>

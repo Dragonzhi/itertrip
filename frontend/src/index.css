@@ -184,3 +184,16 @@ body { overscroll-behavior-y: none; }
  * 注意：它在列内是**在流**的，编辑态该列固定 93px ⇒ 所有地点行统一 111px（矮行因此变高）。 */
 .reorder-btns { display: flex; }
 
+/* ===== 可聚焦元素统一焦点环 =====
+ * 为什么不用 Tailwind 的 `focus-visible:outline-2 focus-visible:outline-moss`：
+ * 实测（tailwindcss 3.4.19 产物）它只生成 `outline-width:2px` 与 `outline-color`，
+ * 而 `outline-style` 的初值是 none ⇒ **一个像素都看不见**。
+ * 本仓其余 19 处焦点样式都同时挂了 `focus:border-moss`，靠 border 变色才「看起来有焦点」；
+ * 但纯文字、无边框的可聚焦元素（地点名 / 酒店名 / 内联链接）没有 border 可改，
+ * 所以把 style 写死在这里，别再拼别人的写法。
+ * 颜色 = tailwind.config.js 的 moss（#1F6B54），压 cream 5.4:1。 */
+.focus-ring:focus-visible {
+  outline: 2px solid #1f6b54;
+  outline-offset: 2px;
+}
+

@@ -56,7 +56,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onClick(); }}
-          className="text-left text-sm font-bold flex-1 rounded focus-visible:outline-2 focus-visible:outline-moss focus-visible:outline-offset-2"
+          className="text-left text-sm font-bold flex-1 rounded focus-ring"
         >
           {hotel.name}
         </button>

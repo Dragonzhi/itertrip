@@ -88,7 +88,7 @@ export default function Index({ onChat, onEnterMap, onOpenSettings, hasModel, ha
           <p className="text-[11px] text-gold-deep bg-gold-soft rounded-lg px-3 py-2 leading-relaxed">
             当前使用内置免费供应商（真实 AI 规划，无需配置）。
             想用你自己的模型，可
-            <button onClick={onOpenSettings} className="underline font-semibold mx-0.5 rounded hover:text-ink focus-visible:outline-2 focus-visible:outline-moss">
+            <button onClick={onOpenSettings} className="underline font-semibold mx-0.5 rounded hover:text-ink focus-ring">
               配置模型
             </button>
             。
