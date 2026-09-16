@@ -112,6 +112,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
   }, [exportOpen]);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** B3：闭合的抽屉必须真的不可聚焦 —— React 18 不支持布尔 inert（inert={false} 会渲染成 truthy 的 inert="false"），只能 ref + effect 手动设 */
+  const chatDrawerRef = useRef<HTMLElement | null>(null);
+  const panelDrawerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => { if (chatDrawerRef.current) chatDrawerRef.current.inert = !chatOpen; }, [chatOpen]);
+  useEffect(() => { if (panelDrawerRef.current) panelDrawerRef.current.inert = !panelOpen; }, [panelOpen]);
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
   /**
@@ -531,11 +536,12 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         if (form) { setForm(null); return; }
         if (hotelForm) { setHotelForm(null); return; }
         if (picking) { setPicking(null); return; }
+        if (exportOpen) { setExportOpen(false); return; }
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [form, hotelForm, picking]);
+  }, [form, hotelForm, picking, exportOpen]);
 
   /* ---------- 导出 ---------- */
   const handleExportJson = () => {
@@ -684,7 +690,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </div>
             {trip.start_date && trip.date_source === "inferred" && (
               <span
-                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-[#F1EDE4] text-[#8A7F6A] shrink-0"
+                className="text-[11px] font-semibold rounded-md px-1.5 py-px bg-[#F1EDE4] text-ink-soft shrink-0"
                 title="文本里只有月日或节日名，年份是按「就近未来」推断的 —— 点日期即可改成准确的"
                 data-testid="date-inferred"
               >
@@ -692,13 +698,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               </span>
             )}
             {trip.start_date && trip.date_source === "user" && (
-              <span className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-moss-soft text-moss shrink-0" data-testid="date-user">
+              <span className="text-[11px] font-semibold rounded-md px-1.5 py-px bg-moss-soft text-moss shrink-0" data-testid="date-user">
                 已确认
               </span>
             )}
             {warnCount > 0 && (
               <span
-                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-[#F6E7E7] text-[#B85C5C] shrink-0"
+                className="text-[11px] font-semibold rounded-md px-1.5 py-px bg-[#F6E7E7] text-danger shrink-0"
                 data-testid="date-warn-count"
               >
                 ⚠️ {warnCount} 处闭馆日冲突
@@ -706,7 +712,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             )}
             {!trip.start_date && route.days.some((d) => d.places.length > 0) && (
               <span
-                className="text-[10px] font-semibold rounded-md px-1.5 py-px bg-gold-soft text-gold shrink-0"
+                className="text-[11px] font-semibold rounded-md px-1.5 py-px bg-gold-soft text-gold-deep shrink-0"
                 title="没有出发日期就算不出星期，闭馆日冲突无从判定 —— 这不是「检查通过」"
                 data-testid="date-unchecked"
               >
@@ -715,7 +721,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             )}
           </div>
           {dateMsg && (
-            <div className="text-[11px] text-ink-soft mt-1 max-w-[300px] truncate" title={dateMsg} data-testid="date-msg">
+            <div role="status" className="text-[11px] text-ink-soft mt-1 max-w-[300px] truncate" title={dateMsg} data-testid="date-msg">
               {dateMsg}
             </div>
           )}
@@ -737,7 +743,6 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         onHotelFocus={handleHotelFocus}
         flashKeys={flashKeys}
         focus={focus}
-        viewOffset={(chatOpen ? 380 : 0) + (panelOpen ? 400 : 0)}
         bottomPadding={isMobile() && (chatOpen || panelOpen) ? Math.round(window.innerHeight * 0.7) : 0}
         onMapClick={closeSheets}
         view={mapView}
@@ -773,7 +778,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             <span className="text-lg">🧭</span>
             <span className="max-md:hidden">
               IterTrip
-              <span className="block text-[10px] font-normal text-ink-soft tracking-[1px]">LATIN · ITER · ROAD</span>
+              <span className="block text-[11px] font-normal text-ink-soft tracking-[1px]">LATIN · ITER · ROAD</span>
             </span>
           </button>
         </div>
@@ -791,17 +796,17 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         <div className="max-md:hidden flex shrink-0">{dateCardJsx}</div>
         <div className="ml-auto flex gap-2 pointer-events-auto shrink-0">
           {source === "mock" && (
-            <span className="max-md:hidden bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
+            <span className="max-md:hidden bg-gold-soft text-gold-deep text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
               mock 草稿
             </span>
           )}
           {/* M23：手机专用入口（桌面手柄/侧栏按钮在窄屏够不着） */}
           <button onClick={toggleChat} data-testid="chat-toggle" title="AI 改行程"
-            className="md:hidden border border-line bg-white text-moss rounded-full w-9 h-9 text-[15px] font-semibold shadow-card">
+            className="md:hidden border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card">
             🤖
           </button>
           <button onClick={togglePanel} data-testid="panel-toggle" title={panelOpen ? "收起行程" : "展开行程"}
-            className="md:hidden border border-line bg-white text-moss rounded-full w-9 h-9 text-[15px] font-semibold shadow-card">
+            className="md:hidden border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card">
             🗺
           </button>
           <button onClick={togglePanel} className="max-md:hidden border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
@@ -817,6 +822,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         }`}
         data-testid="ai-drawer"
         aria-hidden={!chatOpen}
+        ref={chatDrawerRef}
       >
         {/* M23 P4：可见的"纸面"是这层 —— 拖手柄下滑关闭（松手弹回，越阈值则关） */}
         <motion.div
@@ -840,20 +846,20 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
           <h2 className="text-sm font-bold">AI 改行程</h2>
           {lastStats && (
             <span
-              className="text-[10px] bg-cream border border-line/70 rounded-md px-1.5 py-px text-ink-soft truncate max-w-[120px]"
+              className="text-[11px] bg-cream border border-line/70 rounded-md px-1.5 py-px text-ink-soft truncate max-w-[120px]"
               title={`本轮所用模型：${lastStats.model || "未知"} · 来源：${PROVIDER_LABEL[lastStats.provider || ""] || lastStats.provider || "未知"}`}
               data-testid="ai-provider"
             >
               {lastStats.model || "模型"} · {PROVIDER_LABEL[lastStats.provider || ""] || "来源未知"}
             </span>
           )}
-          <span className="text-[10px] text-ink-soft ml-auto">改动可撤销 · 地图实时更新</span>
+          <span className="text-xs text-ink-soft ml-auto">改动可撤销 · 地图实时更新</span>
           <button
             onClick={clearPlanChat}
             disabled={stream.sending || !chatMsgs.length}
             title="清空当前对话记录（不影响行程本身）"
             data-testid="plan-clear-chat"
-            className="text-ink-soft hover:text-[#B85C5C] disabled:opacity-30 leading-none px-1"
+            className="text-ink-soft hover:text-danger disabled:opacity-30 leading-none px-1"
           >
             🗑
           </button>
@@ -889,7 +895,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                   </ul>
                 )}
                 {m.role === "assistant" && m.changed && (
-                  <div className="text-[10px] text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
+                  <div className="text-xs text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
@@ -905,7 +911,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                 </div>
               )}
               {m.role === "assistant" && m.interrupted && (
-                <div className="text-[10px] text-gold mt-1 font-medium" data-testid="msg-interrupted">
+                <div className="text-[11px] text-gold-deep mt-1 font-medium" data-testid="msg-interrupted">
                   ■ 已中断 · 以上是已生成的部分
                 </div>
               )}
@@ -950,10 +956,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendAiEdit(chatInput);
-                }
+                if (e.key !== "Enter" || e.shiftKey) return;
+                // B1：IME 组词期间的回车是「选词」，不是发送（老 Safari 用 keyCode 229 兜底）
+                if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+                e.preventDefault();
+                sendAiEdit(chatInput);
               }}
               rows={2}
               data-testid="plan-chat-input"
@@ -973,7 +980,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
 
       {/* 选点提示条 */}
       {pickHint && (
-        <div className="fixed top-[110px] md:top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-white px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
+        <div className="fixed top-[110px] md:top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-ink px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
           {pickHint}
         </div>
       )}
@@ -981,6 +988,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
       {/* 右侧滑出面板 */}
       <aside
         data-testid="timeline-panel"
+        aria-hidden={!panelOpen}
+        ref={panelDrawerRef}
         className={`fixed z-[400] transition-transform duration-300 max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] ${
           panelOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:translate-x-[calc(100%+2px)] md:translate-y-0"
         }`}
@@ -1013,7 +1022,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             {dateCardJsx}
             {metasJsx}
             {source === "mock" && (
-              <span className="self-start bg-gold-soft text-gold text-xs font-semibold rounded-full px-3 py-1">mock 草稿</span>
+              <span className="self-start bg-gold-soft text-gold-deep text-xs font-semibold rounded-full px-3 py-1">mock 草稿</span>
             )}
           </div>
         </div>
@@ -1045,7 +1054,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
               ↪ 重做
             </button>
             <span className="w-px h-4 bg-line" />
-            <button onClick={openAddFlow} className="bg-gold text-white border border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
+            <button onClick={openAddFlow} className="bg-gold text-ink border border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
               📍 添加地点
             </button>
             {/* M20 坐标重校准：修历史遗留的错坐标（同名异地 POI 带偏的那种） */}
@@ -1062,6 +1071,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             <div className="relative" ref={exportRef}>
               <button
                 onClick={() => setExportOpen((v) => !v)}
+                aria-haspopup="true"
+                aria-expanded={exportOpen}
                 className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft"
                 title="导出行程"
                 data-testid="export-trigger"
@@ -1088,16 +1099,16 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </div>
           </div>
           {recheckMsg && (
-            <div className="mt-1.5 text-[11px] text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
+            <div role="status" className="mt-1.5 text-[11px] text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
               {recheckMsg}
             </div>
           )}
           {exportError && (
-            <div className="mt-1.5 text-[11px] text-[#B85C5C] bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
+            <div role="status" className="mt-1.5 text-[11px] text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
               {exportError}
             </div>
           )}
-          <div className="mt-2 text-[11px] text-[#A8A298] text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
+          <div className="mt-2 text-[11px] text-ink-soft text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div>
         </motion.div>
       </aside>

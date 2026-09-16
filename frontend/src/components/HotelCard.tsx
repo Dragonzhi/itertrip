@@ -48,11 +48,18 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
     <div
       onClick={onClick}
       onDoubleClick={(e) => { e.preventDefault(); onFocus?.(); }}
-      className={`bg-white border border-line rounded-[14px] p-3.5 mt-3 shadow-[0_2px_10px_rgba(43,43,40,0.05)] cursor-pointer transition-shadow ${active ? "ring-2 ring-gold/45" : ""}`}
+      className={`bg-white border border-line rounded-[14px] p-3.5 mt-3 shadow-[0_2px_10px_rgba(43,43,40,0.05)] cursor-pointer transition-shadow hover:shadow-card ${active ? "ring-2 ring-gold/45" : ""}`}
     >
       <div className="flex items-center gap-2 mb-1">
         <span className="text-base">🏨</span>
-        <h3 className="text-sm font-bold flex-1">{hotel.name}</h3>
+        {/* D2：酒店名做成真按钮（卡片里已经有 ✎，不能再嵌一层 button） */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          className="text-left text-sm font-bold flex-1 rounded focus-visible:outline-2 focus-visible:outline-moss focus-visible:outline-offset-2"
+        >
+          {hotel.name}
+        </button>
         {onEdit && (
           <button
             type="button"
@@ -82,7 +89,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
           >
             {searching ? "搜索中…" : "🔍 搜索网络报价"}
           </button>
-          {searchErr && <span className="text-[11px] text-[#B85C5C] ml-2">{searchErr}</span>}
+          {searchErr && <span className="text-[11px] text-danger ml-2">{searchErr}</span>}
           {searchResult && searchResult.prices.length > 0 && onSavePrices && (
             <button
               type="button"
@@ -115,7 +122,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
         <tbody key={anim}>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={4} className="px-2 py-2 text-[#A8A298]">暂无报价（可稍后手动补充）</td>
+              <td colSpan={4} className="px-2 py-2 text-ink-soft">暂无报价（可稍后手动补充）</td>
             </tr>
           )}
           {rows.map((pr, i) => {
@@ -124,7 +131,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
               <tr key={i} className={(isBest ? "bg-gold-soft " : "") + "price-row" + (isBest ? " price-row-best" : "")}>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-semibold align-middle">
                   {pr.platform}
-                  {isBest && <span className="bg-gold text-white text-[10px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">最低</span>}
+                  {isBest && <span className="bg-gold-deep text-white text-[11px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">最低</span>}
                 </td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums text-ink">
                   {/* 静态渲染：价格必须一眼可读、可直接上下比较（不做 0→N 的计数动效） */}
@@ -142,7 +149,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
       )}
       {showMeta && hotel.verdict && (
         <div className="mt-3.5 pt-2.5 border-t border-dashed border-line">
-          <div className="text-xs font-bold text-gold mb-1">✦ 建议</div>
+          <div className="text-xs font-bold text-gold-deep mb-1">✦ 建议</div>
           <p className="text-[12.5px] leading-relaxed text-ink-soft">{hotel.verdict}</p>
         </div>
       )}

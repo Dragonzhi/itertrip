@@ -109,6 +109,7 @@ export default function Timeline({
             <button
               type="button"
               onClick={() => toggle(di)}
+              aria-expanded={!isClosed}
               className="w-full flex items-center gap-2.5 px-1 pt-4 pb-2.5 border-b-2 border-line cursor-pointer select-none text-left"
             >
               <span
@@ -188,12 +189,20 @@ export default function Timeline({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap">
-                          <span data-testid="place-name">{p.name}</span>
+                          {/* D2：地点名做成真按钮 —— 行容器里已经有 ✎/✕/↑↓，不能再嵌一层 button */}
+                          <button
+                            type="button"
+                            data-testid="place-name"
+                            onClick={(e) => { e.stopPropagation(); onPlaceClick(di, pi); }}
+                            className="text-left rounded focus-visible:outline-2 focus-visible:outline-moss focus-visible:outline-offset-2"
+                          >
+                            {p.name}
+                          </button>
                           {badge && (
                             <span
                               title={badge.title}
                               data-testid="coord-badge"
-                              className={"text-[10px] font-semibold rounded-md px-1.5 py-px " + BADGE_CLASS[badge.tone]}
+                              className={"text-[11px] font-semibold rounded-md px-1.5 py-px " + BADGE_CLASS[badge.tone]}
                             >
                               {badge.text}
                             </span>
@@ -210,7 +219,7 @@ export default function Timeline({
                             <div
                               key={wi}
                               data-testid="place-warning"
-                              className="inline-block bg-[#F6E7E7] text-[#B85C5C] rounded-md px-1.5 mt-0.5 mr-1.5 font-semibold"
+                              className="inline-block bg-[#F6E7E7] text-danger rounded-md px-1.5 mt-0.5 mr-1.5 font-semibold"
                             >
                               ⚠️ {w}
                             </div>
@@ -231,7 +240,7 @@ export default function Timeline({
                             type="button"
                             title="删除此地点"
                             onClick={(e) => { e.stopPropagation(); onDeletePlace?.(di, pi); }}
-                            className="place-del absolute top-[7px] right-1 w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center cursor-pointer opacity-0 transition-opacity hover:bg-[#F6E7E7] hover:text-[#B85C5C]"
+                            className="place-del absolute top-[7px] right-1 w-7 h-7 rounded-md border border-line bg-white text-ink-soft text-[12px] leading-none flex items-center justify-center cursor-pointer opacity-0 transition-opacity hover:bg-[#F6E7E7] hover:text-danger"
                           >
                             ✕
                           </button>

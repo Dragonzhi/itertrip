@@ -86,7 +86,8 @@ function QuestionInput({
               value={customValue || ""}
               onChange={(e) => onCustomText?.(e.target.value)}
               placeholder={q.placeholder || "请输入自定义内容"}
-              autoFocus
+              // D5：只给精细指针设备自动聚焦 —— 手机上自动弹键盘会把抽屉顶起来
+              autoFocus={window.matchMedia("(pointer: fine)").matches}
               data-testid="clarify-custom-input"
               className="w-full border border-line rounded-lg px-2.5 py-1.5 text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
             />
@@ -142,7 +143,12 @@ function QuestionInput({
           type="text"
           value={multiCustomInput || ""}
           onChange={(e) => onMultiCustomInput?.(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onAddMultiCustom?.(); } }}
+          onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+                e.preventDefault();
+                onAddMultiCustom?.();
+              }}
           placeholder="自定义输入，回车添加"
           data-testid="clarify-multi-custom-input"
           className="flex-1 min-w-0 border border-line rounded-lg px-2.5 py-1.5 text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
@@ -395,7 +401,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
                 <div className="text-[11px] text-ink-soft mt-1">地图已更新 · 可撤销</div>
               )}
               {m.role === "assistant" && m.interrupted && (
-                <div className="text-[11px] text-gold mt-1 font-medium" data-testid="msg-interrupted">
+                <div className="text-[11px] text-gold-deep mt-1 font-medium" data-testid="msg-interrupted">
                   ■ 已中断 · 以上是已生成的部分
                 </div>
               )}
@@ -452,7 +458,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
                 <button
                   type="button"
                   onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
-                  className="absolute top-0 right-0 w-4 h-4 bg-black/55 text-white text-[10px] leading-none flex items-center justify-center"
+                  className="absolute top-0 right-0 w-6 h-6 bg-black/55 text-white text-[11px] leading-none flex items-center justify-center"
                   aria-label="移除截图"
                 >
                   ✕
@@ -460,7 +466,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
               </div>
             ))}
             {imgBusy && <span className="text-[11px] text-ink-soft">处理图片中…</span>}
-            {imgError && <span className="text-[11px] text-[#B85C5C]">{imgError}</span>}
+            {imgError && <span className="text-[11px] text-danger">{imgError}</span>}
           </div>
         )}
         <div className="flex gap-2 items-end">
@@ -491,10 +497,11 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
+              if (e.key !== "Enter" || e.shiftKey) return;
+              // B1：IME 组词期间的回车是「选词」，不是发送（老 Safari 用 keyCode 229 兜底）
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+              e.preventDefault();
+              submit();
             }}
             onPaste={(e) => {
               const files = Array.from(e.clipboardData?.items || [])
@@ -517,7 +524,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
             onStop={stream.stop}
           />
         </div>
-        <p className="text-[10px] text-[#A8A298] mt-1.5">
+        <p className="text-xs text-ink-soft mt-1.5">
           {hasRoute ? "当前行程可继续对话修改 · Enter 发送 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}
         </p>
       </form>

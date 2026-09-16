@@ -25,8 +25,8 @@
 /* M19 坐标溯源徽标：让用户一眼看出「这个点位可不可信」 */
 .iter-popup .pp-badge { display: inline-block; margin: 0 0 3px; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 600; }
 .iter-popup .pp-badge.pp-ok { background: #e4f0e8; color: #1f6b54; }
-.iter-popup .pp-badge.pp-model { background: #f1ede4; color: #8a7f6a; }
-.iter-popup .pp-badge.pp-warn { background: #fbf0d9; color: #a8761f; }
+.iter-popup .pp-badge.pp-model { background: #f1ede4; color: #6b6b64; }
+.iter-popup .pp-badge.pp-warn { background: #fbf0d9; color: #8a5e1e; }
 .iter-popup .pp-badge.pp-none { background: #f1ede4; color: #6b6b64; }
 .leaflet-popup-content-wrapper { border-radius: 12px !important; }
 
@@ -45,7 +45,17 @@
   animation: routeFlow 1s linear infinite;
 }
 @keyframes routeFlow { to { stroke-dashoffset: -11px; } }
-@media (prefers-reduced-motion: reduce) { .route-flow { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .route-flow,
+  .iter-pin.flash,
+  .price-row,
+  .price-row-best {
+    animation: none;
+  }
+  .heart-dots i {
+    animation: none;
+  }
+}
 /* ===== 选点模式（移植自旧版 body.picking）===== */
 body.picking .leaflet-container { cursor: crosshair !important; }
 body.picking .leaflet-marker-icon { pointer-events: none; }
@@ -77,12 +87,6 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
   100% { box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3); }
 }
 .iter-pin.flash { animation: placeFlash 2s ease-out 3; }
-
-@keyframes fadeRemoved {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-.place-item.removed { animation: fadeRemoved 1.2s ease-out forwards; }
 
 /* ===== M23 移动端（<768px）=====
  * 断点与 pages/Plan.tsx 的 isMobile()（max-width:767px）保持一致。

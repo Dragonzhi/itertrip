@@ -154,12 +154,12 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
             {test.status === "testing" ? "测试中…" : "测试连接"}
           </button>
           {test.status === "ok" && (
-            <span className="text-xs text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="llm-test-ok">
+            <span role="status" className="text-xs text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="llm-test-ok">
               {test.message}
             </span>
           )}
           {test.status === "fail" && (
-            <span className="text-xs text-[#B85C5C] bg-[#F6E7E7] rounded-lg px-2.5 py-1.5 flex-1" data-testid="llm-test-fail">
+            <span role="status" className="text-xs text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5 flex-1" data-testid="llm-test-fail">
               {test.message}
             </span>
           )}
@@ -185,7 +185,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
             >
               {memBusy ? "清空中…" : "清空我的记忆"}
             </button>
-            {memMsg && <span className="text-[11px] text-ink-soft" data-testid="memory-msg">{memMsg}</span>}
+            {memMsg && <span role="status" className="text-[11px] text-ink-soft" data-testid="memory-msg">{memMsg}</span>}
             {mem?.enabled && mem.embed_model && (
               <span className="text-[11px] text-ink-soft">embedding: {mem.embed_provider} / {mem.embed_model}</span>
             )}

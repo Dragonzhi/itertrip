@@ -18,11 +18,14 @@ type Screen = { name: "index" } | { name: "chat"; prefill?: string } | { name: "
 /** 后台路由：/admin 或 /itertrip/admin（兼容子路径部署），与 hash 无关。 */
 const isAdminRoute = () => /\/admin\/?$/.test(location.pathname);
 
-/** 应用根组件：首页 ↔ 对话页 ↔ 规划页；route 持久化于 localStorage，刷新可恢复。 */
+/** 应用根组件：/admin 走后台，其余走主应用。
+ * **本函数不含任何 hook** —— 在 useState 之前提前 return 会让 hooks 数量随路由变化（B4）。 */
 export default function App() {
-  if (isAdminRoute()) {
-    return <Admin />;
-  }
+  return isAdminRoute() ? <Admin /> : <MainApp />;
+}
+
+/** 主应用：首页 ↔ 对话页 ↔ 规划页；route 持久化于 localStorage，刷新可恢复。 */
+function MainApp() {
   const [settings, setSettings] = useState<LlmSettings>(() => loadSettings());
   const [screen, setScreen] = useState<Screen>(() =>
     loadCurrentRoute() ? { name: "plan", source: "restored" } : { name: "index" },

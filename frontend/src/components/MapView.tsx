@@ -20,8 +20,6 @@ interface MapViewProps {
   flashKeys?: string[];
   /** 地点交互（优化④）：peek=单击弹框不挪图；zoom=双击聚焦 setView；seq 防重复 */
   focus?: { key: string; seq: number; mode: "peek" | "zoom" } | null;
-  /** 视野平移补偿（优化②）：保留 prop，但不再运行时 panBy（见文档） */
-  viewOffset?: number;
   /** 地图显示设置（M16）：源自 MapSettings，纯前端视图态 */
   view: MapSettings;
   /** M23：底部被抽屉遮住的高度（px）→ Leaflet setPadding，让 fitBounds/panTo 落在可见区 */
@@ -30,19 +28,23 @@ interface MapViewProps {
   onMapClick?: () => void;
 }
 
+/** 弹窗 HTML 转义（单遍替换天然安全：替换出来的实体不会再被扫描一次）。 */
+const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ESC[c]);
+
 /** 地点弹窗 HTML（showMeta=false 时只留地名）。 */
 function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
-  let html = `<div class="iter-popup"><div class="pp-name">${emoji} ${p.name || ""}</div>`;
+  let html = `<div class="iter-popup"><div class="pp-name">${emoji} ${esc(p.name)}</div>`;
   if (showMeta) {
     const badge = coordBadge(p.source, p.confidence);
-    if (badge) html += `<div class="pp-row pp-badge pp-${badge.tone}" title="${badge.title}">🧭 ${badge.text}</div>`;
-    if (p.time) html += `<div class="pp-row">⏰ ${p.time}</div>`;
-    if (p.ticket) html += `<div class="pp-row">🎫 ${p.ticket}</div>`;
-    if (p.transport) html += `<div class="pp-row">🚗 ${p.transport}</div>`;
-    if (p.note) html += `<div class="pp-row">${p.note}</div>`;
+    if (badge) html += `<div class="pp-row pp-badge pp-${esc(badge.tone)}" title="${esc(badge.title)}">🧭 ${esc(badge.text)}</div>`;
+    if (p.time) html += `<div class="pp-row">⏰ ${esc(p.time)}</div>`;
+    if (p.ticket) html += `<div class="pp-row">🎫 ${esc(p.ticket)}</div>`;
+    if (p.transport) html += `<div class="pp-row">🚗 ${esc(p.transport)}</div>`;
+    if (p.note) html += `<div class="pp-row">${esc(p.note)}</div>`;
     // M22 事实告警（如「闭馆日：周一闭馆，当天为周一」）—— 与坐标徽标区分，用告警色
     for (const w of p.warnings || []) {
-      html += `<div class="pp-row" style="color:#B85C5C;font-weight:600">⚠️ ${w}</div>`;
+      html += `<div class="pp-row" style="color:#9C4038;font-weight:600">⚠️ ${esc(w)}</div>`;
     }
   }
   return html + `</div>`;
@@ -53,12 +55,12 @@ function hotelPopupHtml(h: Hotel, showMeta: boolean): string {
   const best = (h.prices || []).length
     ? (h.prices || []).reduce((a, b) => (a.price <= b.price ? a : b))
     : null;
-  let html = `<div class="iter-popup"><div class="pp-name">🏨 ${h.name}</div>`;
+  let html = `<div class="iter-popup"><div class="pp-name">🏨 ${esc(h.name)}</div>`;
   if (showMeta) {
     const badge = coordBadge(h.source, h.confidence);
-    if (badge) html += `<div class="pp-row pp-badge pp-${badge.tone}" title="${badge.title}">🧭 ${badge.text}</div>`;
-    if (best) html += `<div class="pp-row">最低 ¥${best.price}（${best.platform}）</div>`;
-    if (h.note) html += `<div class="pp-row">${h.note}</div>`;
+    if (badge) html += `<div class="pp-row pp-badge pp-${esc(badge.tone)}" title="${esc(badge.title)}">🧭 ${esc(badge.text)}</div>`;
+    if (best) html += `<div class="pp-row">最低 ¥${best.price}（${esc(best.platform)}）</div>`;
+    if (h.note) html += `<div class="pp-row">${esc(h.note)}</div>`;
   }
   return html + `</div>`;
 }
@@ -80,7 +82,7 @@ function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
 export default function MapView({
   route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
-  onPlaceFocus, onHotelFocus, flashKeys, focus, viewOffset = 0, view, bottomPadding = 0, onMapClick,
+  onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -332,9 +334,6 @@ export default function MapView({
       if (!map.hasLayer(osm)) osm.addTo(map);
     }
   }, [view.mapSource]);
-
-  // 抽屉开合不再自动 pan 地图
-  void viewOffset;
 
   // M23：非选点态点击地图 → 通知外层（手机收抽屉）；用 ref 避免每次渲染重绑
   const mapClickRef = useRef(onMapClick);
