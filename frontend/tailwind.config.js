@@ -13,7 +13,9 @@ export default {
         moss: "#1F6B54",
         "moss-soft": "#E3EFE8",
         gold: "#C8903C",
+        "gold-deep": "#8A5E1E", // 金系前景 / 承载白字的实底（gold 压 cream 只有 2.37:1）
         "gold-soft": "#F6EBD8",
+        danger: "#9C4038", // 红系前景（#B85C5C 压浅底 3.71~4.13:1 不达标）
         line: "#E8E0D4",
       },
       fontFamily: {

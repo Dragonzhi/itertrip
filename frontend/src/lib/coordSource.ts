@@ -42,8 +42,8 @@ export function coordBadge(source?: string, confidence?: string): CoordBadge | n
 /** 徽标语气 → Tailwind 类（时间线/表单用） */
 export const BADGE_CLASS: Record<CoordBadge["tone"], string> = {
   ok: "bg-moss-soft text-moss",
-  model: "bg-[#F1EDE4] text-[#8A7F6A]",
-  warn: "bg-gold-soft text-gold",
+  model: "bg-[#F1EDE4] text-ink-soft",
+  warn: "bg-gold-soft text-gold-deep",
   none: "bg-[#F1EDE4] text-ink-soft",
 };
 

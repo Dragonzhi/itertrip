@@ -66,7 +66,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
     <div className="flex items-center justify-between gap-3 py-1.5">
       <div className="min-w-0">
         <div className="text-[12.5px] font-semibold text-ink">{label}</div>
-        {hint && <div className="text-[10.5px] text-ink-soft">{hint}</div>}
+        {hint && <div className="text-[11px] text-ink-soft">{hint}</div>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -76,7 +76,7 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 /** 分组标题。 */
 function GroupTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="pt-2.5 pb-1 text-[10.5px] font-bold tracking-wide text-[#A8A298] uppercase">{children}</div>
+    <div className="pt-2.5 pb-1 text-[11px] font-bold tracking-wide text-ink-soft uppercase">{children}</div>
   );
 }
 

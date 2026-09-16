@@ -202,7 +202,7 @@ export default function PlaceForm({
             <span
               title={badge.title}
               data-testid="coord-badge"
-              className={"rounded-md px-1.5 py-px text-[10px] font-semibold " + BADGE_CLASS[badge.tone]}
+              className={"rounded-md px-1.5 py-px text-[11px] font-semibold " + BADGE_CLASS[badge.tone]}
             >
               {badge.text}
             </span>

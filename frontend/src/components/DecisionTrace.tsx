@@ -77,16 +77,16 @@ export default function DecisionTrace({ steps, live }: Props) {
         data-testid="trace-toggle"
         className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] text-ink-soft hover:text-ink transition-colors text-left"
       >
-        <span className="inline-block text-[10px] leading-none select-none">{open ? "▼" : "▶"}</span>
-        <span className="text-[10px]">🧭</span>
+        <span className="inline-block text-[11px] leading-none select-none">{open ? "▼" : "▶"}</span>
+        <span className="text-[11px]">🧭</span>
         <span className="font-medium text-ink/80">决策过程</span>
-        <span className="font-mono text-ink-soft/70">{list.length} 步</span>
+        <span className="font-mono text-ink-soft">{list.length} 步</span>
         {running && <span className="text-moss font-semibold">进行中…</span>}
         {!running && warns > 0 && (
-          <span className={errs ? "text-[#B85C5C] font-semibold" : "text-gold font-semibold"}>{warns} 项需注意</span>
+          <span className={errs ? "text-danger font-semibold" : "text-gold-deep font-semibold"}>{warns} 项需注意</span>
         )}
         {!running && !warns && last && <span className="truncate max-w-[46%]">{last.title}</span>}
-        <span className="ml-auto text-[10px] text-moss font-semibold shrink-0">{open ? "收起" : "展开"}</span>
+        <span className="ml-auto text-[11px] text-moss font-semibold shrink-0">{open ? "收起" : "展开"}</span>
       </button>
       {open && (
         <div
@@ -102,7 +102,7 @@ export default function DecisionTrace({ steps, live }: Props) {
                 <span className="font-semibold text-ink/90">{s.title}</span>
                 {s.detail && <span className="text-ink-soft"> · {s.detail}</span>}
               </span>
-              {s.ms ? <span className="ml-auto shrink-0 font-mono text-[10px] text-ink-soft/60">{fmtMs(s.ms)}</span> : null}
+              {s.ms ? <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-soft">{fmtMs(s.ms)}</span> : null}
             </div>
           ))}
         </div>

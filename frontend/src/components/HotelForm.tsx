@@ -136,7 +136,7 @@ export default function HotelForm({
                   onClick={() => removePrice(i)}
                   title="删除这条报价"
                   data-testid="price-remove"
-                  className="shrink-0 w-6 h-6 rounded-md border border-line bg-white text-ink-soft text-[11px] leading-none hover:bg-[#F6E7E7] hover:text-[#B85C5C]"
+                  className="shrink-0 w-6 h-6 rounded-md border border-line bg-white text-ink-soft text-[11px] leading-none hover:bg-[#F6E7E7] hover:text-danger"
                 >
                   ✕
                 </button>
@@ -209,7 +209,7 @@ export default function HotelForm({
             </button>
           </div>
           {scope === "all" && (
-            <span className="text-[10.5px] text-ink-soft font-normal">会覆盖其他天的酒店（含你单独改过的天）。</span>
+            <span className="text-[11px] text-ink-soft font-normal">会覆盖其他天的酒店（含你单独改过的天）。</span>
           )}
         </label>
 

@@ -186,7 +186,7 @@ export default function Admin() {
             <span className="text-2xl">🛠️</span>
             <div>
               <h1 className="text-lg font-extrabold tracking-wide">IterTrip 后台</h1>
-              <p className="text-[10px] text-ink-soft tracking-[1px]">AI 服务管理 · ADMIN</p>
+              <p className="text-[11px] text-ink-soft tracking-[1px]">AI 服务管理 · ADMIN</p>
             </div>
           </div>
           <a href={import.meta.env.BASE_URL || "/"} className="text-xs text-moss font-semibold hover:underline">
@@ -206,7 +206,7 @@ export default function Admin() {
             </div>
 
             {error && (
-              <div className="text-xs text-[#B85C5C] bg-[#F6E7E7] rounded-lg px-3 py-2" data-testid="admin-error">
+              <div className="text-xs text-danger bg-[#F6E7E7] rounded-lg px-3 py-2" data-testid="admin-error">
                 {error}
               </div>
             )}
@@ -315,7 +315,7 @@ export default function Admin() {
                       (test.status === "ok"
                         ? "text-moss bg-moss-soft"
                         : test.status === "fail"
-                          ? "text-[#B85C5C] bg-[#F6E7E7]"
+                          ? "text-danger bg-[#F6E7E7]"
                           : "text-ink-soft bg-cream")
                     }
                     data-testid="admin-test-result"
@@ -343,7 +343,7 @@ export default function Admin() {
                   {savedMsg && <span className="text-xs text-moss">{savedMsg}</span>}
                   <button
                     onClick={handleClear}
-                    className="ml-auto text-xs text-[#B85C5C] hover:underline"
+                    className="ml-auto text-xs text-danger hover:underline"
                     data-testid="admin-clear"
                   >
                     {confirmingClear ? "再次点击确认清空" : "清空配置"}

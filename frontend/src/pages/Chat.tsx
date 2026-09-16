@@ -121,7 +121,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
         <button
           onClick={clearHistory}
           disabled={stream.sending || !messages.length}
-          className="ml-auto border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-[#F6E7E7] hover:text-[#B85C5C] disabled:opacity-35 disabled:cursor-not-allowed"
+          className="ml-auto border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-[#F6E7E7] hover:text-danger disabled:opacity-35 disabled:cursor-not-allowed"
           title="清空当前对话记录"
           data-testid="clear-chat"
         >

@@ -34,7 +34,7 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
   const stalled = health === "stalled";
   const slow = health === "slow";
   const pill = "inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full border " +
-    (stalled ? "border-[#E0C3C3] bg-[#FDF4F4] text-[#B85C5C]" : slow ? "border-[#E4CEA6] bg-[#FDF9F1] text-[#8A6428]" : "border-line bg-white text-ink");
+    (stalled ? "border-[#E0C3C3] bg-[#FDF4F4] text-danger" : slow ? "border-[#E4CEA6] bg-[#FDF9F1] text-[#8A6428]" : "border-line bg-white text-ink");
   const dot = stalled ? "bg-[#B85C5C]" : slow ? "bg-gold" : "bg-moss animate-pulse";
   return (
     <div className="space-y-1.5" data-testid="stream-status">
@@ -42,13 +42,13 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
         <span className={"inline-block w-1.5 h-1.5 rounded-full shrink-0 " + dot} />
         <span className="truncate text-xs font-semibold">{stageLabel || "AI 正在思考…"}</span>
         {sawPing && !stalled && <HeartDots slow={slow} />}
-        <span className="ml-0.5 font-mono text-[11px] text-ink-soft/70 shrink-0" data-testid="elapsed">
+        <span className="ml-0.5 font-mono text-[11px] text-ink-soft shrink-0" data-testid="elapsed">
           ⏱ {elapsed}s
         </span>
         {stalled && <span className="font-mono text-[11px] shrink-0">{Math.floor(idleMs / 1000)}s 无响应</span>}
       </div>
       {health === "ok" && sawPing && (
-        <div className="text-[10px] text-ink-soft/70 px-1" data-testid="stream-idle">
+        <div className="text-xs text-ink-soft px-1" data-testid="stream-idle">
           {idleMs < 2500 ? "服务端刚刚有响应" : Math.floor(idleMs / 1000) + "s 前有响应"}
         </div>
       )}
@@ -57,7 +57,7 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
           data-testid="stream-stalled"
           className={
             "text-[11px] px-2 py-1.5 rounded-lg leading-relaxed mx-1 " +
-            (slow ? "bg-gold-soft/60 text-[#8A6428]" : "bg-[#F6E7E7] text-[#B85C5C] border border-[#E0C3C3]")
+            (slow ? "bg-gold-soft/60 text-[#8A6428]" : "bg-[#F6E7E7] text-danger border border-[#E0C3C3]")
           }
         >
           {slow
@@ -66,7 +66,7 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
         </div>
       )}
       {!text && (
-        <div className="text-[11px] text-ink-soft/70 px-1 leading-relaxed" data-testid="wait-hint">
+        <div className="text-[11px] text-ink-soft px-1 leading-relaxed" data-testid="wait-hint">
           {elapsed < 8
             ? variant === "extract"
               ? "模型排队中，免费源首字常需 10–30 秒…"
@@ -103,7 +103,7 @@ export function SendStopButton({ sending, disabled, onStop, size = "md" }: BtnPr
         onClick={onStop}
         title="停止生成（Esc）"
         data-testid="stop-btn"
-        className={"min-w-[64px] rounded-xl font-bold border border-[#E0C3C3] bg-[#F6E7E7] text-[#B85C5C] hover:bg-[#EFD9D9] " + base}
+        className={"min-w-[64px] rounded-xl font-bold border border-[#E0C3C3] bg-[#F6E7E7] text-danger hover:bg-[#EFD9D9] " + base}
       >
         ■ 停止
       </button>
