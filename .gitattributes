@@ -1,0 +1,2 @@
+# cmd.exe 只认 CRLF：LF 的 .cmd 会被解析成乱码命令（'v' is not recognized…），双击直接失败
+*.cmd text eol=crlf

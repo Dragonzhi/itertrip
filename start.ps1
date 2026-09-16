@@ -1,4 +1,4 @@
-# IterTrip 一键启动（本机）
+﻿# IterTrip 一键启动（本机）
 #   .\start.ps1              生产模式：缺 dist 时构建前端 → 单进程起整站（FastAPI 托管 dist，默认 8100）
 #   .\start.ps1 -Dev         开发模式：后端 8100(--reload) + 前端 vite 5173(HMR)，各起一个新窗口
 #   .\start.ps1 -Rebuild     强制重新构建前端（仅生产模式）
