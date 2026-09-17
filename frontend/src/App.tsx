@@ -134,6 +134,7 @@ function MainApp() {
         hasModel={hasModel}
         hasRoute={!!route}
         onImportRoute={handleImportRoute}
+        route={route}
       />
       {showSettings && (
         <SettingsPanel

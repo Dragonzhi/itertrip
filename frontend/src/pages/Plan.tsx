@@ -774,7 +774,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         style={{ left: isMobile() ? 12 : chatOpen ? 396 : 14 }}
       >
         <div className="bg-white border border-line rounded-[14px] px-2.5 md:px-3.5 py-2 shadow-card flex items-center gap-2 pointer-events-auto shrink-0">
-          <button onClick={onRestart} className="flex items-center gap-2 text-sm font-bold tracking-wide hover:text-moss" title="重新规划">
+          <button onClick={onRestart} className="flex items-center gap-2 text-sm font-bold tracking-wide hover:text-moss" title="返回首页（保留当前行程）">
             <span className="text-lg">🧭</span>
             <span className="max-md:hidden">
               IterTrip

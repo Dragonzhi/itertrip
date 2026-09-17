@@ -32,6 +32,11 @@ test-artifacts/
 # TypeScript 增量编译缓存（生成物），不入库，避免每次构建都产生噪声 diff
 *.tsbuildinfo
 
+# ---------- 设计阶段临时产物 ----------
+# 设计工具链（solo-design / preflight / runtime 清单等）跑出来的中间件，
+# 仅在本地迭代 v2 视觉稿时用，不入主仓库。
+itertrip-home-redesign/
+
 # ---------- 编辑器 / 系统 ----------
 .vscode/
 .idea/

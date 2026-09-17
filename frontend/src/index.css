@@ -197,3 +197,39 @@ body { overscroll-behavior-y: none; }
   outline-offset: 2px;
 }
 
+/* ===== 起始页 v2 设计的工具类（home-empty-v2 / home-resume-v2 共同几何）=====
+ * text-balance：中文标题换行更整齐，避免尾部孤字（DESIGN §1 排版）
+ * 起始页的 hover-lift / focus-ring / motion-reduce 三件套集中在 .home-card 与 .home-cta 上。 */
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}
+
+/* 起始页非对称双栏（左 7 / 右 5）。md 以下塌成单列；sm 以下再收字号与内边距。 */
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  column-gap: 64px;
+  row-gap: 48px;
+  align-items: start;
+}
+@media (max-width: 1023px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr); row-gap: 40px; }
+}
+
+/* 起始页右侧卡（empty 态的「三步拿到路线」与 resume 态的行程预览共用几何）：
+ * padding 20、白底、16px 大圆角、克制阴影、hover 上浮 3px。
+ * hover 位移在 prefers-reduced-motion 下必须归零（见 §3 M23 动效护栏）。 */
+.home-card {
+  background-color: #fff;
+  border: 1px solid #E8E0D4;
+  border-radius: 16px;
+  box-shadow: 0 18px 40px -22px rgba(43,43,40,.28);
+  padding: 20px;
+  transition: transform .2s ease;
+}
+.home-card:hover { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) {
+  .home-card { transition-duration: 0.01ms; }
+  .home-card:hover { transform: none; }
+}
+

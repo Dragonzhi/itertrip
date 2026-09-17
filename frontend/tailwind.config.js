@@ -17,6 +17,10 @@ export default {
         "gold-soft": "#F6EBD8",
         danger: "#9C4038", // 红系前景（#B85C5C 压浅底 3.71~4.13:1 不达标）
         line: "#E8E0D4",
+        // 日程色板：起始页行程预览的 day-dot 与地图 .iter-pin.day-N 共用
+        "day-1": "#E07A5F",
+        "day-2": "#E9B44C",
+        "day-3": "#3D8B8A",
       },
       fontFamily: {
         sans: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif',
