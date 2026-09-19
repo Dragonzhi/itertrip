@@ -11,10 +11,12 @@ import { exportHtml, dateCheck, geocode as geocodeApi, recheckRoute, reportPlace
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
 import DecisionTrace from "../components/DecisionTrace";
+import CoordReport from "../components/CoordReport";
 import { useChatStream } from "../hooks/useChatStream";
 import { SendStopButton, StreamStatus } from "../components/StreamControls";
 import { diffRoute, type RouteDiff } from "../lib/routeDiff";
 import { describeStreamError } from "../lib/streamWatch";
+import { coordDigest } from "../lib/coordDigest";
 import { distanceKm } from "../lib/coordSource";
 import { exportFilename } from "../lib/exportName";
 import { isMobile } from "../lib/viewport";
@@ -137,6 +139,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         questions: r.questions,
         trace: trace.length ? trace : undefined,
         stats: r.stats,
+        geo: coordDigest(r.route) || undefined, // M24：坐标来源/降级摘要随消息常驻
       };
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
@@ -894,6 +897,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
                     ))}
                   </ul>
                 )}
+                {m.role === "assistant" && <CoordReport digest={m.geo} />}
                 {m.role === "assistant" && m.changed && (
                   <div className="text-xs text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}

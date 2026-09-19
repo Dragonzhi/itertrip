@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChatStream } from "../hooks/useChatStream";
 import ChatPanel from "../components/ChatPanel";
 import { loadChatHistory, saveChatHistory, type LlmSettings } from "../lib/settings";
+import { coordDigest } from "../lib/coordDigest";
 import { describeStreamError } from "../lib/streamWatch";
 import type { ChatMessage } from "../types/chat";
 
@@ -23,9 +24,22 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatHistory());
   const sentPrefillRef = useRef(false);
 
-  useEffect(() => {
-    saveChatHistory(messages);
-  }, [messages]);
+  /**
+   * 消息的**唯一**写入通道：同步落 localStorage。
+   *
+   * 为什么不能只靠 `useEffect(() => saveChatHistory(messages), [messages])`（M24 修的就是它）：
+   * 生成路线那一轮的 AI 回复与「跳规划页」在同一次回调里提交，React 18 把它们批处理成一次 render，
+   * App 这次直接渲染 Plan ⇒ Chat 在同一次 commit 里被卸载 —— 它从没以新 messages 渲染过，
+   * 对应的 passive effect 永不执行，于是 localStorage 停在「只有 user 消息」的旧快照。
+   * 现象就是：回到对话页只剩用户说话，AI 整轮消失（连下一轮上下文也缺一条）。
+   */
+  const msgsRef = useRef(messages);
+  const commit = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+    const next = updater(msgsRef.current);
+    msgsRef.current = next;
+    setMessages(next);
+    saveChatHistory(next);
+  }, []);
 
   /**
    * 优化②：流式状态与中断统一交给 useChatStream。三类结果分开处理，**绝不假成功**：
@@ -40,8 +54,9 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
         questions: r.questions,
         trace: trace.length ? trace : undefined,
         stats: r.stats,
+        geo: coordDigest(r.route) || undefined, // M24：坐标来源/降级摘要随消息常驻
       };
-      setMessages((prev) => [...prev, reply]);
+      commit((prev) => [...prev, reply]);
       if (r.route && r.route.days.length > 0) onRoute(r.route, "chat");
     },
     onError: (e, _partial, trace) => {
@@ -51,13 +66,13 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
         onPatchSettings({ vision: false });
         msg = msg.replace("[vision-unsupported]", "").trim();
       }
-      setMessages((prev) => [
+      commit((prev) => [
         ...prev,
         { id: uid(), role: "assistant", content: msg, error: true, trace: trace.length ? trace : undefined },
       ]);
     },
     onInterrupt: (partial, reason, trace) => {
-      setMessages((prev) => [
+      commit((prev) => [
         ...prev,
         {
           id: uid(),
@@ -72,7 +87,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
 
   /** 澄清卡提交/跳过后标记「已回答」，刷新恢复时不再重复渲染 */
   const markAnswered = (id: string) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
+    commit((prev) => prev.map((m) => (m.id === id ? { ...m, answered: true } : m)));
   };
 
   const clearHistory = () => {
@@ -80,7 +95,7 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
     if (!messages.length) return;
     if (!window.confirm("确定清空当前对话记录吗？此操作不可撤销。")) return;
     sentPrefillRef.current = true; // 清除后不再自动重发 prefill
-    setMessages([]);
+    commit(() => []);
   };
 
   async function send(text: string, images?: string[]) {
@@ -91,11 +106,12 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       content: text || "📷 攻略截图×" + (images?.length || 0),
       images, // 仅内存态；saveChatHistory 持久化时剔除（M15 护栏）
     };
-    const history = [...messages, userMsg]
+    // 从 ref 取（而不是 state）：clarify 提交是「先 markAnswered 再 onSend」，读 state 会拿到落后一拍的数组
+    const history = [...msgsRef.current, userMsg]
       .filter((m) => !m.error)
       .slice(-12)
       .map((m) => ({ role: m.role, content: m.content }));
-    setMessages((prev) => [...prev, userMsg]);
+    commit((prev) => [...prev, userMsg]);
     await stream.send({ prompt: text, history, images }, settings);
   }
 

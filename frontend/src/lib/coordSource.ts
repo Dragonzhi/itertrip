@@ -39,6 +39,25 @@ export function coordBadge(source?: string, confidence?: string): CoordBadge | n
   }
 }
 
+/**
+ * 来源的**全量**短标签（M24 对话里的坐标摘要用）。
+ *
+ * 与 `coordBadge` 的分工：徽标是「有就显示、没有就不显示」，所以未知来源返回 null；
+ * 摘要必须把每一处都归到某一类（否则计数行会缺项），故这里给全量兜底。
+ * 文案刻意与 coordBadge 保持一致 —— 用户在同一条消息里看到的词必须和时间线徽标是同一套。
+ */
+export const SOURCE_LABEL: Record<string, string> = {
+  memory: "你确认过",
+  user: "你确认过",
+  amap: "高德核验",
+  llm: "AI 推测",
+  search: "搜索兜底",
+  city: "城市中心",
+  mock: "mock 样例",
+  none: "无来源",
+  unknown: "来源未知",
+};
+
 /** 徽标语气 → Tailwind 类（时间线/表单用） */
 export const BADGE_CLASS: Record<CoordBadge["tone"], string> = {
   ok: "bg-moss-soft text-moss",

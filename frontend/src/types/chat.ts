@@ -68,6 +68,9 @@ export interface ChatMessage {
   trace?: TraceStep[];
   /** M19 本轮统计（模型/耗时/坐标写入数） */
   stats?: TraceStats;
+  /** M24 本轮路线的坐标来源摘要（哪些点可信、哪些是降级来的），随消息常驻显示并持久化 */
+  geo?: CoordDigest;
 }
 
 import type { RouteJSON } from "./route";
+import type { CoordDigest } from "../lib/coordDigest";

@@ -3,6 +3,7 @@ import { compressImage } from "../lib/imageCompress";
 import CalendarPicker from "./CalendarPicker";
 import ThinkingBlock from "./ThinkingBlock";
 import DecisionTrace from "./DecisionTrace";
+import CoordReport from "./CoordReport";
 import { SendStopButton, StreamStatus } from "./StreamControls";
 import type { ChatStreamState } from "../hooks/useChatStream";
 import type { ChatMessage, ClarifyQuestion } from "../types/chat";
@@ -397,6 +398,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
                   ))}
                 </ul>
               )}
+              {m.role === "assistant" && <CoordReport digest={m.geo} />}
               {m.role === "assistant" && m.changed && (
                 <div className="text-[11px] text-ink-soft mt-1">地图已更新 · 可撤销</div>
               )}
