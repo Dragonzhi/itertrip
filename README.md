@@ -7,7 +7,7 @@ IterTrip 是一个独立的 AI 旅行攻略落地应用：把小红书/公众号
 AI 提取成结构化路线，在地图上直观呈现；支持对话式修改与手动编辑（拖拽/跨天/改点/撤销），
 一键导出自包含 HTML 随时随地打开。
 
-[English](./README.en.md) · [设计文档](./DESIGN.md) · [部署指南](./DEPLOY.md)
+[English](./README.en.md) · [设计文档](./DESIGN.md) · [下一阶段开发方向](./docs/NEXT_DEVELOPMENT_DIRECTION.md) · [部署指南](./DEPLOY.md)
 
 ## 为什么需要它
 
