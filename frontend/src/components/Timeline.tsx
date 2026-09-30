@@ -10,8 +10,11 @@ import HotelCard from "./HotelCard";
 import { Fragment } from 'react';
 import { TransportDay, TransportLeg, type TransportActions } from './TransportView';
 import { transport } from '../lib/transport';
+import { schedule } from '../lib/schedule';
+import { ScheduleDay, ScheduleVisit, type ScheduleActions } from './ScheduleView';
 
 interface TimelineProps {
+  scheduleActions?: ScheduleActions;
   transportActions?: TransportActions;
   onNavigate?: (key: string) => void;
   route: RouteJSON;
@@ -41,7 +44,7 @@ export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onMovePlace, onPlaceFocus, onHotelFocus,
   onEditHotel, onSaveHotelPrices,
-  view, onNavigate, transportActions,
+  view, onNavigate, transportActions, scheduleActions,
 }: TimelineProps) {
   const showSummary = view?.showSummary !== false;
   const showMeta = view?.showMeta !== false;
@@ -74,6 +77,7 @@ export default function Timeline({
       )}
 
       {route.days.map((day, di) => {
+        const dailySchedule = schedule.calculate(route, di, scheduleActions?.completed);
         const color = dayColor(di);
         const isClosed = closed.has(di);
         return (
@@ -132,6 +136,7 @@ export default function Timeline({
 
             {!isClosed && (
               <div>
+                <ScheduleDay route={route} di={di} actions={scheduleActions} />
                 {transportActions && <TransportDay route={route} di={di} actions={transportActions} />}
                 {(day.places || []).map((p, pi) => {
                   const key = `d${di}-p${pi}`;
@@ -217,6 +222,7 @@ export default function Timeline({
                           )}
                         </div>
                         <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">
+                          <ScheduleVisit point={p} row={dailySchedule.rows.find(r => r.id === p.id)} onEdit={scheduleActions ? () => scheduleActions.edit(di, p.id!) : undefined} />
                           {showMeta && p.time && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">{p.time}</span>}
                           {showMeta && p.ticket && <span className="inline-block bg-moss-soft text-moss rounded-md px-1.5 mr-1.5 mt-0.5">🎫 {p.ticket}</span>}
                           {showMeta && p.transport && <div>🚗 {p.transport}</div>}
@@ -263,7 +269,8 @@ export default function Timeline({
                 {day.hotel && day.hotel.name && (
                   <Fragment>
                   {transportActions && transport.legs(route, di).filter(e => e.to.id === day.hotel?.id).map(e => <TransportLeg key={e.from.id} route={route} edge={e} actions={transportActions} />)}
-                  <HotelCard onNavigate={onNavigate ? () => onNavigate(`d${di}-hotel`) : undefined} hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
+                  <ScheduleVisit point={day.hotel} row={dailySchedule.rows.find(r => r.id === day.hotel?.id)} onEdit={scheduleActions ? () => scheduleActions.edit(di, day.hotel!.id!) : undefined} />
+                  <HotelCard checkIn={schedule.dayDate(route,di)} checkOut={schedule.dayDate(route,di+1)} onNavigate={onNavigate ? () => onNavigate(`d${di}-hotel`) : undefined} hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
                   </Fragment>
                 )}
               </div>

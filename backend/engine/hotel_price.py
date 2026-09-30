@@ -91,7 +91,10 @@ def _upsert(prices: list, price: float) -> list[dict]:
             if hit:
                 continue  # 去重：只留一条
             hit = True
-            out.append({**pr, "platform": MANUAL_PLATFORM, "price": price})
+            updated = {**pr, "platform": MANUAL_PLATFORM, "price": price}
+            if float(pr.get("price") or 0) != price:
+                updated["queried_at"] = ""  # A new manually specified value is not the old sourced quote.
+            out.append(updated)
         else:
             out.append(pr)
     if not hit:

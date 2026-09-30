@@ -67,6 +67,7 @@ export function useTripHistory(initial: RouteJSON) {
 
   const canUndo = idxRef.current > 0;
   const canRedo = idxRef.current < historyRef.current.length - 1;
+  const isCurrent = useCallback((expected: RouteJSON) => routeRef.current === expected, []);
 
-  return { route, mutate, undo, redo, canUndo, canRedo };
+  return { route, mutate, undo, redo, canUndo, canRedo, isCurrent };
 }

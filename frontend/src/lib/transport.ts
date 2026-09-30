@@ -1,5 +1,6 @@
 import './navigation.ts';
 import '../../../shared/transport.js';
+import '../../../shared/schedule.js';
 import type { RouteJSON, Place, Hotel, TransportSegment, TransportOption } from '../types/route';
 export type Edge = { from: Place | Hotel; to: Place | Hotel; city: string; di: number };
 export const transport = (globalThis as unknown as { IterTripTransport: {
@@ -12,5 +13,6 @@ export const transport = (globalThis as unknown as { IterTripTransport: {
   labels: Record<string, string>;
 } }).IterTripTransport;
 export function normalizeRoute(route: RouteJSON, previous?: RouteJSON) {
-  return transport.normalize(JSON.parse(JSON.stringify(route)), previous);
+  const normalized = transport.normalize(JSON.parse(JSON.stringify(route)), previous);
+  return (globalThis as unknown as { IterTripSchedule: {refreshClosures(r: RouteJSON): RouteJSON} }).IterTripSchedule.refreshClosures(normalized);
 }

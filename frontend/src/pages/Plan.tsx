@@ -3,6 +3,8 @@ import MapView from "../components/MapView";
 import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import { transport } from '../lib/transport';
+import { schedule } from '../lib/schedule';
+import { ScheduleEditor, type ScheduleActions } from '../components/ScheduleView';
 import type { TransportActions } from '../components/TransportView';
 import { loadProgress, saveProgress, visits, type OutingProgress } from "../lib/outing";
 import MapSettings from "../components/MapSettings";
@@ -71,7 +73,7 @@ type FormState =
 
 /** 规划页：全屏地图 + 时间线 + 交互编辑器（拖拽/删除/新增/编辑/撤销重做/双导出）。 */
 export default function Plan({ route: initialRoute, tripSession, source, onRouteChange, onRestart, settings }: PlanProps) {
-  const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
+  const { route, mutate, undo, redo, canUndo, canRedo, isCurrent } = useTripHistory(initialRoute);
   const [trafficBusy, setTrafficBusy] = useState(false);
   const [trafficMessage, setTrafficMessage] = useState('');
   const trafficAbort = useRef<AbortController | null>(null);
@@ -130,6 +132,16 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     },
   };
   const [outing, setOuting] = useState<OutingProgress>(() => loadProgress(tripSession));
+  const [scheduleTarget, setScheduleTarget] = useState<{di:number; id:string; version:RouteJSON} | null>(null);
+  const [scheduleMsg, setScheduleMsg] = useState('');
+  const aiVersion = useRef<RouteJSON>();
+  const completedIds = visits(route).filter(v => outing.completed.includes(v.id)).map(v => v.point.id!).filter(Boolean);
+  const scheduleActions: ScheduleActions = {
+    completed: completedIds,
+    day: (di, patch) => mutate(r => { r.days[di].schedule = {...r.days[di].schedule, ...patch}; }),
+    edit: (di, id) => setScheduleTarget({di, id, version:route}),
+  };
+  const scheduledPoint = scheduleTarget && [...route.days[scheduleTarget.di]?.places || [], ...(route.days[scheduleTarget.di]?.hotel ? [route.days[scheduleTarget.di].hotel!] : [])].find(p => p.id === scheduleTarget.id);
   const [progressSaved, setProgressSaved] = useState(true);
   const [navKey, setNavKey] = useState<string | null>(null);
   const routeVisits = useMemo(() => visits(route), [route]);
@@ -209,6 +221,12 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
    */
   const stream = useChatStream({
     onReply: (r, partial, trace) => {
+      if (r.route) {
+        const guarded = schedule.protect(route, r.route, completedIds);
+        if (aiVersion.current !== route || guarded.reasons.length) {
+          r = {...r, route: null, reply: `本次行程未修改：${aiVersion.current !== route ? '生成期间路线已变化，请重新发起修改。' : guarded.reasons.join('；')}`};
+        } else r = {...r, route: guarded.route};
+      }
       const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
       const reply: ChatMessage = {
         id: uid(),
@@ -229,7 +247,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           draft.days = r.route!.days.map((d, di) => ({ ...d, traffic_mode: draft.days[di]?.traffic_mode, start_from_hotel: draft.days[di]?.start_from_hotel, transport: draft.days[di]?.transport }));
           draft.trip = r.route!.trip;
           draft.summary = r.route!.summary;
-        }); // 同一历史栈：AI 改动可撤销
+        }, aiVersion.current); // 同一历史栈：AI 改动可撤销；拒绝旧响应
         const keys: string[] = [
           ...diff.added.map((a) => "d" + a.di + "-p" + a.pi),
           ...diff.moved.map((m) => "d" + m.toDi + "-p" + m.toPi),
@@ -303,6 +321,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       .map((m) => ({ role: m.role, content: m.content }));
     setChatMsgs((prev) => [...prev, userMsg]);
     setChatInput("");
+    aiVersion.current = route;
     void stream.send({ prompt: t, history, route }, settings);
   };
 
@@ -355,10 +374,15 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
   /* ---------- 编辑器：删除 / 拖拽移动 ---------- */
   const handleDelete = (di: number, pi: number) => {
+    const p = route.days[di].places[pi];
+    if (schedule.fixed(p, completedIds) || p.visit?.required) { setScheduleMsg(`「${p.name}」有固定／必去／已完成约束。请先在「安排／预约」移除约束或恢复为未完成，再删除。`); return; }
+    setScheduleMsg('');
     mutate((r) => { r.days[di].places.splice(pi, 1); });
   };
 
   const handleDropMove = (srcDi: number, srcPi: number, dstDi: number, dstPi: number) => {
+    const p = route.days[srcDi].places[srcPi];
+    if (schedule.fixed(p, completedIds)) setScheduleMsg(`已手工调整「${p.name}」的顺序；预约日期和时段保留，请检查日程冲突。`);
     mutate((r) => {
       let idx = dstPi;
       if (srcDi === dstDi && idx > srcPi) idx -= 1;   // 同天先删后插补偿（DESIGN 红线）
@@ -556,6 +580,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     const prices = (hotelDraft.prices || [])
       .filter((pr) => Number(pr.price) > 0)
       .map((pr) => ({
+        ...pr,
         platform: (pr.platform || "").trim() || "手动录入",
         price: Number(pr.price),
         breakfast: !!pr.breakfast,
@@ -604,8 +629,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         const price = Number(pr.price);
         if (!Number.isFinite(price) || price <= 0) continue;
         const platform = (pr.platform || "").trim() || "搜索来源";
-        if (merged.some((x) => x.platform === platform && Number(x.price) === price)) continue;
+        if (merged.some((x) => x.platform === platform && Number(x.price) === price && schedule.quoteGroup(x) === schedule.quoteGroup(pr))) continue;
         merged.push({
+          ...pr,
           platform, price,
           breakfast: !!pr.breakfast,
           note: (pr.note || "").trim(),
@@ -690,13 +716,14 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     setDateMsg("");
     try {
       const res = await dateCheck(route, iso ?? "");
+      const current = isCurrent(route);
       mutate((draft) => {
         draft.trip.start_date = res.route.trip.start_date || "";
         draft.trip.date_source = res.route.trip.date_source || "";
         if (res.route.trip.dates) draft.trip.dates = res.route.trip.dates;
         draft.days = res.route.days;
-      });
-      setDateMsg(res.summary);
+      }, route);
+      setDateMsg(current ? res.summary : '路线已变化，旧日期检查结果未写入；请重新检查。');
     } catch (e) {
       setDateMsg("闭馆日检查失败：" + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -1127,6 +1154,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         </div>
         {!progressSaved && <p role="status" className="text-xs text-danger px-[18px] py-2">浏览器无法保存出行进度，刷新后可能丢失。</p>}
         {trafficMessage && <p role="status" className="text-xs text-ink-soft px-[18px] py-2">{trafficMessage}</p>}
+        {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :
           <Timeline
@@ -1146,6 +1174,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             view={mapView}
             onNavigate={setNavKey}
             transportActions={trafficActions}
+            scheduleActions={scheduleActions}
           />}
         </div>
         {/* 工具条 */}
@@ -1254,6 +1283,15 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         />
       )}
     </div>
+    {scheduleTarget && scheduledPoint && <ScheduleEditor key={scheduleTarget.id} point={scheduledPoint} iso={schedule.dayDate(route,scheduleTarget.di)} city={route.trip.destination} onClose={() => setScheduleTarget(null)} onSave={(visit, opening) => {
+      if (!isCurrent(scheduleTarget.version)) return false;
+      mutate(r => {
+        const d = r.days[scheduleTarget.di];
+        const p = [...d.places, ...(d.hotel ? [d.hotel] : [])].find(p => p.id === scheduleTarget.id);
+        if (p) { p.visit = visit; p.opening = opening; }
+      }, scheduleTarget.version);
+      return true;
+    }} />}
     </MotionConfig>
   );
 }

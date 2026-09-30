@@ -2,10 +2,21 @@ export interface PriceItem {
   platform: string;
   price: number;
   breakfast?: boolean;
+  breakfast_known?: boolean;
   note?: string;
+  source_url?: string;
+  queried_at?: string;
+  check_in?: string;
+  check_out?: string;
+  room?: string;
+  occupancy?: string;
+  cancellation?: string;
+  unit?: 'night' | 'stay' | '';
 }
 
 export interface Hotel {
+  visit?: VisitPlan;
+  opening?: OpeningFact[];
   id?: string;
   poi_id?: string;
   city_code?: string;
@@ -25,6 +36,8 @@ export interface Hotel {
 export type PlaceType = "attraction" | "food" | "transport" | "other";
 
 export interface Place {
+  visit?: VisitPlan;
+  opening?: OpeningFact[];
   id?: string;
   poi_id?: string;
   city_code?: string;
@@ -45,6 +58,7 @@ export interface Place {
 }
 
 export interface DayPlan {
+  schedule?: { start?: string; end?: string };
   day: number;
   theme?: string;
   places: Place[];
@@ -52,6 +66,34 @@ export interface DayPlan {
   traffic_mode?: 'walk' | 'bus' | 'car';
   start_from_hotel?: boolean;
   transport?: TransportSegment[];
+}
+
+/** Times are local to the destination (first release: Asia/Shanghai); never inferred from prose. */
+export interface VisitPlan {
+  duration_min?: number | null;
+  duration_source?: 'user' | 'estimate';
+  kind?: 'visit' | 'meal' | 'rest';
+  required?: boolean;
+  locked?: boolean;
+  completed?: boolean;
+  reservation?: {
+    type: 'entry' | 'train' | 'hotel' | 'other';
+    date: string; start: string; end: string;
+    status: 'needed' | 'pending' | 'confirmed' | 'cancelled';
+    url?: string;
+  };
+}
+/** User records structured facts after consulting a source; search candidates are never verified facts. */
+export interface OpeningFact {
+  place_name?: string;
+  entry_policy?: 'unknown' | 'none' | 'last_entry';
+  open?: string; close?: string; last_entry?: string;
+  closed?: boolean; reservation_required?: boolean;
+  weekdays?: number[]; // ISO weekday, 1=Monday
+  valid_from: string; valid_to: string;
+  source_kind: 'official' | 'map' | 'user';
+  source_url: string; checked_at: string;
+  confirmed: boolean;
 }
 
 export interface TransportOption {

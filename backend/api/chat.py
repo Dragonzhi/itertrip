@@ -115,6 +115,9 @@ SYSTEM_EDIT = (
     "规则："
     "1. changed=true 时必须给出**完整** days 数组（未修改的天原样保留），禁止省略或输出差异片段\n"
     "保留地点和酒店的 id，不重新生成。交通快照 transport 由地图服务维护，禁止编造耗时、费用或查询记录；交通设置与快照保持原样。\n"
+    "schedule、visit（停留/预约/必去/锁定/已完成）、opening（开放资料及来源）是用户记录，必须原样保留。\n"
+    "不得移动或删除有有效预约、locked=true 或 completed=true 的地点/酒店，不得删除 required=true 的地点。\n"
+    "不能仅凭记忆或搜索摘要填写已核实开放时间、最后入场或已确认预约；固定约束冲突时说明需要用户取舍。\n"
     "2. 用户的明确要求优先；涉及时间冲突/动线明显不合理时可在 <<<REPLY>>> 里提醒，但仍按用户要求改\n"
     "3. 闲聊/咨询/与路线无关的请求：changed=false，days 给原样内容，reply 正常回答\n"
     "4. 不增删天；单日地点建议不超过 6 个；不确定的坐标修改保持原值\n"
@@ -1197,6 +1200,15 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     "questions": qs if qs else None,
                 },
             ):
+                yield ev
+            return
+        # M27: deterministic constraint guard. A narrative cannot override a human record.
+        from ..engine.arrangements import protect_arrangements
+        data["__route"], constraint_errors = protect_arrangements(req.route, data["__route"])
+        if constraint_errors:
+            reason = "；".join(constraint_errors)
+            yield emit(_trace_step("schedule-guard", "edit", "warn", "固定日程保护：本次修改未应用", reason))
+            for ev in _reply_events(tr, _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="固定约束阻止修改"), {"reply": "行程未修改：" + reason, "intent": "chitchat", "route": None}):
                 yield ev
             return
         # changed=true：先把 LLM 新写/改动的坐标从 WGS84 转 GCJ-02（全链路统一 GCJ-02）。

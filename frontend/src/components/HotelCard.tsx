@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Hotel, PriceItem } from "../types/route";
 import { searchHotel, type SearchResult } from "../api/client";
+import { schedule } from '../lib/schedule';
 
 /** 报价展示：整数不带小数位，非整数保留 1 位（与行情场景一致，不做任何计数动效）。 */
 const fmtPrice = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
 interface HotelCardProps {
+  checkIn?: string;
+  checkOut?: string;
   onNavigate?: () => void;
   hotel: Hotel;
   active: boolean;
@@ -21,16 +24,22 @@ interface HotelCardProps {
 }
 
 /** 酒店比价卡：最低价平台自动高亮 + 「最低」标签。 */
-export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit, onSavePrices, onNavigate }: HotelCardProps & { city?: string }) {
+export default function HotelCard({ hotel, active, onClick, onFocus, city, checkIn = '', checkOut = '', showMeta = true, onEdit, onSavePrices, onNavigate }: HotelCardProps & { city?: string }) {
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const prices = hotel.prices || [];
-  const best = prices.length ? prices.reduce((a, b) => (a.price <= b.price ? a : b)) : null;
   const rows = searchResult
-    ? [...prices, ...searchResult.prices.map((p) => ({ ...p, breakfast: p.breakfast ?? false }))]
+    ? [...prices, ...searchResult.prices.filter(p => !prices.some(q => q.platform === p.platform && q.price === p.price && q.source_url === p.source_url && schedule.quoteGroup(q) === schedule.quoteGroup(p))).map((p) => ({ ...p, breakfast: p.breakfast ?? false }))]
     : prices;
+  const queryVersion = useRef(0);
+  useEffect(() => { queryVersion.current++; setSearchResult(null); setSearching(false); setSaved(false); return () => { queryVersion.current++; }; }, [hotel.id, hotel.name, city, checkIn, checkOut]);
+  const comparable = rows.filter(p => schedule.comparable(p, checkIn, checkOut));
+  const isGroupBest = (p: PriceItem) => {
+    const group = comparable.filter(q => schedule.quoteGroup(q) === schedule.quoteGroup(p));
+    return group.includes(p) && group.length >= 2 && p.price === Math.min(...group.map(q => q.price));
+  };
   /**
    * 价格动效（优化③）：原来用 Magic UI NumberTicker 从 0 滚到目标价 —— 读起来像「这个价格正在涨」，
    * 而且它是**滚入视口**触发（切天/展开/重挂载都重播），跟「新数据到了」毫无关系。
@@ -83,9 +92,10 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
             disabled={searching}
             onClick={async () => {
               setSearching(true); setSearchErr(null);
-              try { setSearchResult(await searchHotel(hotel.name, city || "", "", "")); }
-              catch (e) { setSearchErr(e instanceof Error ? e.message : String(e)); }
-              finally { setSearching(false); }
+              setSaved(false); const version = ++queryVersion.current;
+              try { const result = await searchHotel(hotel.name, city || "", checkIn, checkOut); if (queryVersion.current === version) setSearchResult(result); }
+              catch (e) { if (queryVersion.current === version) setSearchErr(e instanceof Error ? e.message : String(e)); }
+              finally { if (queryVersion.current === version) setSearching(false); }
             }}
             className="border border-line bg-white text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-moss-soft disabled:opacity-40"
           >
@@ -109,6 +119,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
             </button>
           )}
         </div>
+        <p className="text-[11px] text-ink-soft mb-2">{checkIn && checkOut ? `入住 ${checkIn} · 离店 ${checkOut}` : '入住／离店日期未知'} · 仅相同日期、房型、人数、早餐、退改和计价单位的完整报价可比较。</p>
         </>}
       </div>}
       {showMeta && <table className="w-full border-collapse text-[13px]">
@@ -128,19 +139,19 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
             </tr>
           )}
           {rows.map((pr, i) => {
-            const isBest = pr === best;
+            const isBest = isGroupBest(pr);
             return (
               <tr key={i} className={(isBest ? "bg-gold-soft " : "") + "price-row" + (isBest ? " price-row-best" : "")}>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-semibold align-middle">
                   {pr.platform}
-                  {isBest && <span className="bg-gold-deep text-white text-[11px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">最低</span>}
+                  {isBest && <span className="bg-gold-deep text-white text-[11px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">同条件最低</span>}
                 </td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums text-ink">
                   {/* 静态渲染：价格必须一眼可读、可直接上下比较（不做 0→N 的计数动效） */}
                   ¥{fmtPrice(pr.price)}
                 </td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.breakfast ? "含早" : "无早"}</td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.note || ""}</td>
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{!pr.breakfast_known ? '未知' : pr.breakfast ? "含早" : "无早"}</td>
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.note || ""}<br/>{schedule.comparable(pr,checkIn,checkOut) ? `${pr.room} · ${pr.occupancy} · ${pr.cancellation} · ${pr.unit === 'night' ? '每晚' : '整次入住'}` : '日期／报价条件未核对，不参与最低比较'}{pr.queried_at && <div>查询 {pr.queried_at}</div>}{schedule.url(pr.source_url) && <a className="underline text-moss" href={schedule.url(pr.source_url)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>逐条来源 ↗</a>}</td>
               </tr>
             );
           })}

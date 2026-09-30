@@ -473,6 +473,8 @@
 <script>__EXPORT_NAVIGATION__</script>
 <script>__TRANSPORT_CORE__</script>
 <script>__EXPORT_TRANSPORT__</script>
+<script>__SCHEDULE_CORE__</script>
+<script>__EXPORT_SCHEDULE__</script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============ 导出用纯净快照 ============
@@ -485,6 +487,7 @@ const TRIP = __TRIP_DATA__;
 IterTripTransport.normalize(TRIP);
 IterTripExportNavigation.init(() => TRIP);
 IterTripExportTransport.init(() => TRIP);
+IterTripExportSchedule.init(() => TRIP);
 /* ==================================== */
 if (typeof L !== 'undefined') {
 const ESC = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
@@ -580,6 +583,7 @@ function emojiFor(p){
 
 function render(){
   IterTripTransport.normalize(TRIP);
+  IterTripSchedule.refreshClosures(TRIP);
   const trip = TRIP.trip || {};
   document.getElementById('ttTitle').textContent = trip.title || '行程';
   const metas = [];
@@ -607,6 +611,7 @@ function render(){
       <div class="day-body"></div>`;
     const body = block.querySelector('.day-body');
     IterTripExportTransport.summary(body, di);
+    IterTripExportSchedule.summary(body, di);
     const itemRefs = {};
 
     (day.places||[]).forEach((p, pi) => {
@@ -626,6 +631,7 @@ function render(){
             ${(p.warnings||[]).map(w=>`<div class="place-warn">⚠️ ${esc(w)}</div>`).join('')}
           </div>
         </div>`;
+      IterTripExportSchedule.visit(item.querySelector('.place-info'), di, p.id);
       /* 编辑器：删除按钮（不弹 confirm，撤销兜底）+ HTML5 拖拽 */
       const del = document.createElement('button');
       del.className = 'place-del'; del.type = 'button';
@@ -703,13 +709,14 @@ function render(){
       card.className = 'hotel-card';
       card.id = key;
       const prices = h.prices || [];
-      const best = prices.length ? prices.reduce((a,b)=> (a.price <= b.price ? a : b)) : null;
+      const comparable = prices.filter(p => IterTripSchedule.comparable(p,IterTripSchedule.dayDate(TRIP,di),IterTripSchedule.dayDate(TRIP,di+1)));
+      const isBest = p => { const group = comparable.filter(q => IterTripSchedule.quoteGroup(q) === IterTripSchedule.quoteGroup(p)); return group.length >= 2 && group.includes(p) && p.price === Math.min(...group.map(q => q.price)); };
       let rows = prices.map(pr => `
-        <tr class="${pr === best ? 'best' : ''}">
-          <td class="platform">${esc(pr.platform)}${pr === best ? '<span class="best-tag">最低</span>' : ''}</td>
+        <tr class="${isBest(pr) ? 'best' : ''}">
+          <td class="platform">${esc(pr.platform)}${isBest(pr) ? '<span class="best-tag">同条件最低</span>' : ''}</td>
           <td class="amount">¥${esc(pr.price)}</td>
-          <td class="bf">${pr.breakfast ? '含早' : '无早'}</td>
-          <td class="pd-note">${esc(pr.note)}</td>
+          <td class="bf">${!pr.breakfast_known ? '未知' : pr.breakfast ? '含早' : '无早'}</td>
+          <td class="pd-note">${esc(pr.note)}<br>${esc(pr.check_in || '入住未知')}–${esc(pr.check_out || '离店未知')} · ${esc(pr.room || '房型未知')} · ${esc(pr.occupancy || '人数未知')} · ${esc(pr.cancellation || '退改未知')} · ${esc(pr.unit || '单位未知')}<br>${esc(pr.queried_at || '查验时间未知')}${safeLink(pr.source_url) ? `<br><a href="${safeLink(pr.source_url)}" target="_blank" rel="noopener noreferrer">逐条来源 ↗</a>` : ''}${!comparable.includes(pr) ? '<br>条件未核对，不参与最低比较' : ''}</td>
         </tr>`).join('') || '<tr><td colspan="4" style="color:#A8A298">暂无报价</td></tr>';
       card.innerHTML = `
         <div class="hotel-head"><span class="pin">🏨</span><h3>${esc(h.name)}</h3></div>
@@ -722,6 +729,7 @@ function render(){
         ${safeLink(h.bookingUrl)?`<div class="book-row"><a href="${safeLink(h.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="book-btn">📋 去预订 <span class="src">RollingGo</span></a></div>`:''}`;
       IterTripExportTransport.leg(body, di, h.id);
       body.appendChild(card);
+      IterTripExportSchedule.visit(card, di, h.id);
       IterTripExportNavigation.attach(card, h, IterTripTransport.legs(TRIP, di).find(e => e.to.id === h.id)?.from);
 
       // 酒店标记（m 提升到卡片层级，点击卡片可定位酒店）
@@ -729,7 +737,7 @@ function render(){
       if (h.lat != null && h.lng != null){
         hm = L.marker([h.lat, h.lng], { icon: pinIcon('🏨','hotel',true), title: h.name }).addTo(mapLayers);
         hm.bindPopup(`<div class="iter-popup"><div class="pp-name">🏨 ${esc(h.name)}</div>
-          <div class="pp-row">${best ? '最低 ¥'+esc(best.price) + '（' + esc(best.platform) + '）' : ''}</div>
+          <div class="pp-row">${prices.length ? '报价见酒店卡片；仅同条件比较' : '报价未知'}</div>
           ${h.note?`<div class="pp-row">${esc(h.note)}</div>`:''}
           ${safeLink(h.bookingUrl)?`<div class="pp-row" style="margin-top:6px"><a href="${safeLink(h.bookingUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:600;font-size:12px;text-decoration:none">📋 去预订</a></div>`:''}</div>`);
         hm.on('click', () => {

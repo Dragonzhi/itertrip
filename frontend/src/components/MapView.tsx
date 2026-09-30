@@ -54,14 +54,11 @@ function popupHtml(p: Place, emoji: string, showMeta: boolean, key: string): str
 
 /** 酒店弹窗 HTML（showMeta=false 时只留酒店名）。 */
 function hotelPopupHtml(h: Hotel, showMeta: boolean, key: string): string {
-  const best = (h.prices || []).length
-    ? (h.prices || []).reduce((a, b) => (a.price <= b.price ? a : b))
-    : null;
   let html = `<div class="iter-popup"><div class="pp-name">🏨 ${esc(h.name)}</div>`;
   if (showMeta) {
     const badge = coordBadge(h.source, h.confidence);
     if (badge) html += `<div class="pp-row pp-badge pp-${esc(badge.tone)}" title="${esc(badge.title)}">🧭 ${esc(badge.text)}</div>`;
-    if (best) html += `<div class="pp-row">最低 ¥${best.price}（${esc(best.platform)}）</div>`;
+    if ((h.prices || []).length) html += `<div class="pp-row">报价见时间线酒店卡；仅相同入住日期和条件比较</div>`;
     if (h.note) html += `<div class="pp-row">${esc(h.note)}</div>`;
   }
   return html + `<button type="button" class="nav-secondary" data-popup-navigate="${esc(key)}">去这里 ↗</button></div>`;

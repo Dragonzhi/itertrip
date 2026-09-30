@@ -45,7 +45,7 @@ export default function HotelForm({
 
   const prices = draft.prices || [];
   const setPrice = (i: number, patch: Partial<PriceItem>) =>
-    onChange({ prices: prices.map((pr, idx) => (idx === i ? { ...pr, ...patch } : pr)) });
+    onChange({ prices: prices.map((pr, idx) => (idx === i ? { ...pr, queried_at: '', ...patch } : pr)) });
   const addPrice = () => {
     setRawPrices({});
     onChange({ prices: [...prices, { platform: "", price: 0, breakfast: false, note: "" }] });
@@ -105,7 +105,7 @@ export default function HotelForm({
           </div>
           {prices.length === 0 && (
             <div className="text-[11px] text-ink-soft" data-testid="price-empty">
-              暂无报价 —— 看到的价格点「＋ 添加一条报价」记下来，最低价会自动高亮。
+              暂无报价 —— 看到的价格点「＋ 添加一条报价」记下来，补全相同条件才会比较最低价。
             </div>
           )}
           {prices.map((pr, i) => (
@@ -154,12 +154,20 @@ export default function HotelForm({
                   <input
                     type="checkbox"
                     checked={!!pr.breakfast}
-                    onChange={(e) => setPrice(i, { breakfast: e.target.checked })}
+                    onChange={(e) => setPrice(i, { breakfast: e.target.checked, breakfast_known: true })}
                     data-testid="price-breakfast"
                   />
                   含早
                 </label>
               </div>
+              <details className="text-xs"><summary className="min-h-11 flex items-center cursor-pointer">报价条件与来源（可选，缺项不参与最低比较）</summary>
+                <div className="grid grid-cols-2 gap-2">{([
+                  ['check_in','入住','date'],['check_out','离店','date'],['room','房型','text'],['occupancy','人数／间数','text'],['cancellation','退改条件','text'],['source_url','来源链接','url'],
+                ] as const).map(([key,label,type]) => <label key={key}>{label}<input type={type} aria-label={label} className="w-full min-h-11 border border-line rounded-lg px-2" value={pr[key] || ''} onChange={e => setPrice(i,{[key]:e.target.value})} /></label>)}</div>
+                <label>计价单位<select className="w-full min-h-11 border border-line rounded-lg" value={pr.unit || ''} onChange={e => setPrice(i,{unit:e.target.value as PriceItem['unit']})}><option value="">未知</option><option value="night">每晚</option><option value="stay">整次入住</option></select></label>
+                <label className="flex gap-2 min-h-11 items-center"><input type="checkbox" checked={!!pr.queried_at} onChange={e => setPrice(i,{queried_at:e.target.checked ? new Date().toISOString() : '',breakfast_known:e.target.checked})} />我已查阅报价与上述条件（含是否含早）</label>
+                {pr.queried_at && <p className="break-all text-ink-soft">查阅／查询：{pr.queried_at}</p>}
+              </details>
             </div>
           ))}
           <button

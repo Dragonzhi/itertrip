@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.7 · 2026-09-30 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.8 · 2026-09-30 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -431,6 +431,15 @@ RouteJSON
 查询及交通设置走同一撤销栈，异步结果仅在路线版本未变时落盘；模型不能写入交通计算结果。
 完整契约、酒店起终点规则与验证见 [M26 施工记录](docs/M26_TRANSPORT.md)。
 
+**M27 日程契约补充**：day 有可选 `schedule.start/end`；place／hotel 有 `visit`（停留来源、参观／用餐／休息、
+必去、锁定、规划已完成、固定预约记录）及 `opening[]`（地点、开放／最后入场、预约要求、适用日期／星期、
+来源、查阅时间与用户确认）。酒店逐条报价保留入住／离店、房型、人数、退改、计价单位和来源。
+`shared/schedule.js` 为前端与导出共用的确定性时间计算；缺失交通／时长／开放依据则暂停推进，不凭模型补齐。
+M22 文本闭馆警告本地幂等重算；时间结果是派生值，不写成 route 的永久事实。
+`engine/arrangements.py` 在 AI 修改的坐标核验前拒绝违反固定／已完成／必去约束的候选，轨迹记 `schedule-guard`；
+前端再次校验并保护独立的途中完成进度。用户查阅后记录开放资料，搜索线索不自动变成“已核实”事实。
+细节与验证见 [M27 施工记录](docs/M27_SCHEDULE.md)。首版只支持境内同日窗口，天气、自动重排与跨时区留待后续。
+
 ### 6.2 /api/chat SSE 流式协议
 
 请求：`{ prompt, history: [{role: user|assistant, content}] , route: RouteJSON|null, images?: [data URL]（M15 截图，仅提取模式） }`
@@ -475,6 +484,7 @@ RouteJSON
 | `/api/chat` | POST | 统一对话（SSE） | A |
 | `/api/geocode` | POST | 单点名称 → 坐标 + `confidence` + `source`（M19：记忆真值 → 高德 POI → 模型 → 兜底） | C/F |
 | `/api/search` | POST | 酒店价格参考 | G |
+| `/api/route/facts/search` | POST | 开放／预约资料线索，最多 5 条，12s 超时；不直接写入规则 | G（M27） |
 | `/api/route/transport` | POST | 相邻段比较（最多 12 段 × 三种方式），返回带来源／时间的快照与调用／缓存／预算统计 | —（高德路径服务） |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
 | `/api/export` | POST | route → 自包含 HTML 下载（M25：无效坐标置 null、地点与酒店保留在清单用于名称搜索，名单写入 summary；无「非洲点」，导航脚本独立于 Leaflet；**文件名 = 行程规划名** `trip.title`，前端 `lib/exportName.ts` 清洗非法字符并回退目的地，JSON 导出同名） | —（确定性构建） |
@@ -720,7 +730,8 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 **近期规划**
 - [x] **M25 导航交接与手机出行视图**：高德／百度导航、下一站、到达／完成与进度恢复、地点／酒店／地图／导出入口已落地；构建、契约／DOM 集成与导出 API 检查通过，用户于 2026-09-30 确认验收可用并要求本地提交收尾。见 [M25 施工记录](docs/M25_NAVIGATION_OUTING.md)。
 - [x] **M26 独立交通段与真实耗时**：稳定访问 ID、酒店跨天起终点、相邻段三方式比较、额外缓冲／每日汇总、缓存与预算、旧响应保护和导出快照已落地；自动化、构建及一组高德真实接口比较通过。见 [M26 施工记录](docs/M26_TRANSPORT.md)，真机排版回归未单独记录。
-- [ ] **可执行日程与途中调整后续阶段（2026-09-30 方向确定）**：按 M27 时间排程／预约／关键事实 → M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)。
+- [x] **M27 时间排程／预约／关键事实记录**：结构化起止／停留与预约、同源时间计算、冲突／未知、开放来源与有效期、AI 约束保护、带日期报价与条件比较已落地；自动化、M25–M26 回归与构建通过，真实资料／预约与真机人工使用待验收。见 [M27 施工记录](docs/M27_SCHEDULE.md)。
+- [ ] **可执行日程与途中调整后续阶段（2026-09-30 方向确定）**：按 M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)。
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
 - [ ] **见 `docs/TODO.md`（等反馈的两件事）**：① 记忆档案 id（tid）的可携带性 —— 导出/导入，否则清站点数据后服务端那份记忆就成孤儿；② 静默自动中断（`PING_ABORT_MS` = 60s）是否需要降级为「只告警不自动停」
 

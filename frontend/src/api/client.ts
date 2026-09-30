@@ -9,7 +9,7 @@ import { memoryHeaders } from "../lib/memory";
  * API 基地址：开发留空走 Vite 代理；生产构建时注入 VITE_API_BASE。
  * C-1 单进程形态下同源，留空即可。
  */
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
 
 export async function queryTransport(edges: Edge[], signal?: AbortSignal): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
   const resp = await fetch(API_BASE + '/api/route/transport', {
@@ -319,7 +319,7 @@ export async function dateCheck(route: RouteJSON, startDate?: string): Promise<D
 
 /** 酒店价格搜索（可选能力；未配置数据源时返回提示）。 */
 export interface SearchResult {
-  prices: { platform: string; price: number; breakfast?: boolean; note?: string }[];
+  prices: import('../types/route').PriceItem[];
   bookingUrl?: string;
   source: string;
   note: string;

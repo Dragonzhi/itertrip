@@ -63,7 +63,59 @@ class PriceItem(BaseModel):
     platform: str = Field(default="")
     price: float = Field(default=0)
     breakfast: bool = False
+    breakfast_known: bool = False
     note: str = ""
+    source_url: str = ""
+    queried_at: str = ""
+    check_in: str = ""
+    check_out: str = ""
+    room: str = ""
+    occupancy: str = ""
+    cancellation: str = ""
+    unit: Literal["", "night", "stay"] = ""
+
+
+class Reservation(BaseModel):
+    type: Literal["entry", "train", "hotel", "other"] = "entry"
+    date: str = ""
+    start: str = ""
+    end: str = ""
+    status: Literal["needed", "pending", "confirmed", "cancelled"] = "needed"
+    url: str = ""
+
+
+class VisitPlan(BaseModel):
+    duration_min: float | None = Field(default=None, ge=0, le=1440, allow_inf_nan=False)
+    duration_source: Literal["user", "estimate"] = "estimate"
+    kind: Literal["visit", "meal", "rest"] = "visit"
+    required: bool = False
+    locked: bool = False
+    completed: bool = False
+    reservation: Reservation | None = None
+
+
+class OpeningFact(BaseModel):
+    place_name: str = ""
+    entry_policy: Literal["unknown", "none", "last_entry"] = "unknown"
+    open: str = ""
+    close: str = ""
+    last_entry: str = ""
+    closed: bool = False
+    reservation_required: bool = False
+    weekdays: list[int] = Field(default_factory=list)
+    valid_from: str = ""
+    valid_to: str = ""
+    source_kind: Literal["official", "map", "user"] = "user"
+    source_url: str = ""
+    checked_at: str = ""
+    confirmed: bool = False
+
+    @field_validator("weekdays")
+    @classmethod
+    def _weekdays(cls, v):
+        if any(d < 1 or d > 7 for d in v):
+            raise ValueError("weekday must be 1..7")
+        return v
 
 
 class Hotel(BaseModel):
@@ -80,6 +132,10 @@ class Hotel(BaseModel):
     # M19 坐标溯源（可选、向后兼容）：source=memory|user|amap|llm|search|city，confidence=high|low|none
     source: str = ""
     confidence: str = ""
+    verdict: str = ""
+    bookingUrl: str = ""
+    visit: VisitPlan | None = None
+    opening: list[OpeningFact] = Field(default_factory=list)
 
     @field_validator("prices", mode="before")
     @classmethod
@@ -113,9 +169,11 @@ class Hotel(BaseModel):
             if not platform:
                 platform = "AI 生成"  # 平台名缺失但价格有效 → 兜底名，保留报价
             cleaned.append({
+                **{k: item[k] for k in ("source_url", "queried_at", "check_in", "check_out", "room", "occupancy", "cancellation", "unit") if k in item},
                 "platform": platform,
                 "price": price_val,
                 "breakfast": _coerce_bool(item.get("breakfast")),
+                "breakfast_known": _coerce_bool(item.get("breakfast_known", False)),
                 "note": str(item.get("note") or "").strip(),
             })
         if dropped:
@@ -143,6 +201,8 @@ class Place(BaseModel):
     # M22 事实告警（可选、向后兼容）：确定性检查写出的可见警告，如「闭馆日：周一闭馆，当天为周一」
     # 刻意**不复用 note** —— note 是给用户看的贴士，塞系统告警正是审计发现的坏味道
     warnings: list[str] = Field(default_factory=list)
+    visit: VisitPlan | None = None
+    opening: list[OpeningFact] = Field(default_factory=list)
 
 
 class TransportOption(BaseModel):
@@ -174,6 +234,11 @@ class TransportSegment(BaseModel):
     snapshot: TransportSnapshot | None = None
 
 
+class DaySchedule(BaseModel):
+    start: str = ""
+    end: str = ""
+
+
 class DayPlan(BaseModel):
     """单日行程。"""
 
@@ -185,6 +250,7 @@ class DayPlan(BaseModel):
     traffic_mode: Literal["", "walk", "bus", "car"] = ""
     start_from_hotel: bool | None = None
     transport: list[TransportSegment] = Field(default_factory=list)
+    schedule: DaySchedule | None = None
 
 
 class TripInfo(BaseModel):

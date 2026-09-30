@@ -32,6 +32,7 @@ function norm(s: string | undefined): string {
 
 /** 地点上「可改但不影响位置」的字段（改了这些也算路线变化） */
 const PLACE_FIELDS: [keyof Place, string][] = [
+  ["name", "名称"],
   ["time", "时间"],
   ["transport", "交通"],
   ["ticket", "门票"],
@@ -40,14 +41,14 @@ const PLACE_FIELDS: [keyof Place, string][] = [
 
 /** 报价签名：平台/价格/早餐/备注 全比（后端可能补齐 note 或改写 price） */
 function pricesKey(ps?: PriceItem[]): string {
-  return JSON.stringify((ps || []).map((p) => [norm(p.platform), Number(p.price) || 0, !!p.breakfast, norm(p.note)]));
+  return JSON.stringify((ps || []).map((p) => [norm(p.platform), Number(p.price) || 0, !!p.breakfast, !!p.breakfast_known, norm(p.note), p.source_url || '', p.queried_at || '', p.check_in || '', p.check_out || '', p.room || '', p.occupancy || '', p.cancellation || '', p.unit || '']));
 }
 
 function flatten(days: { places: Place[] }[]): Map<string, { di: number; pi: number }[]> {
   const m = new Map<string, { di: number; pi: number }[]>();
   days.forEach((d, di) => {
     (d.places || []).forEach((p, pi) => {
-      const k = norm(p.name);
+      const k = p.id ? 'id:' + p.id : norm(p.name);
       if (!k) return;
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push({ di, pi });
@@ -56,7 +57,7 @@ function flatten(days: { places: Place[] }[]): Map<string, { di: number; pi: num
   return m;
 }
 
-/** 对比两份路线，产出新增/移除/移动清单与叙述。同名多点按出现顺序配对。 */
+/** Stable IDs distinguish visits; legacy routes without IDs fall back to name/occurrence. */
 export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
   const oldFlat = flatten(oldRoute.days);
   const newFlat = flatten(newRoute.days);
@@ -140,6 +141,8 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
       const wp = newRoute.days[w.di]?.places[w.pi];
       if (!op || !wp) continue;
       const labels = PLACE_FIELDS.filter(([f]) => norm(op[f] as string) !== norm(wp[f] as string)).map(([, l]) => l);
+      if (JSON.stringify(op.visit) !== JSON.stringify(wp.visit)) labels.push('停留／预约');
+      if (JSON.stringify(op.opening) !== JSON.stringify(wp.opening)) labels.push('开放资料');
       if (labels.length) updated.push({ di: w.di, pi: w.pi, name: (wp.name || "").trim(), labels });
     }
   }
@@ -160,6 +163,8 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
     if (norm(oh.note) !== norm(nh.note)) labels.push("备注");
     const posChanged = Math.abs((oh.lat || 0) - (nh.lat || 0)) > 1e-6 || Math.abs((oh.lng || 0) - (nh.lng || 0)) > 1e-6;
     if (posChanged) labels.push("位置");
+    if (JSON.stringify(oh.visit) !== JSON.stringify(nh.visit)) labels.push('停留／预约');
+    if (JSON.stringify(oh.opening) !== JSON.stringify(nh.opening)) labels.push('开放资料');
     const hotelEntry: RouteDiff["hotels"][number] = { di, labels };
     if (pricesKey(oh.prices) !== pricesKey(nh.prices)) {
       labels.push("报价");
@@ -173,6 +178,10 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
   }
 
   const summary: string[] = [];
+  const scheduleChanged = oldRoute.days.length !== newRoute.days.length || oldRoute.days.some((d,i) => JSON.stringify(d.schedule) !== JSON.stringify(newRoute.days[i]?.schedule));
+  const dateChanged = oldRoute.trip.start_date !== newRoute.trip.start_date || oldRoute.trip.date_source !== newRoute.trip.date_source;
+  if (scheduleChanged) summary.push('更新了当天起止时间');
+  if (dateChanged) summary.push('更新了出发日期');
   for (const n of coordFixed) summary.push("修正了「" + n.name + "」的坐标");
   for (const m of moved) {
     if (m.fromDi === m.toDi) {
@@ -211,6 +220,7 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
     changed:
       added.length + removed.length + moved.length > 0 ||
       themeChanged ||
+      scheduleChanged || dateChanged ||
       coordFixed.length > 0 ||
       updated.length > 0 ||
       hotels.length > 0,

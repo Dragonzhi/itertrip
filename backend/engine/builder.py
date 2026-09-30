@@ -18,6 +18,8 @@ NAVIGATION_PATH = Path(__file__).resolve().parents[2] / "shared" / "navigation.j
 EXPORT_NAVIGATION_PATH = TEMPLATE_PATH.parent / "navigation.js"
 TRANSPORT_PATH = NAVIGATION_PATH.parent / "transport.js"
 EXPORT_TRANSPORT_PATH = TEMPLATE_PATH.parent / "transport.js"
+SCHEDULE_PATH = NAVIGATION_PATH.parent / "schedule.js"
+EXPORT_SCHEDULE_PATH = TEMPLATE_PATH.parent / "schedule.js"
 
 
 class BuildError(Exception):
@@ -93,4 +95,6 @@ def build_html(route: dict) -> str:
             .replace("__EXPORT_NAVIGATION__", EXPORT_NAVIGATION_PATH.read_text(encoding="utf-8"))
             .replace("__TRANSPORT_CORE__", TRANSPORT_PATH.read_text(encoding="utf-8"))
             .replace("__EXPORT_TRANSPORT__", EXPORT_TRANSPORT_PATH.read_text(encoding="utf-8"))
+            .replace("__SCHEDULE_CORE__", SCHEDULE_PATH.read_text(encoding="utf-8"))
+            .replace("__EXPORT_SCHEDULE__", EXPORT_SCHEDULE_PATH.read_text(encoding="utf-8"))
             .replace(PLACEHOLDER, data_json))

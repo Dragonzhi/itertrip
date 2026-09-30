@@ -67,7 +67,7 @@
     const snapshot = segment?.snapshot;
     const match = snapshot?.signature === sign(edge);
     const option = match && Array.isArray(snapshot.options) ? snapshot.options.find(o => o?.mode === mode) : null;
-    const stale = !!option && (!Number.isFinite(Date.parse(option.queried_at)) || Date.now() - Date.parse(option.queried_at) > 15 * 60 * 1000);
+    const stale = !!option && (!Number.isFinite(Date.parse(option.queried_at)) || Date.parse(option.queried_at) > Date.now() + 60_000 || Date.now() - Date.parse(option.queried_at) > 15 * 60 * 1000);
     return { segment, mode, option, stale, known: usable(edge.from) && usable(edge.to) && !stale && option?.status === 'ok' && Number.isFinite(option.duration_s) && option.duration_s >= 0 };
   }
   function summary(route, di) {
