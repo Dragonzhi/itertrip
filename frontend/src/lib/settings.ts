@@ -49,11 +49,27 @@ export function loadCurrentRoute(): RouteJSON | null {
   }
 }
 
-export function saveCurrentRoute(route: RouteJSON) {
+let routeSaveFailed = false;
+export function routeSaveStatus(): { at: string; exists: boolean; failed: boolean } {
+  try { return { at: localStorage.getItem(PREFIX + 'route-saved-at') || '', exists: !!localStorage.getItem(PREFIX + 'route'), failed: routeSaveFailed }; }
+  catch { return { at: '', exists: false, failed: true }; }
+}
+export function saveCurrentRoute(route: RouteJSON): boolean {
   try {
-    localStorage.setItem(PREFIX + "route", JSON.stringify(route));
+    const raw = JSON.stringify(route);
+    if (localStorage.getItem(PREFIX + 'route') !== raw) {
+      localStorage.setItem(PREFIX + "route", raw);
+      // Timestamp is metadata; failure here does not invalidate a successful route save.
+      try { localStorage.setItem(PREFIX + 'route-saved-at', new Date().toISOString()); }
+      catch { try { localStorage.removeItem(PREFIX + 'route-saved-at'); } catch { /* no timestamp */ } }
+    }
+    routeSaveFailed = false;
+    window.dispatchEvent(new window.Event('itertrip:route-saved'));
+    return true;
   } catch {
-    /* 忽略容量错误 */
+    routeSaveFailed = true;
+    window.dispatchEvent(new window.Event('itertrip:route-saved'));
+    return false;
   }
 }
 

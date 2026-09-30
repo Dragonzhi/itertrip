@@ -37,9 +37,8 @@ function MainApp() {
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => saveSettings(settings), [settings]);
-  useEffect(() => {
-    if (route) saveCurrentRoute(route);
-  }, [route]);
+  // Editing persistence belongs to useTripHistory's synchronous commit path.
+  // Writing a parent effect's older snapshot could undo a just-saved local edit.
   // hash #chat = 对话屏（Plan 页返回对话用）
   useEffect(() => {
     if (screen.name === "chat" && location.hash !== "#chat") {
@@ -62,6 +61,7 @@ function MainApp() {
   };
 
   const handleChatRoute = (r: RouteJSON, source: string) => {
+    saveCurrentRoute(r);
     setTripSession(createTripSession());
     setRoute(r);
     setScreen({ name: "plan", source });
@@ -69,6 +69,7 @@ function MainApp() {
 
   /** 首页导入行程（JSON / 导出 HTML），解析校验通过后进规划页。 */
   const handleImportRoute = (r: RouteJSON) => {
+    saveCurrentRoute(r);
     setTripSession(createTripSession());
     setRoute(r);
     setScreen({ name: "plan", source: "imported" });
@@ -141,6 +142,7 @@ function MainApp() {
         hasRoute={!!route}
         onImportRoute={handleImportRoute}
         route={route}
+        updateBlocked={showSettings}
       />
       {showSettings && (
         <SettingsPanel

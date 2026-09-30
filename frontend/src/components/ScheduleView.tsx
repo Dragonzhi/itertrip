@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RouteJSON, Place, Hotel, VisitPlan, OpeningFact } from '../types/route';
 import { schedule, type ScheduleRow } from '../lib/schedule';
-import { API_BASE } from '../api/client';
+import { onlineFetch, API_BASE } from '../api/client';
 
 export interface ScheduleActions {
   day(di: number, patch: {start?: string; end?: string}): void;
@@ -93,7 +93,7 @@ export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Plac
         <button type="button" className="nav-secondary" disabled={searching} onClick={async () => {
           const controller = new AbortController(); abort.current = controller; setSearching(true); setSourceMsg('');
           try {
-            const resp = await fetch(API_BASE + '/api/route/facts/search', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name:point.name,city,date:iso}), signal: controller.signal});
+            const resp = await onlineFetch(API_BASE + '/api/route/facts/search', {method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name:point.name,city,date:iso}), signal: controller.signal});
             if (!resp.ok) throw new Error('资料搜索失败');
             const data = await resp.json(); setCandidates(data.candidates || []); setSourceMsg(data.note);
           } catch (err) { if (!controller.signal.aborted) setSourceMsg(err instanceof Error ? err.message : '资料搜索失败'); }

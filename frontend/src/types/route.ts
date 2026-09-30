@@ -111,7 +111,7 @@ export interface TransportOption {
   source: string;
   source_url: string;
 }
-export interface TransportSnapshot { signature: string; options: TransportOption[] }
+export interface TransportSnapshot { signature: string; options: TransportOption[]; refresh_error?: string }
 export interface TransportSegment {
   from_id: string; to_id: string;
   mode?: '' | 'walk' | 'bus' | 'car'; buffer_min: number;

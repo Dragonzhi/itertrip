@@ -1,5 +1,6 @@
 import type { RouteJSON, TransportSegment } from '../types/route';
 import { transport, type Edge } from '../lib/transport';
+import { useOffline } from '../lib/offline';
 export type TransportActions = {
   query: (di: number, edge?: Edge) => void;
   changeDay: (di: number, patch: Partial<RouteJSON['days'][number]>) => void;
@@ -20,11 +21,14 @@ export function TransportDay({ route, di, actions }: { route: RouteJSON; di: num
   </section>;
 }
 export function TransportLeg({ route, edge, actions, compact = false }: { route: RouteJSON; edge: Edge; actions?: TransportActions; compact?: boolean }) {
+  const { online } = useOffline();
   const day = route.days[edge.di], s = transport.selected(day, edge);
   const blocked = !transport.usable(edge.from) || !transport.usable(edge.to);
   return <section data-testid="transport-leg" className="my-2 p-3 rounded-xl border border-moss/20 bg-moss-soft/40 text-xs" aria-label={`交通：${edge.from.name}到${edge.to.name}`}>
     <p className="font-semibold break-words">↳ {edge.from.name} → {edge.to.name}</p>
-    {s.known ? <p className="text-moss font-semibold mt-2">{transport.labels[s.mode]}约 {minutes(s.option!.duration_s!)}{s.option!.distance_m != null ? ` · ${distance(s.option!.distance_m)}` : ''}{s.option!.fee_yuan != null ? ` · ${s.mode === 'car' ? '出租车参考' : '费用'} ¥${s.option!.fee_yuan}` : ' · 费用未知'}</p> : <p className="text-ink-soft mt-2">交通耗时未知 · {blocked ? '先在编辑器确认起终点坐标' : s.stale ? '查询快照已超过 15 分钟，请刷新' : s.option?.reason || '待查询'}</p>}
+    {!online && <p className="text-ink-soft">离线快照 · 非实时交通{!s.option ? '（尚无已保存方案）' : ''}</p>}
+    {s.stale && s.option?.status === 'ok' && s.option.duration_s != null && <p className="mt-1">上次记录：{transport.labels[s.mode]}约 {minutes(s.option.duration_s)}（已过期或刷新失败，不用于当前排程）{s.option.description ? ` · ${s.option.description}` : ''}</p>}
+    {s.known ? <p className="text-moss font-semibold mt-2">{transport.labels[s.mode]}约 {minutes(s.option!.duration_s!)}{s.option!.distance_m != null ? ` · ${distance(s.option!.distance_m)}` : ''}{s.option!.fee_yuan != null ? ` · ${s.mode === 'car' ? '出租车参考' : '费用'} ¥${s.option!.fee_yuan}` : ' · 费用未知'}</p> : <p className="text-ink-soft mt-2">交通耗时未知 · {blocked ? '先在编辑器确认起终点坐标' : s.segment?.snapshot?.refresh_error || (s.stale ? '查询快照已超过 15 分钟，请刷新' : s.option?.reason || '待查询')}</p>}
     {s.known && s.option?.description && <p className="mt-1 break-words">{s.option.description}</p>}
     {s.known && s.mode === 'car' && <p className="mt-1">道路收费：{s.option?.tolls_yuan == null ? '未知' : `¥${s.option.tolls_yuan}`}（另列，不并入出租车参考价）</p>}
     {s.option && <p className="text-ink-soft mt-1"><a className="underline focus-ring" href="https://lbs.amap.com/api/webservice/guide/api/direction" target="_blank" rel="noopener noreferrer">高德路径服务</a> · {new Date(s.option.queried_at).toLocaleString('zh-CN')} {s.stale ? '（历史快照）' : ''}</p>}

@@ -19,6 +19,7 @@
       box.dataset.trafficDay = di; box.dataset.trafficTo = toId;
       box.style.cssText = 'font:12px/1.6 system-ui;padding:12px;margin:8px 0;border:1px solid #d8dfd2;border-radius:12px;background:#fffdf7';
       box.append(el('strong', `↳ ${edge.from.name} → ${edge.to.name}`));
+      if (s.segment?.snapshot?.refresh_error) box.append(el('p', '上次刷新失败：' + s.segment.snapshot.refresh_error + '；历史记录不用于当前汇总与排程'));
       box.append(el('p', s.known ? `${core.labels[s.mode]}约 ${mins(s.option.duration_s)} · ${s.option.distance_m == null ? '距离未知' : (s.option.distance_m / 1000).toFixed(1) + ' km'} · ${s.option.fee_yuan == null ? '费用未知' : (s.mode === 'car' ? '出租车参考 ¥' : '费用 ¥') + s.option.fee_yuan}` : `交通耗时未知 · ${s.stale ? '查询快照已过期' : s.option?.reason || '未查询或路线已变化'}`));
       if (s.option) {
         box.append(el('p', `高德路径服务 · ${s.option.queried_at} · ${s.stale ? '历史快照' : '查询时估算'}`));

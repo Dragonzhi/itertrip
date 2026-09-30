@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { RouteJSON, Hotel, Place } from "../types/route";
@@ -6,6 +6,7 @@ import { dayColor, dayPoints, emojiFor, mercY, routeArrowDeg, routeMidPoint } fr
 import { coordBadge } from "../lib/coordSource";
 import type { MapSettings } from "../lib/settings";
 import { navigation } from "../lib/navigation";
+import { isOnline, useOffline } from '../lib/offline';
 
 interface MapViewProps {
   onNavigate?: (key: string) => void;
@@ -83,6 +84,8 @@ export default function MapView({
   route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
   onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick, onNavigate,
 }: MapViewProps) {
+  const { online } = useOffline();
+  const [tileFailed, setTileFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layersRef = useRef<L.LayerGroup | null>(null);       // 标记层
@@ -121,8 +124,12 @@ export default function MapView({
     });
     amapRef.current = amap;
     osmRef.current = osm;
+    const error = () => setTileFailed(true);
+    const loaded = () => setTileFailed(false);
+    amap.on('tileerror', error).on('tileload', loaded);
+    osm.on('tileerror', error).on('tileload', loaded);
     // 初始图层由设置面板控制（M16）：去掉 L.control.layers 双入口，按 view.mapSource 添加
-    (view.mapSource === "osm" ? osm : amap).addTo(map);
+    if (isOnline()) (view.mapSource === "osm" ? osm : amap).addTo(map);
     L.control.attribution({ position: "bottomleft" }).addTo(map);
     L.control.zoom({ position: "bottomleft" }).addTo(map);
     layersRef.current = L.layerGroup().addTo(map);
@@ -335,6 +342,12 @@ export default function MapView({
     const amap = amapRef.current;
     const osm = osmRef.current;
     if (!map || !amap || !osm) return;
+    setTileFailed(false);
+    if (!online) {
+      if (map.hasLayer(amap)) map.removeLayer(amap);
+      if (map.hasLayer(osm)) map.removeLayer(osm);
+      return;
+    }
     if (view.mapSource === "amap") {
       if (map.hasLayer(osm)) map.removeLayer(osm);
       if (!map.hasLayer(amap)) amap.addTo(map);
@@ -342,7 +355,7 @@ export default function MapView({
       if (map.hasLayer(amap)) map.removeLayer(amap);
       if (!map.hasLayer(osm)) osm.addTo(map);
     }
-  }, [view.mapSource]);
+  }, [view.mapSource, online]);
 
   // M23：非选点态点击地图 → 通知外层（手机收抽屉）；用 ref 避免每次渲染重绑
   const mapClickRef = useRef(onMapClick);
@@ -375,5 +388,7 @@ export default function MapView({
     };
   }, [picking, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={containerRef} className="fixed inset-0 z-0 bg-[#dfe6dd]" />;
+  return <><div ref={containerRef} className="fixed inset-0 z-0 bg-[#dfe6dd]" />
+    {(!online || tileFailed) && <div role="status" className="fixed left-1/2 -translate-x-1/2 top-[25vh] z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center">{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />打开行程面板可查看地点与日程</div>}
+  </>;
 }

@@ -222,6 +222,7 @@ class TransportOption(BaseModel):
 
 
 class TransportSnapshot(BaseModel):
+    refresh_error: str = ""
     signature: str
     options: list[TransportOption] = Field(default_factory=list)
 

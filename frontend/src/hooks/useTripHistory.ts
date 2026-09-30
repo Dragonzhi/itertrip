@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RouteJSON } from "../types/route";
 import { normalizeRoute } from '../lib/transport';
+import { saveCurrentRoute } from '../lib/settings';
 
 /**
  * 行程编辑历史栈（移植自旧版模板，模型红线见 DESIGN §7.7）：
@@ -16,6 +17,7 @@ import { normalizeRoute } from '../lib/transport';
 export function useTripHistory(initial: RouteJSON) {
   const [route, setRouteState] = useState<RouteJSON>(() => normalizeRoute(initial));
   const routeRef = useRef<RouteJSON>(route);
+  useEffect(() => { saveCurrentRoute(routeRef.current); }, []);
   const historyRef = useRef<RouteJSON[]>([JSON.parse(JSON.stringify(route))]);
   const idxRef = useRef(0);
   // 版本号仅用于让 undo/redo 后触发重渲染（route 引用可能相同形状）
@@ -38,6 +40,7 @@ export function useTripHistory(initial: RouteJSON) {
       const normalized = normalizeRoute(next, routeRef.current);
       if (JSON.stringify(normalized) === JSON.stringify(routeRef.current)) return false;
       routeRef.current = normalized;
+      saveCurrentRoute(normalized);
       setRouteState(normalized);
       pushFrame(normalized);
       bump((v) => v + 1);
@@ -51,6 +54,7 @@ export function useTripHistory(initial: RouteJSON) {
     idxRef.current -= 1;
     const frame = JSON.parse(JSON.stringify(historyRef.current[idxRef.current])) as RouteJSON;
     routeRef.current = frame;
+    saveCurrentRoute(frame);
     setRouteState(frame);
     bump((v) => v + 1);
   }, []);
@@ -61,6 +65,7 @@ export function useTripHistory(initial: RouteJSON) {
     idxRef.current += 1;
     const frame = JSON.parse(JSON.stringify(h[idxRef.current])) as RouteJSON;
     routeRef.current = frame;
+    saveCurrentRoute(frame);
     setRouteState(frame);
     bump((v) => v + 1);
   }, []);

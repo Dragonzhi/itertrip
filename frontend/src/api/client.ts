@@ -4,6 +4,17 @@ import { transport } from '../lib/transport';
 import type { ClarifyQuestion, TraceStats, TraceStep } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
 import { memoryHeaders } from "../lib/memory";
+import { isOnline, requireOnline } from '../lib/offline';
+import { schedule } from '../lib/schedule';
+
+export async function onlineFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  requireOnline();
+  try { return await fetch(input, init); }
+  catch (e) {
+    if (e instanceof TypeError) throw new Error('网络或服务暂不可用，本次操作未完成；已保存行程仍可手工编辑。');
+    throw e;
+  }
+}
 
 /**
  * API 基地址：开发留空走 Vite 代理；生产构建时注入 VITE_API_BASE。
@@ -12,7 +23,7 @@ import { memoryHeaders } from "../lib/memory";
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
 
 export async function queryTransport(edges: Edge[], signal?: AbortSignal): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
-  const resp = await fetch(API_BASE + '/api/route/transport', {
+  const resp = await onlineFetch(API_BASE + '/api/route/transport', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
     body: JSON.stringify({ edges: edges.map(e => ({ from: e.from, to: e.to, signature: transport.sign(e) })) }),
   });
@@ -35,7 +46,7 @@ export async function planTrip(
   req: PlanRequest,
   settings?: LlmSettings | null,
 ): Promise<{ route: RouteJSON; source: string }> {
-  const resp = await fetch(API_BASE + "/api/plan", {
+  const resp = await onlineFetch(API_BASE + "/api/plan", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify(req),
@@ -112,7 +123,7 @@ export async function chatStream(
   onEvent?: (ev: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<ChatStreamResult> {
-  const resp = await fetch(API_BASE + "/api/chat", {
+  const resp = await onlineFetch(API_BASE + "/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify(req),
@@ -186,7 +197,7 @@ export interface LlmTestResult {
 
 /** 测试连接（DESIGN.md §4.1）：1-token 补全 + 1×1 像素视觉能力探测。 */
 export async function testLlm(settings: LlmSettings): Promise<LlmTestResult> {
-  const resp = await fetch(API_BASE + "/api/llm/test", {
+  const resp = await onlineFetch(API_BASE + "/api/llm/test", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings) },
   });
@@ -199,7 +210,7 @@ export async function testLlm(settings: LlmSettings): Promise<LlmTestResult> {
 
 /** 导出：把 route JSON 提交给后端换取自包含 HTML 并触发下载。 */
 export async function exportHtml(route: RouteJSON, filename: string): Promise<void> {
-  const resp = await fetch(API_BASE + "/api/export", {
+  const resp = await onlineFetch(API_BASE + "/api/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ route, filename }),
@@ -223,7 +234,7 @@ export async function geocode(
   city: string,
   settings?: LlmSettings | null,
 ): Promise<{ lat: number | null; lng: number | null; confidence: string; source?: string }> {
-  const resp = await fetch(API_BASE + "/api/geocode", {
+  const resp = await onlineFetch(API_BASE + "/api/geocode", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify({ name, city }),
@@ -256,7 +267,7 @@ export async function recheckRoute(
   route: RouteJSON,
   settings?: LlmSettings | null,
 ): Promise<RecheckResult> {
-  const resp = await fetch(API_BASE + "/api/route/recheck", {
+  const resp = await onlineFetch(API_BASE + "/api/route/recheck", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...llmHeaders(settings), ...memoryHeaders() },
     body: JSON.stringify({ route }),
@@ -298,7 +309,18 @@ export interface DateCheckResult {
  * `startDate` 传空则由后端就近推断（并在 route.trip.date_source 标 inferred）；传了就视为用户给定。
  */
 export async function dateCheck(route: RouteJSON, startDate?: string): Promise<DateCheckResult> {
-  const resp = await fetch(API_BASE + "/api/route/datecheck", {
+  if (!isOnline()) {
+    const next = JSON.parse(JSON.stringify(route)) as RouteJSON;
+    if (startDate && !schedule.date(startDate)) throw new Error('出发日期无效');
+    // Manual calendar arithmetic is local. Never infer an unchecked date from prose while offline.
+    next.trip.start_date = startDate || '';
+    next.trip.date_source = startDate ? 'user' : 'unknown';
+    schedule.refreshClosures(next);
+    const conflicts: DateCheckConflict[] = [];
+    next.days.forEach((d, di) => d.places.forEach(p => (p.warnings || []).filter(w => w.startsWith('闭馆日：')).forEach(warning => conflicts.push({ name: p.name, day: di + 1, date: schedule.dayDate(next, di) || '', weekday: '', claim: '', warning }))));
+    return { route: next, checked: !!startDate, reason: '离线本地计算', conflicts, skipped: 0, startDate: startDate || '', dateSource: next.trip.date_source!, summary: startDate ? `已在本地设置日期并重算闭馆规则（${conflicts.length} 处冲突）；未联网核验开放信息。` : '日期已清除，闭馆日与排程日期未知；联网后可重新检查。' };
+  }
+  const resp = await onlineFetch(API_BASE + "/api/route/datecheck", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ route, start_date: startDate || "" }),
@@ -331,7 +353,7 @@ export async function searchHotel(
   checkIn = "",
   checkOut = "",
 ): Promise<SearchResult> {
-  const resp = await fetch(API_BASE + "/api/search", {
+  const resp = await onlineFetch(API_BASE + "/api/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ hotel, city, checkIn, checkOut }),
@@ -374,7 +396,7 @@ function adminHeaders(token: string): Record<string, string> {
 }
 
 async function adminFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(API_BASE + path, {
+  const resp = await onlineFetch(API_BASE + path, {
     ...init,
     headers: { ...adminHeaders(token), ...(init?.headers || {}) },
   });
@@ -427,14 +449,14 @@ export interface MemoryStats {
 
 /** 当前匿名档案的记忆统计（设置面板展示条数/城市）。 */
 export async function memoryStats(): Promise<MemoryStats> {
-  const resp = await fetch(API_BASE + "/api/memory/stats", { headers: { ...memoryHeaders() } });
+  const resp = await onlineFetch(API_BASE + "/api/memory/stats", { headers: { ...memoryHeaders() } });
   if (!resp.ok) throw new Error("记忆统计失败 (" + resp.status + ")");
   return resp.json();
 }
 
 /** 清空当前匿名档案的全部记忆（不影响其他档案）。 */
 export async function clearMemory(): Promise<{ ok: boolean; deleted: number }> {
-  const resp = await fetch(API_BASE + "/api/memory/all", { method: "DELETE", headers: { ...memoryHeaders() } });
+  const resp = await onlineFetch(API_BASE + "/api/memory/all", { method: "DELETE", headers: { ...memoryHeaders() } });
   if (!resp.ok) throw new Error("清空记忆失败 (" + resp.status + ")");
   return resp.json();
 }
@@ -444,7 +466,7 @@ export async function clearMemory(): Promise<{ ok: boolean; deleted: number }> {
  * fire-and-forget：任何失败都静默（不影响编辑操作本身），故不返回 Promise（void）。
  */
 export function reportPlaceEntity(name: string, city: string, lat: number, lng: number): void {
-  void fetch(API_BASE + "/api/memory/feedback", {
+  void onlineFetch(API_BASE + "/api/memory/feedback", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...memoryHeaders() },
     body: JSON.stringify({ name, city, lat, lng, source: "user_pin" }),

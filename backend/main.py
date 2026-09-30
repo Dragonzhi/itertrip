@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import admin, chat, export, geocode, llm, memory, plan, search, transport
@@ -67,9 +67,14 @@ if _DIST.is_dir() and (_DIST / "index.html").is_file():
         if stripped.startswith("api/") or full_path.startswith("api/"):
             return FileResponse(_DIST / "index.html", status_code=404)  # 保险：API 404 不回 SPA
         # 子路径直连时 index.html 仍在 _DIST 根
-        candidate = _DIST / stripped if stripped else _DIST / full_path
-        if stripped and (_DIST / stripped).is_file():
-            return FileResponse(_DIST / stripped)
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(_DIST / "index.html")
+        candidate = (_DIST / (stripped or full_path)).resolve()
+        if not candidate.is_relative_to(_DIST.resolve()):
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        if candidate.is_file():
+            # The browser must discover new workers/manifests instead of reusing HTTP cache.
+            headers = {"Cache-Control": "no-cache"} if candidate.name in {"sw.js", "manifest.webmanifest", "index.html"} else None
+            media = "application/manifest+json" if candidate.name == "manifest.webmanifest" else None
+            return FileResponse(candidate, headers=headers, media_type=media)
+        if candidate.suffix:
+            return JSONResponse({"detail": "Static file not found"}, status_code=404)
+        return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})

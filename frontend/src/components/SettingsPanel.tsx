@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { clearMemory, memoryStats, testLlm, type MemoryStats } from "../api/client";
 import type { LlmSettings } from "../lib/settings";
+import OfflinePanel from './OfflinePanel';
 
 interface SettingsPanelProps {
   settings: LlmSettings;
@@ -192,6 +193,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
           </div>
         </div>
 
+        <OfflinePanel blocked />
         <div className="border-t border-line pt-3 text-[11px] text-ink-soft leading-relaxed">
           未配置时：若本机后端设置了 ITERTRIP_LLM_* 环境变量则使用之；两者皆无则使用
           <b>内置免费供应商</b>（openrouter/free，无需 key 即可用真实 AI）。

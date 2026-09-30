@@ -253,3 +253,6 @@ body { overscroll-behavior-y: none; }
 .schedule-editor legend{font-weight:700;padding-right:8px}
 .schedule-editor input[type=checkbox]{width:20px;height:20px;accent-color:#285844;flex-shrink:0}
 .schedule-editor label:has(input[type=checkbox]){min-height:44px;display:flex;align-items:center;gap:6px}
+/* M28: local persistence and offline state stay in the itinerary's scroll area. */
+.offline-panel { margin: 8px 0; padding: 12px; border: 1px solid #D7DFD6; border-radius: 12px; background: #FAF6F0; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.offline-panel p + p { margin-top: 6px; }

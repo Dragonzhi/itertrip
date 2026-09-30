@@ -7,6 +7,7 @@ import CoordReport from "./CoordReport";
 import { SendStopButton, StreamStatus } from "./StreamControls";
 import type { ChatStreamState } from "../hooks/useChatStream";
 import type { ChatMessage, ClarifyQuestion } from "../types/chat";
+import { isOnline, useOffline } from '../lib/offline';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -296,6 +297,7 @@ export function ClarifyCard({
 
 /** M13 对话面板：攻略粘贴/自然语言 → 路线；展示 AI 修改叙述（DESIGN §2）。M17 加澄清问题卡。M19 加决策轨迹。 */
 export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, onAnswered }: ChatPanelProps) {
+  const { online } = useOffline();
   const [text, setText] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [imgBusy, setImgBusy] = useState(false);
@@ -333,6 +335,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
   };
 
   const submit = (e?: React.FormEvent) => {
+    if (!isOnline()) { e?.preventDefault(); return; }
     e?.preventDefault();
     const t = text.trim();
     const imgs = pendingImages;
@@ -522,12 +525,12 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
           />
           <SendStopButton
             sending={loading}
-            disabled={(!text.trim() && !pendingImages.length) || imgBusy}
+            disabled={!online || (!text.trim() && !pendingImages.length) || imgBusy}
             onStop={stream.stop}
           />
         </div>
         <p className="text-xs text-ink-soft mt-1.5">
-          {hasRoute ? "当前行程可继续对话修改 · Enter 发送 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}
+          {!online ? '当前离线 · AI 需要联网；已保存行程可在规划页手工修改' : hasRoute ? "当前行程可继续对话修改 · Enter 发送 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}
         </p>
       </form>
     </div>

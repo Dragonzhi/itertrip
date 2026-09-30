@@ -3,7 +3,21 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "rewrites": [
+    { "source": "/itertrip/assets/:path*", "destination": "/assets/:path*" },
+    { "source": "/itertrip/icons/:path*", "destination": "/icons/:path*" },
+    { "source": "/itertrip/sw.js", "destination": "/sw.js" },
+    { "source": "/itertrip/manifest.webmanifest", "destination": "/manifest.webmanifest" },
+    { "source": "/itertrip/index.html", "destination": "/index.html" },
+    { "source": "/itertrip", "destination": "/index.html" },
+    { "source": "/itertrip/", "destination": "/index.html" },
+    { "source": "/itertrip/admin", "destination": "/index.html" }
+  ],
   "headers": [
+    { "source": "/itertrip/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/itertrip/manifest.webmanifest", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/manifest.webmanifest", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
     {
       "source": "/(.*)",
       "headers": [

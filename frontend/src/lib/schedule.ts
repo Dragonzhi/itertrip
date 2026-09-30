@@ -13,6 +13,7 @@ export interface ScheduleResult {
 }
 export const schedule = (globalThis as unknown as { IterTripSchedule: {
   clock(value?: string): number | null;
+  date(value?: string): Date | null;
   dayDate(route: RouteJSON, di: number): string;
   fmt(min: number | null): string;
   url(value?: string): string;

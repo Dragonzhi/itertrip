@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { RouteJSON } from "../types/route";
 import { parseRouteFile } from "../lib/routeImport";
+import OfflinePanel from '../components/OfflinePanel';
 
 interface IndexProps {
   onChat: (prefill?: string) => void;
@@ -14,6 +15,7 @@ interface IndexProps {
   onImportRoute: (route: RouteJSON) => void;
   /** resume 态下用于右侧行程预览卡（不传则降级为静态占位） */
   route?: RouteJSON | null;
+  updateBlocked?: boolean;
 }
 
 /** 起始页 v2：
@@ -30,6 +32,7 @@ export default function Index({
   hasRoute,
   onImportRoute,
   route,
+  updateBlocked,
 }: IndexProps) {
   const importRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +50,7 @@ export default function Index({
             )}
             {hasRoute ? <RoutePreviewCard route={route} /> : <HowItWorksCard />}
           </div>
+          <OfflinePanel blocked={updateBlocked} />
         </div>
       </main>
 

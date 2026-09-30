@@ -41,6 +41,14 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Dev     # 开发模式：后
 
 原理：`backend/main.py` 检测到 `frontend/dist` 时自动挂载静态资源并 SPA 回退，单进程 = API + Web 应用。这也意味着任何能跑 Python 容器的平台（含 Hugging Face Spaces）都能用现有 `Dockerfile` 直接部署整站——不需要前后端分离部署。
 
+### M28 PWA 与离线启动
+
+重建并发布完整 `frontend/dist`（包括 `sw.js`、manifest 和图标）。本机 localhost 或 HTTPS 正式构建启用离线缓存；局域网普通 HTTP 和 `-Dev` 不注册 worker。默认入口／范围为 `/itertrip/`，页面内规范根目录访问，避免 Nginx 剥前缀时发生重定向循环。
+
+后端为 worker／manifest／入口提供 no-cache；静态托管或代理也应允许浏览器检查新版，缺失 JS／CSS／图标返回 404，不得回退为 HTML。Vercel 配置已补子路径重写；其他静态平台需提供同等 `/itertrip/` 映射。当前 Dockerfile 只复制后端与 shared，若使用它提供整站，需要额外构建并复制 frontend/dist；不要把纯 API 镜像作为 PWA 验收环境。
+
+发布后先确认「应用文件已准备」，再从桌面启动应用、关闭、断网重开；Android／iOS 和实际托管未由本次自动化验收，见 [M28 操作与验收清单](docs/M28_OFFLINE_PWA.md)。
+
 ## 一、后端部署（Railway，推荐）
 
 仓库已包含：`Dockerfile`、`railway.json`（Dockerfile 构建 + /api/health 健康检查）。

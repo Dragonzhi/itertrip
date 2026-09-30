@@ -24,7 +24,11 @@ export function loadProgress(session: string): OutingProgress {
   return { ...EMPTY_PROGRESS, completed: [], arrived: [] };
 }
 export function saveProgress(session: string, p: OutingProgress): boolean {
-  try { localStorage.setItem("itertrip:outing:" + session, JSON.stringify(p)); return true; } catch { return false; }
+  try {
+    localStorage.setItem("itertrip:trip-session", session);
+    localStorage.setItem("itertrip:outing:" + session, JSON.stringify(p));
+    return true;
+  } catch { return false; }
 }
 /** Moving a unique place preserves progress. Changing its name/point requires a fresh confirmation.
  * Repeated visits use occurrence + itinerary context. Structural/time edits invalidate their progress,
