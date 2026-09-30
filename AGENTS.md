@@ -466,7 +466,7 @@ RouteJSON
 | `/api/geocode` | POST | 单点名称 → 坐标 + `confidence` + `source`（M19：记忆真值 → 高德 POI → 模型 → 兜底） | C/F |
 | `/api/search` | POST | 酒店价格参考 | G |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
-| `/api/export` | POST | route → 自包含 HTML 下载（导出副本自动清洗：无坐标/(0,0) 地点与无效酒店剔除，名单写入 summary；保证导出成功且无「非洲点」；**文件名 = 行程规划名** `trip.title`，前端 `lib/exportName.ts` 清洗非法字符并回退目的地，JSON 导出同名） | —（确定性构建） |
+| `/api/export` | POST | route → 自包含 HTML 下载（M25：无效坐标置 null、地点与酒店保留在清单用于名称搜索，名单写入 summary；无「非洲点」，导航脚本独立于 Leaflet；**文件名 = 行程规划名** `trip.title`，前端 `lib/exportName.ts` 清洗非法字符并回退目的地，JSON 导出同名） | —（确定性构建） |
 | `/api/admin/provider` | GET/PUT/DELETE | 后台供应商配置（key 脱敏返回） | — |
 | `/api/admin/provider/test` | POST | 后台配置实时探测 | D |
 | `/api/memory/feedback` | POST | 编辑器改点上报坐标真值（place_entity 入库；记忆关闭/无档案 → no-op） | F |
@@ -707,7 +707,8 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       `node scripts/chat-stream.mjs` 26/26（新增 [5] 组 9 条断言；`PORT`/`CDP_PORT` 可覆盖，真后端正跑在 8100 时也能并行跑）
 
 **近期规划**
-- [ ] **可执行日程与途中调整（2026-09-30 方向确定）**：按 M25 导航／手机出行视图 → M26 交通段 → M27 时间排程／预约／关键事实 → M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进。全部待实现，下一次只开工 M25；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)，本文件现有架构描述不因此视为已实现。
+- [x] **M25 导航交接与手机出行视图**：高德／百度导航、下一站、到达／完成与进度恢复、地点／酒店／地图／导出入口已落地；构建、契约／DOM 集成与导出 API 检查通过，用户于 2026-09-30 确认验收可用并要求本地提交收尾。见 [M25 施工记录](docs/M25_NAVIGATION_OUTING.md)。
+- [ ] **可执行日程与途中调整后续阶段（2026-09-30 方向确定）**：按 M26 交通段 → M27 时间排程／预约／关键事实 → M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)。
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
 - [ ] **见 `docs/TODO.md`（等反馈的两件事）**：① 记忆档案 id（tid）的可携带性 —— 导出/导入，否则清站点数据后服务端那份记忆就成孤儿；② 静默自动中断（`PING_ABORT_MS` = 60s）是否需要降级为「只告警不自动停」
 

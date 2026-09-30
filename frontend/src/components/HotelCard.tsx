@@ -6,6 +6,7 @@ import { searchHotel, type SearchResult } from "../api/client";
 const fmtPrice = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
 
 interface HotelCardProps {
+  onNavigate?: () => void;
   hotel: Hotel;
   active: boolean;
   onClick: () => void;
@@ -20,7 +21,7 @@ interface HotelCardProps {
 }
 
 /** 酒店比价卡：最低价平台自动高亮 + 「最低」标签。 */
-export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit, onSavePrices }: HotelCardProps & { city?: string }) {
+export default function HotelCard({ hotel, active, onClick, onFocus, city, showMeta = true, onEdit, onSavePrices, onNavigate }: HotelCardProps & { city?: string }) {
   const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, showM
           </button>
         )}
       </div>
+      {onNavigate && <button className="nav-secondary mb-2" data-testid="hotel-navigate" onClick={e => { e.stopPropagation(); onNavigate(); }}>去这里 ↗</button>}
       {showMeta && <div className="space-y-0">{
         <>
         {hotel.note && <div className="text-xs text-ink-soft mb-2.5">{hotel.note}</div>}

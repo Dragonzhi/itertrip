@@ -36,6 +36,8 @@ IterTrip 只做这一步：**攻略 → 结构化路线 → 可编辑的地图**
 
 ## 快速开始
 
+M25 已完成「去这里」高德／百度交接、规划／出行视图、下一站和进度恢复，用户验收已确认可用，详见 [施工与验收记录](docs/M25_NAVIGATION_OUTING.md)。
+
 ```powershell
 # Windows：一条命令（首次自动构建前端 + 创建 venv）
 powershell -ExecutionPolicy Bypass -File start.ps1

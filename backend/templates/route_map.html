@@ -469,6 +469,8 @@
     </div>
   </div>
 
+<script>__NAVIGATION_CORE__</script>
+<script>__EXPORT_NAVIGATION__</script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============ 导出用纯净快照 ============
@@ -478,7 +480,12 @@
 const PRISTINE_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 /* ============ 数据注入点 ============ */
 const TRIP = __TRIP_DATA__;
+IterTripExportNavigation.init(() => TRIP);
 /* ==================================== */
+if (typeof L !== 'undefined') {
+const ESC = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+function esc(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, c => ESC[c]); }
+function safeLink(value){ try { const u = new URL(String(value)); return ['http:','https:'].includes(u.protocol) ? esc(u.href) : ''; } catch (_) { return ''; } }
 
 const DAY_COLORS = ['#E07A5F','#E9B44C','#3D8B8A','#6D5B9E','#B85C5C','#4C7A3E'];
 const EMOJI = { attraction:'⛰️', food:'🍜', transport:'🚇', other:'📍' };
@@ -589,7 +596,7 @@ function render(){
     block.innerHTML = `
       <div class="day-head">
         <div class="day-badge" style="background:${color}">D${day.day||di+1}</div>
-        <h2>第 ${day.day||di+1} 天 <span class="theme">${day.theme||''}</span></h2>
+        <h2>第 ${esc(day.day||di+1)} 天 <span class="theme">${esc(day.theme)}</span></h2>
         <span class="chev">▾</span>
       </div>
       <div class="day-body"></div>`;
@@ -604,13 +611,13 @@ function render(){
       item.innerHTML = `
         <div class="place-emoji">${emoji}</div>
         <div class="place-info">
-          <div class="place-name">${p.name||''}</div>
+          <div class="place-name">${esc(p.name)}</div>
           <div class="place-sub">
-            ${p.time?`<span class="tag">${p.time}</span>`:''}
-            ${p.ticket?`<span class="tag">🎫 ${p.ticket}</span>`:''}
-            ${p.transport?`<div>🚗 ${p.transport}</div>`:''}
-            ${p.note?`<div>${p.note}</div>`:''}
-            ${(p.warnings||[]).map(w=>`<div class="place-warn">⚠️ ${w}</div>`).join('')}
+            ${p.time?`<span class="tag">${esc(p.time)}</span>`:''}
+            ${p.ticket?`<span class="tag">🎫 ${esc(p.ticket)}</span>`:''}
+            ${p.transport?`<div>🚗 ${esc(p.transport)}</div>`:''}
+            ${p.note?`<div>${esc(p.note)}</div>`:''}
+            ${(p.warnings||[]).map(w=>`<div class="place-warn">⚠️ ${esc(w)}</div>`).join('')}
           </div>
         </div>`;
       /* 编辑器：删除按钮（不弹 confirm，撤销兜底）+ HTML5 拖拽 */
@@ -645,6 +652,7 @@ function render(){
       item.addEventListener('dragend', () => { item.classList.remove('dragging'); cleanupDrag(); });
       body.appendChild(item);
       itemRefs[key] = item;
+      IterTripExportNavigation.attach(item.querySelector('.place-info'), p, (day.places||[])[pi - 1]);
 
       // 地图标记（m 提升到循环层级，供时间线条目点击定位地图使用）
       let m = null;
@@ -655,12 +663,12 @@ function render(){
         }).addTo(mapLayers);
         m.bindPopup(`
           <div class="iter-popup">
-            <div class="pp-name">${emoji} ${p.name||''}</div>
-            ${p.time?`<div class="pp-row">⏰ ${p.time}</div>`:''}
-            ${p.ticket?`<div class="pp-row">🎫 ${p.ticket}</div>`:''}
-            ${p.transport?`<div class="pp-row">🚗 ${p.transport}</div>`:''}
-            ${p.note?`<div class="pp-row">${p.note}</div>`:''}
-            ${(p.warnings||[]).map(w=>`<div class="pp-row place-warn">⚠️ ${w}</div>`).join('')}
+            <div class="pp-name">${emoji} ${esc(p.name)}</div>
+            ${p.time?`<div class="pp-row">⏰ ${esc(p.time)}</div>`:''}
+            ${p.ticket?`<div class="pp-row">🎫 ${esc(p.ticket)}</div>`:''}
+            ${p.transport?`<div class="pp-row">🚗 ${esc(p.transport)}</div>`:''}
+            ${p.note?`<div class="pp-row">${esc(p.note)}</div>`:''}
+            ${(p.warnings||[]).map(w=>`<div class="pp-row place-warn">⚠️ ${esc(w)}</div>`).join('')}
           </div>`, { className: 'iter-popup' });
         m.on('click', () => {
           lastActiveDay = di;
@@ -669,6 +677,7 @@ function render(){
           openPanel();
         });
         markers[key] = m;
+        m.on('popupopen', () => { const root = m.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), p, (day.places||[])[pi - 1]); });
         bounds.push([p.lat, p.lng]);
       }
       item.addEventListener('click', () => {
@@ -690,30 +699,31 @@ function render(){
       const best = prices.length ? prices.reduce((a,b)=> (a.price <= b.price ? a : b)) : null;
       let rows = prices.map(pr => `
         <tr class="${pr === best ? 'best' : ''}">
-          <td class="platform">${pr.platform}${pr === best ? '<span class="best-tag">最低</span>' : ''}</td>
-          <td class="amount">¥${pr.price}</td>
+          <td class="platform">${esc(pr.platform)}${pr === best ? '<span class="best-tag">最低</span>' : ''}</td>
+          <td class="amount">¥${esc(pr.price)}</td>
           <td class="bf">${pr.breakfast ? '含早' : '无早'}</td>
-          <td class="pd-note">${pr.note||''}</td>
+          <td class="pd-note">${esc(pr.note)}</td>
         </tr>`).join('') || '<tr><td colspan="4" style="color:#A8A298">暂无报价</td></tr>';
       card.innerHTML = `
-        <div class="hotel-head"><span class="pin">🏨</span><h3>${h.name}</h3></div>
-        ${h.note?`<div class="hotel-note">${h.note}</div>`:''}
+        <div class="hotel-head"><span class="pin">🏨</span><h3>${esc(h.name)}</h3></div>
+        ${h.note?`<div class="hotel-note">${esc(h.note)}</div>`:''}
         <table class="price-table">
           <tr><th>平台</th><th>价格</th><th>早餐</th><th>备注</th></tr>
           ${rows}
         </table>
-        ${h.verdict?`<div class="verdict"><div class="verdict-title">✦ 建议</div><p>${h.verdict}</p></div>`:''}
-        ${h.bookingUrl?`<div class="book-row"><a href="${h.bookingUrl}" target="_blank" class="book-btn">📋 去预订 <span class="src">RollingGo</span></a></div>`:''}`;
+        ${h.verdict?`<div class="verdict"><div class="verdict-title">✦ 建议</div><p>${esc(h.verdict)}</p></div>`:''}
+        ${safeLink(h.bookingUrl)?`<div class="book-row"><a href="${safeLink(h.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="book-btn">📋 去预订 <span class="src">RollingGo</span></a></div>`:''}`;
       body.appendChild(card);
+      IterTripExportNavigation.attach(card, h, (day.places||[]).slice(-1)[0]);
 
       // 酒店标记（m 提升到卡片层级，点击卡片可定位酒店）
       let hm = null;
       if (h.lat != null && h.lng != null){
         hm = L.marker([h.lat, h.lng], { icon: pinIcon('🏨','hotel',true), title: h.name }).addTo(mapLayers);
-        hm.bindPopup(`<div class="iter-popup"><div class="pp-name">🏨 ${h.name}</div>
-          <div class="pp-row">${best ? '最低 ¥'+best.price + '（' + best.platform + '）' : ''}</div>
-          ${h.note?`<div class="pp-row">${h.note}</div>`:''}
-          ${h.bookingUrl?`<div class="pp-row" style="margin-top:6px"><a href="${h.bookingUrl}" target="_blank" style="color:var(--accent);font-weight:600;font-size:12px;text-decoration:none">📋 去预订</a></div>`:''}</div>`);
+        hm.bindPopup(`<div class="iter-popup"><div class="pp-name">🏨 ${esc(h.name)}</div>
+          <div class="pp-row">${best ? '最低 ¥'+esc(best.price) + '（' + esc(best.platform) + '）' : ''}</div>
+          ${h.note?`<div class="pp-row">${esc(h.note)}</div>`:''}
+          ${safeLink(h.bookingUrl)?`<div class="pp-row" style="margin-top:6px"><a href="${safeLink(h.bookingUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:600;font-size:12px;text-decoration:none">📋 去预订</a></div>`:''}</div>`);
         hm.on('click', () => {
           card.classList.add('active');
           card.scrollIntoView({behavior:'smooth', block:'center'});
@@ -721,6 +731,7 @@ function render(){
           setTimeout(()=>card.classList.remove('active'), 1600);
         });
         markers[key] = hm;
+        hm.on('popupopen', () => { const root = hm.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), h, (day.places||[]).slice(-1)[0]); });
         bounds.push([h.lat, h.lng]);
       }
       // 点击酒店卡片：定位地图到酒店
@@ -807,7 +818,7 @@ function render(){
   const summary = document.getElementById('summary');
   if (TRIP.summary && TRIP.summary.length){
     summary.innerHTML = `<h2>🧠 AI 综合建议</h2><ul>` +
-      TRIP.summary.map(s=>`<li>${s}</li>`).join('') + `</ul>`;
+      TRIP.summary.map(s=>`<li>${esc(s)}</li>`).join('') + `</ul>`;
   } else { summary.style.display = 'none'; }
 
   // 视图范围：首次渲染 fit 全图；重渲染由 rerender 保持用户视野（skipNextFit）
@@ -1092,7 +1103,7 @@ function buildExportHTML(){
   /* 全量转义 < 为 \u003c：JSON 结构字符不含 <，只影响字符串值——
      同时防内联脚本的闭合标签被字符串值提前终止、防 HTML 注释解析边界 */
   const json = JSON.stringify(TRIP, null, 2).replace(/</g, '\\u003c');
-  return PRISTINE_HTML.replace(TRIP_RE, 'const TRIP = ' + json + ';\n');
+  return PRISTINE_HTML.replace(TRIP_RE, () => 'const TRIP = ' + json + ';\n');
 }
 function download(filename, text){
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -1258,6 +1269,7 @@ window.__ITEST__ = {
   pushHistory: pushHistory, undo: undo, redo: redo,
   buildExportJSON: buildExportJSON, buildExportHTML: buildExportHTML
 };
+} // Map unavailable: independent navigation checklist remains usable.
 </script>
 </body>
 </html>

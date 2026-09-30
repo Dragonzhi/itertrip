@@ -3,16 +3,19 @@
 移植自旧版 scripts/build_html.py（CLI 版），改为可导入函数供 POST /api/export 调用。
 模板位于 backend/templates/route_map.html（自旧版 git 历史恢复）。
 
-v1.1 导出清洗：剔除无坐标/(0,0) 地点与无效酒店（防 422 失败与「非洲点」），
-剔除名单追加进导出副本的 summary，信息不静默丢失。
+M25 导出清洗：无坐标/(0,0) 地点与无效酒店保留在清单中，坐标设为 null，
+隐藏无效地图 pin 并允许按名称搜索；导航脚本独立于地图依赖。
 """
 
 import copy
 import json
+import math
 from pathlib import Path
 
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "route_map.html"
 PLACEHOLDER = "__TRIP_DATA__"
+NAVIGATION_PATH = Path(__file__).resolve().parents[2] / "shared" / "navigation.js"
+EXPORT_NAVIGATION_PATH = TEMPLATE_PATH.parent / "navigation.js"
 
 
 class BuildError(Exception):
@@ -21,13 +24,13 @@ class BuildError(Exception):
 
 def _bad_coord(v) -> bool:
     """None / 非 / (0,0) 都视为无效坐标（0,0 落在几内亚湾，即用户口中的「非洲点」）。"""
-    if not isinstance(v, (int, float)):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
         return True
     return v == 0
 
 
 def _sanitize(route: dict) -> tuple[dict, list[str]]:
-    """导出副本清洗：剔除无效坐标的地点/酒店，返回 (副本, 剔除名单)。不改入参。"""
+    """保留缺坐标站点用于名称搜索；仅隐藏其地图 pin。不改入参。"""
     data = copy.deepcopy(route)
     dropped: list[str] = []
     for day in data.get("days") or []:
@@ -35,16 +38,19 @@ def _sanitize(route: dict) -> tuple[dict, list[str]]:
             continue
         kept = []
         for p in day.get("places") or []:
-            if not isinstance(p, dict) or _bad_coord(p.get("lat")) or _bad_coord(p.get("lng")):
-                dropped.append(str((p or {}).get("name") or "未命名地点"))
-            else:
-                kept.append(p)
+            if not isinstance(p, dict):
+                continue
+            if _bad_coord(p.get("lat")) or _bad_coord(p.get("lng")) or abs(p["lat"]) > 90 or abs(p["lng"]) > 180:
+                dropped.append(str(p.get("name") or "未命名地点"))
+                p["lat"] = p["lng"] = None
+            kept.append(p)
         day["places"] = kept
         h = day.get("hotel")
-        if isinstance(h, dict) and (_bad_coord(h.get("lat")) or _bad_coord(h.get("lng"))):
-            day["hotel"] = None  # 酒店画不出 pin，但天数/行程信息保留
+        if isinstance(h, dict) and (_bad_coord(h.get("lat")) or _bad_coord(h.get("lng")) or abs(h["lat"]) > 90 or abs(h["lng"]) > 180):
+            h["lat"] = h["lng"] = None
+            dropped.append(str(h.get("name") or "未命名酒店"))
     if dropped:
-        note = "以下地点因缺少有效坐标，未在导出地图中显示：" + "、".join(dropped)
+        note = "以下地点缺少有效坐标，已保留在清单中，可按名称搜索；地图不显示标记：" + "、".join(dropped)
         summary = data.get("summary")
         data["summary"] = ([*summary, note] if isinstance(summary, list) else [note])
     return data, dropped
@@ -77,7 +83,10 @@ def build_html(route: dict) -> str:
         raise BuildError(f"模板中未找到占位符 {PLACEHOLDER}")
 
     data_json = json.dumps(data, ensure_ascii=False, indent=2)
-    # 硬化：转义 "</" 防 place 名称里出现 </script> 提前终止脚本标签。
-    # JSON 中 / 是合法转义，JS 字符串里 <\/ 与 </ 同值，不影响模板解析。
-    data_json = data_json.replace("</", "<\\/")
-    return template.replace(PLACEHOLDER, data_json)
+    # Escape every '<', including script closing tags and HTML comment parser boundaries.
+    # JSON/JS decode \u003c back to the original text.
+    data_json = data_json.replace("<", "\\u003c")
+    # Insert code before user data, so a literal placeholder in a place name stays literal.
+    return (template.replace("__NAVIGATION_CORE__", NAVIGATION_PATH.read_text(encoding="utf-8"))
+            .replace("__EXPORT_NAVIGATION__", EXPORT_NAVIGATION_PATH.read_text(encoding="utf-8"))
+            .replace(PLACEHOLDER, data_json))

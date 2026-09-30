@@ -5,8 +5,10 @@ import type { RouteJSON, Hotel, Place } from "../types/route";
 import { dayColor, dayPoints, emojiFor, mercY, routeArrowDeg, routeMidPoint } from "../mapCore";
 import { coordBadge } from "../lib/coordSource";
 import type { MapSettings } from "../lib/settings";
+import { navigation } from "../lib/navigation";
 
 interface MapViewProps {
+  onNavigate?: (key: string) => void;
   route: RouteJSON | null;
   activeDay: number;               // 高亮的当天索引（-1 = 无）
   picking: boolean;                // 选点模式：crosshair + 禁拖动，下一次点击返回坐标
@@ -33,7 +35,7 @@ const ESC: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => ESC[c]);
 
 /** 地点弹窗 HTML（showMeta=false 时只留地名）。 */
-function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
+function popupHtml(p: Place, emoji: string, showMeta: boolean, key: string): string {
   let html = `<div class="iter-popup"><div class="pp-name">${emoji} ${esc(p.name)}</div>`;
   if (showMeta) {
     const badge = coordBadge(p.source, p.confidence);
@@ -47,11 +49,11 @@ function popupHtml(p: Place, emoji: string, showMeta: boolean): string {
       html += `<div class="pp-row" style="color:#9C4038;font-weight:600">⚠️ ${esc(w)}</div>`;
     }
   }
-  return html + `</div>`;
+  return html + `<button type="button" class="nav-secondary" data-popup-navigate="${esc(key)}">去这里 ↗</button></div>`;
 }
 
 /** 酒店弹窗 HTML（showMeta=false 时只留酒店名）。 */
-function hotelPopupHtml(h: Hotel, showMeta: boolean): string {
+function hotelPopupHtml(h: Hotel, showMeta: boolean, key: string): string {
   const best = (h.prices || []).length
     ? (h.prices || []).reduce((a, b) => (a.price <= b.price ? a : b))
     : null;
@@ -62,7 +64,7 @@ function hotelPopupHtml(h: Hotel, showMeta: boolean): string {
     if (best) html += `<div class="pp-row">最低 ¥${best.price}（${esc(best.platform)}）</div>`;
     if (h.note) html += `<div class="pp-row">${esc(h.note)}</div>`;
   }
-  return html + `</div>`;
+  return html + `<button type="button" class="nav-secondary" data-popup-navigate="${esc(key)}">去这里 ↗</button></div>`;
 }
 
 /** 箭头 scale 映射（M16）：按 arrowScale 生成 divIcon。 */
@@ -82,7 +84,7 @@ function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
 export default function MapView({
   route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
-  onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick,
+  onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick, onNavigate,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -92,8 +94,8 @@ export default function MapView({
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const amapRef = useRef<L.TileLayer | null>(null);
   const osmRef = useRef<L.TileLayer | null>(null);
-  const cbRef = useRef({ onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus });
-  cbRef.current = { onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus };
+  const cbRef = useRef({ onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus, onNavigate });
+  cbRef.current = { onPlaceClick, onHotelClick, onPlaceFocus, onHotelFocus, onNavigate };
 
   /** M23：底部抽屉遮挡的高度（px）。用 ref 读，避免 fitBounds 的 [route] 依赖被撑开 */
   const padRef = useRef(0);
@@ -129,7 +131,17 @@ export default function MapView({
     layersRef.current = L.layerGroup().addTo(map);
     routeLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    // Leaflet setPopupContent recreates its DOM. Delegate in capture phase so metadata/focus updates
+    // cannot discard handlers, and Leaflet's popup propagation guard cannot swallow navigation clicks.
+    const container = containerRef.current;
+    const onNavigateClick = (event: MouseEvent) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>("[data-popup-navigate]");
+      const key = button?.getAttribute("data-popup-navigate");
+      if (key) { event.stopPropagation(); cbRef.current.onNavigate?.(key); }
+    };
+    container.addEventListener("click", onNavigateClick, true);
     return () => {
+      container.removeEventListener("click", onNavigateClick, true);
       map.remove();
       mapRef.current = null;
       layersRef.current = null;
@@ -152,7 +164,7 @@ export default function MapView({
     const callbacks = cbRef.current;
     route.days.forEach((day, di) => {
       (day.places || []).forEach((p, pi) => {
-        if (p.lat == null || p.lng == null) return;
+        if (!navigation.validPoint(p)) return;
         const emoji = emojiFor(p);
         const m = L.marker([p.lat, p.lng], {
           icon: L.divIcon({
@@ -164,7 +176,7 @@ export default function MapView({
           }),
           title: p.name,
         }).addTo(layers);
-        m.bindPopup(popupHtml(p, emoji, true), { className: "iter-popup", autoPan: false });
+        m.bindPopup(popupHtml(p, emoji, true, `d${di}-p${pi}`), { className: "iter-popup", autoPan: false });
         m.on("click", () => callbacks.onPlaceClick(di, pi));
         m.on("dblclick", () => callbacks.onPlaceFocus?.(di, pi));
         markersRef.current.set("d" + di + "-p" + pi, m);
@@ -172,7 +184,7 @@ export default function MapView({
       });
 
       const h = day.hotel;
-      if (h && h.name && h.lat != null && h.lng != null) {
+      if (h && h.name && navigation.validPoint(h)) {
         const hm = L.marker([h.lat, h.lng], {
           icon: L.divIcon({
             className: "",
@@ -183,7 +195,7 @@ export default function MapView({
           }),
           title: h.name,
         }).addTo(layers);
-        hm.bindPopup(hotelPopupHtml(h, true), { className: "iter-popup", autoPan: false });
+        hm.bindPopup(hotelPopupHtml(h, true, `d${di}-hotel`), { className: "iter-popup", autoPan: false });
         hm.on("click", () => callbacks.onHotelClick(di));
         hm.on("dblclick", () => callbacks.onHotelFocus?.(di));
         markersRef.current.set("d" + di + "-hotel", hm);
@@ -207,12 +219,12 @@ export default function MapView({
     route.days.forEach((day, di) => {
       (day.places || []).forEach((p, pi) => {
         const m = markersRef.current.get("d" + di + "-p" + pi);
-        if (m) m.setPopupContent(popupHtml(p, emojiFor(p), show));
+        if (m) m.setPopupContent(popupHtml(p, emojiFor(p), show, `d${di}-p${pi}`));
       });
       const h = day.hotel;
       if (h && h.name) {
         const hm = markersRef.current.get("d" + di + "-hotel");
-        if (hm) hm.setPopupContent(hotelPopupHtml(h, show));
+        if (hm) hm.setPopupContent(hotelPopupHtml(h, show, `d${di}-hotel`));
       }
     });
   }, [route, view.showMeta]);
@@ -236,7 +248,7 @@ export default function MapView({
       if (view.dayViewMode === "current" && effectiveDay < 0 && di !== 0) return; // 无选中天时兜底只画第 0 天
       const color = dayColor(di);
       const pts = dayPoints(day);
-      if (view.connectHotel && day.hotel && day.hotel.lat != null && day.hotel.lng != null) {
+      if (view.connectHotel && day.hotel && navigation.validPoint(day.hotel)) {
         pts.push([day.hotel.lat, day.hotel.lng]);
       }
       if (pts.length < 2) return;

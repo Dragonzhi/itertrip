@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 # 拷贝后端代码 + 模板（export 需要）
 COPY backend /app/backend
+COPY shared /app/shared
 
 ENV PORT=8787
 EXPOSE 8787

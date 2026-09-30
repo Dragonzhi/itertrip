@@ -44,6 +44,6 @@ export function routeMidPoint(a: [number, number], b: [number, number]): [number
 /** 提取一天内所有有效坐标点（供连线与 fitBounds）。 */
 export function dayPoints(day: DayPlan): [number, number][] {
   return (day.places || [])
-    .filter((p) => p.lat != null && p.lng != null)
+    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && p.lat !== 0 && p.lng !== 0 && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180)
     .map((p) => [p.lat, p.lng] as [number, number]);
 }

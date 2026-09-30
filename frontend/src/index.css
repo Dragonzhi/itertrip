@@ -233,3 +233,13 @@ body { overscroll-behavior-y: none; }
   .home-card:hover { transform: none; }
 }
 
+/* M25: large navigation targets and native modal focus containment. */
+.nav-primary,.nav-secondary{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;text-decoration:none;transition:background-color .15s}
+.nav-primary{background:#285844;color:#fff;border:1px solid #285844}
+.nav-primary:hover{background:#1c4535}
+.nav-secondary{background:#fffdf7;color:#285844;border:1px solid #d8dfd2}
+.nav-secondary:hover{background:#eaf0e5}
+.nav-primary:focus-visible,.nav-secondary:focus-visible{outline:3px solid #bf923c;outline-offset:3px}
+.navigation-dialog{max-height:calc(100dvh - 24px);overflow-y:auto;border:1px solid #d8dfd2}
+.navigation-dialog::backdrop{background:rgba(22,38,29,.48)}
+@media(prefers-reduced-motion:reduce){.nav-primary,.nav-secondary{transition:none}}

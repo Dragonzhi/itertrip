@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import MapView from "../components/MapView";
+import NavigationDialog from "../components/NavigationDialog";
+import OutingView from "../components/OutingView";
+import { loadProgress, saveProgress, visits, type OutingProgress } from "../lib/outing";
 import MapSettings from "../components/MapSettings";
 import Timeline from "../components/Timeline";
 import PlaceForm, { PICK_HINT_ADD, PICK_HINT_REPICK, type PlaceDraft } from "../components/PlaceForm";
@@ -50,6 +53,7 @@ const GEO_SOURCE_TEXT: Record<string, string> = {
 };
 
 interface PlanProps {
+  tripSession: string;
   route: RouteJSON;
   source: string;
   /** 行程变化回传 App 层（localStorage 持久化用） */
@@ -64,10 +68,21 @@ type FormState =
   | { mode: "edit"; draft: PlaceDraft; target: { di: number; pi: number }; hasCoord: boolean };
 
 /** 规划页：全屏地图 + 时间线 + 交互编辑器（拖拽/删除/新增/编辑/撤销重做/双导出）。 */
-export default function Plan({ route: initialRoute, source, onRouteChange, onRestart, settings }: PlanProps) {
+export default function Plan({ route: initialRoute, tripSession, source, onRouteChange, onRestart, settings }: PlanProps) {
   const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
+  const [outing, setOuting] = useState<OutingProgress>(() => loadProgress(tripSession));
+  const [progressSaved, setProgressSaved] = useState(true);
+  const [navKey, setNavKey] = useState<string | null>(null);
+  const routeVisits = useMemo(() => visits(route), [route]);
+  const navVisit = routeVisits.find(v => v.key === navKey);
+  const dayVisits = navVisit ? routeVisits.filter(v => v.di === navVisit.di) : [];
+  const previousVisit = navVisit ? dayVisits[dayVisits.indexOf(navVisit) - 1] : undefined;
+  useEffect(() => { setProgressSaved(saveProgress(tripSession, outing)); }, [outing, tripSession]);
+  useEffect(() => {
+    if (outing.day >= route.days.length && route.days.length) setOuting(p => ({ ...p, day: route.days.length - 1 }));
+  }, [route.days.length, outing.day]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(() => !isMobile());
+  const [panelOpen, setPanelOpen] = useState(() => !isMobile() || loadProgress(tripSession).mode === "outing");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   /** M20：整条路线坐标重校准（修历史遗留的错坐标） */
@@ -737,7 +752,8 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
     <div className="h-[100dvh] overflow-hidden">
       <MapView
         route={route}
-        activeDay={activeDay}
+        activeDay={outing.mode === "outing" ? outing.day : activeDay}
+        onNavigate={setNavKey}
         picking={!!picking}
         onPick={handlePick}
         onPlaceClick={handlePlaceClick}
@@ -750,6 +766,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
         onMapClick={closeSheets}
         view={mapView}
       />
+
+      {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousVisit?.point} city={route.trip.destination} onClose={() => setNavKey(null)} />}
+      {!panelOpen && !chatOpen && !picking && !form && !hotelForm && (
+        <button data-testid="outing-reentry" className="fixed left-3 right-3 bottom-8 md:left-auto md:w-[300px] z-[410] nav-primary shadow-card" onClick={() => { setOuting(p => ({ ...p, mode: "outing" })); setPanelOpen(true); }}>
+          继续出行 · 第 {route.days[Math.min(outing.day, route.days.length - 1)]?.day || 1} 天 →
+        </button>
+      )}
 
       {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
       <button
@@ -1030,7 +1053,13 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             )}
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-2 px-[18px] py-2 shrink-0 border-b border-line" aria-label="行程视图">
+          <button data-testid="planning-mode" aria-pressed={outing.mode === "plan"} className={outing.mode === "plan" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "plan" }))}>规划视图</button>
+          <button data-testid="outing-mode" aria-pressed={outing.mode === "outing"} className={outing.mode === "outing" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "outing" }))}>出行视图</button>
+        </div>
+        {!progressSaved && <p role="status" className="text-xs text-danger px-[18px] py-2">浏览器无法保存出行进度，刷新后可能丢失。</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
+          {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :
           <Timeline
             route={route}
             activeKey={activeKey}
@@ -1046,10 +1075,11 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             onEditHotel={openHotelForm}
             onSaveHotelPrices={saveHotelPrices}
             view={mapView}
-          />
+            onNavigate={setNavKey}
+          />}
         </div>
         {/* 工具条 */}
-        <div className="px-[18px] py-3 border-t border-line bg-white">
+        {outing.mode === "plan" ? <div className="px-[18px] py-3 border-t border-line bg-white">
           <div className="flex gap-1.5 items-center justify-center flex-wrap">
             <button onClick={undo} disabled={!canUndo} className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-35">
               ↩ 撤销
@@ -1113,7 +1143,7 @@ export default function Plan({ route: initialRoute, source, onRouteChange, onRes
             </div>
           )}
           <div className="mt-2 text-[11px] text-ink-soft text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
-        </div>
+        </div> : <div className="px-[18px] py-3 border-t border-line text-xs text-ink-soft">{progressSaved ? "当天与进度已保存 · 编辑和导出请切回规划视图" : "进度仅保留在本次页面，请勿刷新"}</div>}
         </motion.div>
       </aside>
 

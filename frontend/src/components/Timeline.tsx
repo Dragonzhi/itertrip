@@ -9,6 +9,7 @@ import { BADGE_CLASS, coordBadge } from "../lib/coordSource";
 import HotelCard from "./HotelCard";
 
 interface TimelineProps {
+  onNavigate?: (key: string) => void;
   route: RouteJSON;
   activeKey: string | null;          // "d{di}-p{pi}" | "d{di}-hotel"
   onPlaceClick: (di: number, pi: number) => void;
@@ -36,7 +37,7 @@ export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onMovePlace, onPlaceFocus, onHotelFocus,
   onEditHotel, onSaveHotelPrices,
-  view,
+  view, onNavigate,
 }: TimelineProps) {
   const showSummary = view?.showSummary !== false;
   const showMeta = view?.showMeta !== false;
@@ -215,6 +216,7 @@ export default function Timeline({
                           {showMeta && p.note && <div>{p.note}</div>}
                           {/* M22 事实告警：**不受 showMeta 控制** —— 闭馆日冲突是安全警示，
                               不该被「显示详细程度」这类纯视图开关藏起来 */}
+                          {onNavigate && <button className="nav-secondary mt-2" data-testid="place-navigate" onClick={e => { e.stopPropagation(); onNavigate(`d${di}-p${pi}`); }}>去这里 ↗</button>}
                           {(p.warnings || []).map((w, wi) => (
                             <div
                               key={wi}
@@ -251,7 +253,7 @@ export default function Timeline({
                 })}
 
                 {day.hotel && day.hotel.name && (
-                  <HotelCard hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
+                  <HotelCard onNavigate={onNavigate ? () => onNavigate(`d${di}-hotel`) : undefined} hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
                 )}
               </div>
             )}

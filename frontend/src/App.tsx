@@ -12,6 +12,7 @@ import {
   type LlmSettings,
 } from "./lib/settings";
 import type { RouteJSON } from "./types/route";
+import { createTripSession, loadTripSession } from "./lib/outing";
 
 type Screen = { name: "index" } | { name: "chat"; prefill?: string } | { name: "plan"; source: string };
 
@@ -31,6 +32,7 @@ function MainApp() {
     loadCurrentRoute() ? { name: "plan", source: "restored" } : { name: "index" },
   );
   const [route, setRoute] = useState<RouteJSON | null>(() => loadCurrentRoute());
+  const [tripSession, setTripSession] = useState(loadTripSession);
   const [chatPrefill, setChatPrefill] = useState<string | undefined>(undefined);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -60,12 +62,14 @@ function MainApp() {
   };
 
   const handleChatRoute = (r: RouteJSON, source: string) => {
+    setTripSession(createTripSession());
     setRoute(r);
     setScreen({ name: "plan", source });
   };
 
   /** 首页导入行程（JSON / 导出 HTML），解析校验通过后进规划页。 */
   const handleImportRoute = (r: RouteJSON) => {
+    setTripSession(createTripSession());
     setRoute(r);
     setScreen({ name: "plan", source: "imported" });
   };
@@ -86,6 +90,8 @@ function MainApp() {
     return (
       <>
         <Plan
+          key={tripSession}
+          tripSession={tripSession}
           route={route}
           source={screen.source}
           onRouteChange={setRoute}
