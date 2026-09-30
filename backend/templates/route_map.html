@@ -471,6 +471,8 @@
 
 <script>__NAVIGATION_CORE__</script>
 <script>__EXPORT_NAVIGATION__</script>
+<script>__TRANSPORT_CORE__</script>
+<script>__EXPORT_TRANSPORT__</script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============ 导出用纯净快照 ============
@@ -480,7 +482,9 @@
 const PRISTINE_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 /* ============ 数据注入点 ============ */
 const TRIP = __TRIP_DATA__;
+IterTripTransport.normalize(TRIP);
 IterTripExportNavigation.init(() => TRIP);
+IterTripExportTransport.init(() => TRIP);
 /* ==================================== */
 if (typeof L !== 'undefined') {
 const ESC = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
@@ -575,6 +579,7 @@ function emojiFor(p){
 }
 
 function render(){
+  IterTripTransport.normalize(TRIP);
   const trip = TRIP.trip || {};
   document.getElementById('ttTitle').textContent = trip.title || '行程';
   const metas = [];
@@ -601,6 +606,7 @@ function render(){
       </div>
       <div class="day-body"></div>`;
     const body = block.querySelector('.day-body');
+    IterTripExportTransport.summary(body, di);
     const itemRefs = {};
 
     (day.places||[]).forEach((p, pi) => {
@@ -650,9 +656,10 @@ function render(){
         }
       });
       item.addEventListener('dragend', () => { item.classList.remove('dragging'); cleanupDrag(); });
+      IterTripExportTransport.leg(body, di, p.id);
       body.appendChild(item);
       itemRefs[key] = item;
-      IterTripExportNavigation.attach(item.querySelector('.place-info'), p, (day.places||[])[pi - 1]);
+      IterTripExportNavigation.attach(item.querySelector('.place-info'), p, IterTripTransport.legs(TRIP, di).find(e => e.to.id === p.id)?.from);
 
       // 地图标记（m 提升到循环层级，供时间线条目点击定位地图使用）
       let m = null;
@@ -677,7 +684,7 @@ function render(){
           openPanel();
         });
         markers[key] = m;
-        m.on('popupopen', () => { const root = m.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), p, (day.places||[])[pi - 1]); });
+        m.on('popupopen', () => { const root = m.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), p, IterTripTransport.legs(TRIP, di).find(e => e.to.id === p.id)?.from); });
         bounds.push([p.lat, p.lng]);
       }
       item.addEventListener('click', () => {
@@ -713,8 +720,9 @@ function render(){
         </table>
         ${h.verdict?`<div class="verdict"><div class="verdict-title">✦ 建议</div><p>${esc(h.verdict)}</p></div>`:''}
         ${safeLink(h.bookingUrl)?`<div class="book-row"><a href="${safeLink(h.bookingUrl)}" target="_blank" rel="noopener noreferrer" class="book-btn">📋 去预订 <span class="src">RollingGo</span></a></div>`:''}`;
+      IterTripExportTransport.leg(body, di, h.id);
       body.appendChild(card);
-      IterTripExportNavigation.attach(card, h, (day.places||[]).slice(-1)[0]);
+      IterTripExportNavigation.attach(card, h, IterTripTransport.legs(TRIP, di).find(e => e.to.id === h.id)?.from);
 
       // 酒店标记（m 提升到卡片层级，点击卡片可定位酒店）
       let hm = null;
@@ -731,7 +739,7 @@ function render(){
           setTimeout(()=>card.classList.remove('active'), 1600);
         });
         markers[key] = hm;
-        hm.on('popupopen', () => { const root = hm.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), h, (day.places||[]).slice(-1)[0]); });
+        hm.on('popupopen', () => { const root = hm.getPopup().getElement(); if (root && !root.querySelector('[data-testid="export-navigate"]')) IterTripExportNavigation.attach(root.querySelector('.iter-popup'), h, IterTripTransport.legs(TRIP, di).find(e => e.to.id === h.id)?.from); });
         bounds.push([h.lat, h.lng]);
       }
       // 点击酒店卡片：定位地图到酒店

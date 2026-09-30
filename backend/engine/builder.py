@@ -16,6 +16,8 @@ TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "route_ma
 PLACEHOLDER = "__TRIP_DATA__"
 NAVIGATION_PATH = Path(__file__).resolve().parents[2] / "shared" / "navigation.js"
 EXPORT_NAVIGATION_PATH = TEMPLATE_PATH.parent / "navigation.js"
+TRANSPORT_PATH = NAVIGATION_PATH.parent / "transport.js"
+EXPORT_TRANSPORT_PATH = TEMPLATE_PATH.parent / "transport.js"
 
 
 class BuildError(Exception):
@@ -89,4 +91,6 @@ def build_html(route: dict) -> str:
     # Insert code before user data, so a literal placeholder in a place name stays literal.
     return (template.replace("__NAVIGATION_CORE__", NAVIGATION_PATH.read_text(encoding="utf-8"))
             .replace("__EXPORT_NAVIGATION__", EXPORT_NAVIGATION_PATH.read_text(encoding="utf-8"))
+            .replace("__TRANSPORT_CORE__", TRANSPORT_PATH.read_text(encoding="utf-8"))
+            .replace("__EXPORT_TRANSPORT__", EXPORT_TRANSPORT_PATH.read_text(encoding="utf-8"))
             .replace(PLACEHOLDER, data_json))

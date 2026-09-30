@@ -80,10 +80,10 @@
     if (typeof L !== "undefined") return;
     const panel = el("section", "", "it-nav-fallback");
     panel.append(el("h2", "地图未能加载 · 仍可查看行程和导航"), el("p", "地图需要网络；以下地点信息与导航入口可独立使用。外部地图仍需要网络或已安装的 App。"));
-    (getTrip().days || []).forEach(day => {
+    (getTrip().days || []).forEach((day, di) => {
       panel.append(el("h3", "第 " + day.day + " 天")); const ul = el("ul");
       const points = [...(day.places || []), ...(day.hotel && day.hotel.name ? [day.hotel] : [])];
-      points.forEach((p, i) => { const li = el("li", p.name); attach(li, p, points[i - 1]); ul.append(li); }); panel.append(ul);
+      points.forEach(p => { const li = el("li", p.name); attach(li, p, globalThis.IterTripTransport?.legs(getTrip(), di).find(e => e.to.id === p.id)?.from); ul.append(li); }); panel.append(ul);
     });
     document.body.append(panel);
   }

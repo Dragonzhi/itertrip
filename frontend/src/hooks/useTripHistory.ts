@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { RouteJSON } from "../types/route";
+import { normalizeRoute } from '../lib/transport';
 
 /**
  * 行程编辑历史栈（移植自旧版模板，模型红线见 DESIGN §7.7）：
@@ -13,9 +14,9 @@ import type { RouteJSON } from "../types/route";
  * 快照还是 null，导致「路线变了但历史栈为空」的静默丢帧。
  */
 export function useTripHistory(initial: RouteJSON) {
-  const [route, setRouteState] = useState<RouteJSON>(initial);
-  const routeRef = useRef<RouteJSON>(initial);
-  const historyRef = useRef<RouteJSON[]>([JSON.parse(JSON.stringify(initial))]);
+  const [route, setRouteState] = useState<RouteJSON>(() => normalizeRoute(initial));
+  const routeRef = useRef<RouteJSON>(route);
+  const historyRef = useRef<RouteJSON[]>([JSON.parse(JSON.stringify(route))]);
   const idxRef = useRef(0);
   // 版本号仅用于让 undo/redo 后触发重渲染（route 引用可能相同形状）
   const [, bump] = useState(0);
@@ -30,13 +31,17 @@ export function useTripHistory(initial: RouteJSON) {
 
   /** 编辑入口：同步应用变更 + 同步推历史帧（异步回调/批处理安全）。 */
   const mutate = useCallback(
-    (updater: (draft: RouteJSON) => void) => {
+    (updater: (draft: RouteJSON) => void, expected?: RouteJSON) => {
+      if (expected && routeRef.current !== expected) return false;
       const next = JSON.parse(JSON.stringify(routeRef.current)) as RouteJSON;
       updater(next);
-      routeRef.current = next;
-      setRouteState(next);
-      pushFrame(next);
+      const normalized = normalizeRoute(next, routeRef.current);
+      if (JSON.stringify(normalized) === JSON.stringify(routeRef.current)) return false;
+      routeRef.current = normalized;
+      setRouteState(normalized);
+      pushFrame(normalized);
       bump((v) => v + 1);
+      return true;
     },
     [pushFrame],
   );

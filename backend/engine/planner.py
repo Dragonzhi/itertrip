@@ -597,6 +597,13 @@ async def _enrich_coordinates(
                     # 弱匹配但很近：不敢挪动坐标，也**不升级来源标注**（避免「高德核验」名不副实）
                     _geo_rec(rec, rid=rid, name=obj.name, action="confirm", level="amap",
                              confidence=obj.confidence, dist_km=dist, score=score, ms=ms)
+    # Only metadata from the adopted POI point is retained; user pins remain authoritative.
+    for day in route.days:
+        for obj in [*day.places, *([day.hotel] if day.hotel else [])]:
+            if obj.source == "amap":
+                meta = sess.poi_meta.get((obj.lat, obj.lng))
+                if meta:
+                    obj.poi_id, obj.city_code = meta["poi_id"], meta["city_code"]
     return filled
 
 

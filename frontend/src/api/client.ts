@@ -1,4 +1,6 @@
-import type { PlanRequest, RouteJSON } from "../types/route";
+import type { PlanRequest, RouteJSON, TransportSnapshot } from "../types/route";
+import type { Edge } from '../lib/transport';
+import { transport } from '../lib/transport';
 import type { ClarifyQuestion, TraceStats, TraceStep } from "../types/chat";
 import type { LlmSettings } from "../lib/settings";
 import { memoryHeaders } from "../lib/memory";
@@ -8,6 +10,15 @@ import { memoryHeaders } from "../lib/memory";
  * C-1 单进程形态下同源，留空即可。
  */
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+
+export async function queryTransport(edges: Edge[], signal?: AbortSignal): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
+  const resp = await fetch(API_BASE + '/api/route/transport', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+    body: JSON.stringify({ edges: edges.map(e => ({ from: e.from, to: e.to, signature: transport.sign(e) })) }),
+  });
+  if (!resp.ok) throw new Error(`交通查询失败 (${resp.status})，请稍后重试`);
+  return await resp.json();
+}
 
 /** BYOK 请求头（DESIGN.md §4.2）：有配置才带，后端优先读取。 */
 export function llmHeaders(settings?: LlmSettings | null): Record<string, string> {

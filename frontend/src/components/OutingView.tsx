@@ -1,5 +1,7 @@
 import type { RouteJSON } from "../types/route";
 import { visits, type OutingProgress, type Visit } from "../lib/outing";
+import { transport } from '../lib/transport';
+import { TransportLeg } from './TransportView';
 
 export default function OutingView({ route, progress, onChange, onNavigate, onFocus }: { route: RouteJSON; progress: OutingProgress; onChange: (p: OutingProgress) => void; onNavigate: (key: string) => void; onFocus: (key: string) => void }) {
   const day = Math.min(progress.day, Math.max(0, route.days.length - 1));
@@ -15,6 +17,7 @@ export default function OutingView({ route, progress, onChange, onNavigate, onFo
       <span className="text-xs text-moss font-semibold">下一站 · {next.hotel ? "入住酒店" : `行程第 ${list.indexOf(next) + 1} 站`}</span>
       <h2 className="text-2xl font-bold mt-3 break-words">{next.point.name}</h2>
       {"time" in next.point && next.point.time && <p className="text-sm text-ink-soft mt-2">原行程时段：{next.point.time}</p>}
+      {transport.legs(route, day).filter(e => e.to.id === next.point.id).map(e => <TransportLeg key={e.from.id} route={route} edge={e} compact />)}
       {"warnings" in next.point && next.point.warnings?.map(w => <p key={w} className="text-sm text-danger mt-2">⚠ {w}</p>)}
       <button className="nav-primary w-full mt-5" onClick={() => onNavigate(next.key)}>去这里 ↗</button>
       <button className="nav-secondary w-full mt-2" onClick={() => onFocus(next.key)}>在地图上看位置</button>

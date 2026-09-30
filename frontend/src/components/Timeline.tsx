@@ -7,8 +7,12 @@ import { dayColor, emojiFor } from "../mapCore";
 import type { MapSettings } from "../lib/settings";
 import { BADGE_CLASS, coordBadge } from "../lib/coordSource";
 import HotelCard from "./HotelCard";
+import { Fragment } from 'react';
+import { TransportDay, TransportLeg, type TransportActions } from './TransportView';
+import { transport } from '../lib/transport';
 
 interface TimelineProps {
+  transportActions?: TransportActions;
   onNavigate?: (key: string) => void;
   route: RouteJSON;
   activeKey: string | null;          // "d{di}-p{pi}" | "d{di}-hotel"
@@ -37,7 +41,7 @@ export default function Timeline({
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onMovePlace, onPlaceFocus, onHotelFocus,
   onEditHotel, onSaveHotelPrices,
-  view, onNavigate,
+  view, onNavigate, transportActions,
 }: TimelineProps) {
   const showSummary = view?.showSummary !== false;
   const showMeta = view?.showMeta !== false;
@@ -128,11 +132,14 @@ export default function Timeline({
 
             {!isClosed && (
               <div>
+                {transportActions && <TransportDay route={route} di={di} actions={transportActions} />}
                 {(day.places || []).map((p, pi) => {
                   const key = `d${di}-p${pi}`;
                   const isActive = activeKey === key;
                   const badge = showMeta ? coordBadge(p.source, p.confidence) : null;
                   return (
+                    <Fragment key={p.id || key}>
+                    {transportActions && transport.legs(route, di).filter(e => e.to.id === p.id).map(e => <TransportLeg key={e.from.id} route={route} edge={e} actions={transportActions} />)}
                     <motion.div
                       layout
                       key={key}
@@ -249,11 +256,15 @@ export default function Timeline({
                         </>
                       )}
                     </motion.div>
+                    </Fragment>
                   );
                 })}
 
                 {day.hotel && day.hotel.name && (
+                  <Fragment>
+                  {transportActions && transport.legs(route, di).filter(e => e.to.id === day.hotel?.id).map(e => <TransportLeg key={e.from.id} route={route} edge={e} actions={transportActions} />)}
                   <HotelCard onNavigate={onNavigate ? () => onNavigate(`d${di}-hotel`) : undefined} hotel={day.hotel} city={route.trip.destination} active={activeKey === `d${di}-hotel`} onClick={() => onHotelClick(di)} onFocus={onHotelFocus ? () => onHotelFocus(di) : undefined} showMeta={showMeta} onEdit={onEditHotel ? () => onEditHotel(di) : undefined} onSavePrices={onSaveHotelPrices ? (pr) => onSaveHotelPrices(di, pr) : undefined} />
+                  </Fragment>
                 )}
               </div>
             )}

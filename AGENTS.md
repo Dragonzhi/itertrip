@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.6 · 2026-09-14 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.7 · 2026-09-30 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -423,6 +423,14 @@ RouteJSON
   也是 AI 对话修改的操作对象；
 - 导出时注入自包含 HTML 模板的 `__TRIP_DATA__` 占位符（`engine/builder.py`，`</` 已转义防注入）。
 
+**M26 交通契约补充**：place／hotel 有可选稳定 `id`、高德 `poi_id`／`city_code`；day 有 `traffic_mode`、
+`start_from_hotel` 和 `transport[]`（起终点 ID、单段方式覆盖、独立缓冲、带签名的查询快照）。
+前后端类型在 `engine/schema.py`／`types/route.ts`，相邻段与签名逻辑共用 `shared/transport.js`。
+`engine/transport.py` 是确定性服务：后端查询高德 v3 路径与公交城市码，不调 LLM；
+24 次请求／40 秒预算、8 秒 HTTP 超时、15 分钟缓存、并发去重与配额熔断。
+查询及交通设置走同一撤销栈，异步结果仅在路线版本未变时落盘；模型不能写入交通计算结果。
+完整契约、酒店起终点规则与验证见 [M26 施工记录](docs/M26_TRANSPORT.md)。
+
 ### 6.2 /api/chat SSE 流式协议
 
 请求：`{ prompt, history: [{role: user|assistant, content}] , route: RouteJSON|null, images?: [data URL]（M15 截图，仅提取模式） }`
@@ -449,7 +457,9 @@ RouteJSON
 | Key | 内容 | 备注 |
 |-----|------|------|
 | `itertrip:llm` | BYOK 设置 {baseUrl, apiKey, model, vision} | 永不上传第三方 |
-| `itertrip:route` | 当前行程快照 | 刷新后回填恢复 |
+| `itertrip:route` | 当前行程快照（M26 含稳定访问 ID、交通设置及查询快照） | 刷新后回填恢复 |
+| `itertrip:trip-session`／`itertrip:outing:<session>` | 本地行程身份与出行当天／到达／完成进度（M25，M26 迁移至访问 ID） | 进度独立于路线历史栈 |
+| `itertrip:navigation-map` | 高德／百度导航偏好 | 网页与导出复用 |
 | `itertrip:chat` | 对话历史（最近 30 条，剔除 route 快照） | 发请求时仅回传最近 8 条；**同步落盘**（M24：`Chat.tsx` 的 `commit` 通道，不能用 effect —— 生成路线那一轮 AI 回复与「跳规划页」同批提交，Chat 随即被卸载，effect 永远跑不到，AI 整轮消息就是这么丢的） |
 | `itertrip:map` | 地图显示设置（M16，纯视图态） | 不写入 route/后端 |
 | `itertrip:tid` | 匿名档案 id（M18 记忆库 namespace） | `crypto.randomUUID()` 随机生成，不含身份信息；随 `X-Traveler-Id` 头发送 |
@@ -465,6 +475,7 @@ RouteJSON
 | `/api/chat` | POST | 统一对话（SSE） | A |
 | `/api/geocode` | POST | 单点名称 → 坐标 + `confidence` + `source`（M19：记忆真值 → 高德 POI → 模型 → 兜底） | C/F |
 | `/api/search` | POST | 酒店价格参考 | G |
+| `/api/route/transport` | POST | 相邻段比较（最多 12 段 × 三种方式），返回带来源／时间的快照与调用／缓存／预算统计 | —（高德路径服务） |
 | `/api/llm/test` | POST | BYOK 连通 + 视觉探测 | D |
 | `/api/export` | POST | route → 自包含 HTML 下载（M25：无效坐标置 null、地点与酒店保留在清单用于名称搜索，名单写入 summary；无「非洲点」，导航脚本独立于 Leaflet；**文件名 = 行程规划名** `trip.title`，前端 `lib/exportName.ts` 清洗非法字符并回退目的地，JSON 导出同名） | —（确定性构建） |
 | `/api/admin/provider` | GET/PUT/DELETE | 后台供应商配置（key 脱敏返回） | — |
@@ -708,7 +719,8 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 
 **近期规划**
 - [x] **M25 导航交接与手机出行视图**：高德／百度导航、下一站、到达／完成与进度恢复、地点／酒店／地图／导出入口已落地；构建、契约／DOM 集成与导出 API 检查通过，用户于 2026-09-30 确认验收可用并要求本地提交收尾。见 [M25 施工记录](docs/M25_NAVIGATION_OUTING.md)。
-- [ ] **可执行日程与途中调整后续阶段（2026-09-30 方向确定）**：按 M26 交通段 → M27 时间排程／预约／关键事实 → M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)。
+- [x] **M26 独立交通段与真实耗时**：稳定访问 ID、酒店跨天起终点、相邻段三方式比较、额外缓冲／每日汇总、缓存与预算、旧响应保护和导出快照已落地；自动化、构建及一组高德真实接口比较通过。见 [M26 施工记录](docs/M26_TRANSPORT.md)，真机排版回归未单独记录。
+- [ ] **可执行日程与途中调整后续阶段（2026-09-30 方向确定）**：按 M27 时间排程／预约／关键事实 → M28 PWA／离线查看 → M29 天气局部调整 → M30 Agent 工具推进；范围与验收统一见 [docs/NEXT_DEVELOPMENT_DIRECTION.md](docs/NEXT_DEVELOPMENT_DIRECTION.md)。
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
 - [ ] **见 `docs/TODO.md`（等反馈的两件事）**：① 记忆档案 id（tid）的可携带性 —— 导出/导入，否则清站点数据后服务端那份记忆就成孤儿；② 静默自动中断（`PING_ABORT_MS` = 60s）是否需要降级为「只告警不自动停」
 

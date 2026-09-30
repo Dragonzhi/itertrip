@@ -416,6 +416,7 @@ def _pick_best_poi(
     allow_fuzzy: bool = False,
     near: tuple[float, float] | None = None,
     query_full: str = "",
+    metadata: dict | None = None,
 ) -> tuple[float, float, float, int] | None:
     """前 N 条候选「先过地理闸门，再打分择优选」，返回 (lat, lng, score, agree)；无合格候选返回 None。
 
@@ -458,6 +459,9 @@ def _pick_best_poi(
     band = [h for h in hits if h[2] >= top - _AMAP_TIE]
     chosen = min(band, key=lambda h: _dist(h[1])) if ref else max(band, key=lambda h: h[2])
     loc, score = chosen[1], chosen[2]
+    if metadata is not None:
+        poi = chosen[0]
+        metadata[(loc[0], loc[1])] = {"poi_id": str(poi.get("id") or ""), "city_code": str(poi.get("citycode") or "")}
     agree = sum(1 for h in hits if haversine_km(loc[0], loc[1], h[1][0], h[1][1]) <= _AMAP_AGREE_KM)
     return (loc[0], loc[1], score, agree)
 
@@ -471,6 +475,7 @@ class AmapSession:
 
     def __init__(self) -> None:
         self.cache: dict[str, tuple[float, float, float] | None] = {}
+        self.poi_meta: dict[tuple[float, float], dict] = {}
         self.calls = 0
         self.net_fails = 0
         self.disabled = False
@@ -581,7 +586,7 @@ async def geocode_amap_scored(
             sess.net_fails = 0
             result = _pick_best_poi(
                 pois, query, hint_type, provinces=provinces, cities=cities, anchors=anchors,
-                allow_fuzzy=True, near=near, query_full=name,
+                allow_fuzzy=True, near=near, query_full=name, metadata=sess.poi_meta,
             )
             if result is None and city_param and sess.calls < _MAX_AMAP_CALLS:
                 # 第二步：去掉城市限制，靠地理闸门（省份 / 距城市中心距离）筛跨城地点
@@ -596,7 +601,7 @@ async def geocode_amap_scored(
                     sess.net_fails = 0
                     result = _pick_best_poi(
                         pois2, query, hint_type, provinces=provinces, cities=cities, anchors=anchors,
-                        allow_fuzzy=True, near=near, query_full=name,
+                        allow_fuzzy=True, near=near, query_full=name, metadata=sess.poi_meta,
                     )
             if result is not None and not city_param and not in_china(result[0], result[1]):
                 result = None  # 无任何区域约束时至少要求落在中国境内（防同名境外 POI 误配）
@@ -707,10 +712,11 @@ async def geocode(
 
     # 1. 高德 POI（M19 一级坐标源：店名级精度，多候选打分择优选）
     #    M20：置信度跟随匹配分 —— 弱匹配/模糊兜底不再冒充「高德核验」
+    session = session if session is not None else AmapSession()
     amap = await geocode_amap_scored(name, city, hint_type, session)
     if amap:
         conf = "high" if amap[2] >= _AMAP_STRONG_SCORE else "low"
-        return {"name": name, "lat": amap[0], "lng": amap[1], "confidence": conf, "source": "amap"}
+        return {"name": name, "lat": amap[0], "lng": amap[1], "confidence": conf, "source": "amap", **session.poi_meta.get((amap[0], amap[1]), {})}
 
     # 2. LLM 已知知识（知名地标可靠；小店可能幻觉，故在高德之后）
     llm = await geocode_by_llm(name, city, llm_overrides)

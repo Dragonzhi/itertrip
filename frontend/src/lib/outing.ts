@@ -28,7 +28,7 @@ export function saveProgress(session: string, p: OutingProgress): boolean {
 }
 /** Moving a unique place preserves progress. Changing its name/point requires a fresh confirmation.
  * Repeated visits use occurrence + itinerary context. Structural/time edits invalidate their progress,
- * rather than guessing which indistinguishable occurrence moved. No IDs enter route JSON. */
+ * rather than guessing which indistinguishable occurrence moved. M26 IDs distinguish repeated visits. */
 export function visits(route: RouteJSON) {
   const raw = route.days.flatMap((d, di) => [
     ...d.places.map((point, pi) => ({ point, di, key: `d${di}-p${pi}`, hotel: false })),
@@ -40,7 +40,8 @@ export function visits(route: RouteJSON) {
   const context = JSON.stringify(raw.map(v => [v.di, base(v), "time" in v.point ? v.point.time : ""]));
   return raw.map(v => {
     const repeated = !v.hotel && (counts.get(base(v)) || 0) > 1;
-    return { ...v, repeated, id: v.hotel ? base(v) + ":day:" + v.di : repeated ? base(v) + ":visit:" + v.key + ":context:" + context : base(v) };
+    const legacyId = v.hotel ? base(v) + ":day:" + v.di : repeated ? base(v) + ":visit:" + v.key + ":context:" + context : base(v);
+    return { ...v, repeated: repeated && !v.point.id, legacyId, id: v.point.id ? base(v) + ':id:' + v.point.id : legacyId };
   });
 }
 export type Visit = ReturnType<typeof visits>[number];

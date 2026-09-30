@@ -44,6 +44,7 @@ const byText = (text, scope = document) => { const e = [...scope.querySelectorAl
 const click = async element => { await act(async () => { element.dispatchEvent(new w.MouseEvent("click", { bubbles: true })); }); };
 const savedProgress = () => JSON.parse(localStorage.getItem("itertrip:outing:m25-test-session"));
 await mount();
+const migratedRoute = localStorage.getItem("itertrip:route");
 assert.equal(document.querySelectorAll('[data-pin-key="d0-p3"]').length, 0, "zero-coordinate place has no map pin");
 await click(query('[data-testid="panel-toggle"]'));
 const undoBefore = byText("↩ 撤销").disabled;
@@ -87,7 +88,7 @@ assert.equal(query('[aria-label="出行当天"]').value, "1", "reload restores d
 assert.equal(savedProgress().completed.length, 1, "reload retains completion");
 await click(query('[data-testid="planning-mode"]'));
 assert.equal(byText("↩ 撤销").disabled, undoBefore, "outing and navigation don't push undo frames");
-assert.equal(localStorage.getItem("itertrip:route"), JSON.stringify(fixture), "route unchanged after all outing actions");
+assert.equal(localStorage.getItem("itertrip:route"), migratedRoute, "route unchanged after all outing actions");
 await unmount();
 const storageSet = w.Storage.prototype.setItem;
 w.Storage.prototype.setItem = function (key, value) { if (key.startsWith("itertrip:outing:")) throw new Error("quota exceeded"); return storageSet.call(this, key, value); };

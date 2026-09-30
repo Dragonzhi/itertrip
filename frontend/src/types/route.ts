@@ -6,6 +6,9 @@ export interface PriceItem {
 }
 
 export interface Hotel {
+  id?: string;
+  poi_id?: string;
+  city_code?: string;
   name: string;
   lat: number;
   lng: number;
@@ -22,6 +25,9 @@ export interface Hotel {
 export type PlaceType = "attraction" | "food" | "transport" | "other";
 
 export interface Place {
+  id?: string;
+  poi_id?: string;
+  city_code?: string;
   name: string;
   lat: number;
   lng: number;
@@ -43,6 +49,31 @@ export interface DayPlan {
   theme?: string;
   places: Place[];
   hotel?: Hotel | null;
+  traffic_mode?: 'walk' | 'bus' | 'car';
+  start_from_hotel?: boolean;
+  transport?: TransportSegment[];
+}
+
+export interface TransportOption {
+  mode: 'walk' | 'bus' | 'car';
+  status: 'ok' | 'unknown';
+  reason?: string;
+  duration_s?: number | null;
+  distance_m?: number | null;
+  walking_m?: number | null;
+  fee_yuan?: number | null;
+  tolls_yuan?: number | null;
+  fee_kind?: string;
+  description?: string;
+  queried_at: string;
+  source: string;
+  source_url: string;
+}
+export interface TransportSnapshot { signature: string; options: TransportOption[] }
+export interface TransportSegment {
+  from_id: string; to_id: string;
+  mode?: '' | 'walk' | 'bus' | 'car'; buffer_min: number;
+  snapshot?: TransportSnapshot;
 }
 
 export interface TripInfo {

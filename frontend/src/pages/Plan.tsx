@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import MapView from "../components/MapView";
 import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
+import { transport } from '../lib/transport';
+import type { TransportActions } from '../components/TransportView';
 import { loadProgress, saveProgress, visits, type OutingProgress } from "../lib/outing";
 import MapSettings from "../components/MapSettings";
 import Timeline from "../components/Timeline";
@@ -10,7 +12,7 @@ import HotelForm, { PICK_HINT_REPICK_HOTEL, type HotelDraft } from "../component
 import { useTripHistory } from "../hooks/useTripHistory";
 import type { Hotel, PlaceType, PriceItem, RouteJSON } from "../types/route";
 import CalendarPicker from "../components/CalendarPicker";
-import { exportHtml, dateCheck, geocode as geocodeApi, recheckRoute, reportPlaceEntity } from "../api/client";
+import { exportHtml, dateCheck, geocode as geocodeApi, recheckRoute, reportPlaceEntity, queryTransport } from "../api/client";
 import { ClarifyCard } from "../components/ChatPanel";
 import ThinkingBlock from "../components/ThinkingBlock";
 import DecisionTrace from "../components/DecisionTrace";
@@ -70,13 +72,77 @@ type FormState =
 /** 规划页：全屏地图 + 时间线 + 交互编辑器（拖拽/删除/新增/编辑/撤销重做/双导出）。 */
 export default function Plan({ route: initialRoute, tripSession, source, onRouteChange, onRestart, settings }: PlanProps) {
   const { route, mutate, undo, redo, canUndo, canRedo } = useTripHistory(initialRoute);
+  const [trafficBusy, setTrafficBusy] = useState(false);
+  const [trafficMessage, setTrafficMessage] = useState('');
+  const trafficAbort = useRef<AbortController | null>(null);
+  const trafficSeq = useRef(0);
+  const [, refreshTrafficClock] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => refreshTrafficClock(n => n + 1), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    trafficSeq.current++;
+    if (trafficAbort.current && !trafficAbort.current.signal.aborted) setTrafficMessage('路线已变化，已取消旧交通查询；请按当前路线重新查询。');
+    trafficAbort.current?.abort();
+    trafficAbort.current = null;
+    setTrafficBusy(false);
+  }, [route]);
+  useEffect(() => () => { trafficSeq.current++; trafficAbort.current?.abort(); }, []);
+  const trafficActions: TransportActions = {
+    busy: trafficBusy,
+    changeDay: (di, patch) => mutate(r => Object.assign(r.days[di], patch)),
+    changeLeg: (di, edge, patch) => mutate(r => {
+      const segment = r.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
+      if (segment) Object.assign(segment, patch);
+    }),
+    query: (di, edge) => {
+      if (trafficBusy) return;
+      const edges = edge ? [edge] : transport.legs(route, di).slice(0, 12);
+      if (!edges.length) return;
+      const controller = new AbortController(); trafficAbort.current = controller;
+      const seq = ++trafficSeq.current;
+      setTrafficBusy(true); setTrafficMessage('正在查询高德交通方案…');
+      void queryTransport(edges, controller.signal).then(result => {
+        if (seq !== trafficSeq.current) return;
+        trafficAbort.current = null;
+        mutate(draft => {
+          for (const e of edges) {
+            const segment = draft.days[di].transport?.find(s => s.from_id === e.from.id && s.to_id === e.to.id);
+            const snapshot = result.results.find(s => s.signature === transport.sign(e));
+            if (segment && snapshot) segment.snapshot = snapshot;
+          }
+        }, route);
+        setTrafficMessage(`交通查询返回：${result.stats.calls} 次请求，${result.stats.cache_hits} 次缓存命中${result.stats.reason ? ' · ' + result.stats.reason : ''}`);
+      }).catch(e => {
+        if (seq === trafficSeq.current && !controller.signal.aborted) {
+          trafficAbort.current = null;
+          const reason = e instanceof Error ? e.message : '交通查询失败，耗时未知';
+          mutate(draft => {
+            for (const edge of edges) {
+              const segment = draft.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
+              if (segment) segment.snapshot = { signature: transport.sign(edge), options: (['walk', 'bus', 'car'] as const).map(mode => ({ mode, status: 'unknown', reason, queried_at: new Date().toISOString(), source: 'amap', source_url: 'https://lbs.amap.com/api/webservice/guide/api/direction' })) };
+            }
+          }, route);
+          setTrafficMessage(reason);
+        }
+      }).finally(() => { if (seq === trafficSeq.current) setTrafficBusy(false); });
+    },
+  };
   const [outing, setOuting] = useState<OutingProgress>(() => loadProgress(tripSession));
   const [progressSaved, setProgressSaved] = useState(true);
   const [navKey, setNavKey] = useState<string | null>(null);
   const routeVisits = useMemo(() => visits(route), [route]);
+  useEffect(() => {
+    setOuting(p => {
+      const upgrade = (ids: string[]) => ids.map(id => routeVisits.find(v => v.legacyId === id)?.id || id);
+      const next = { ...p, completed: upgrade(p.completed), arrived: upgrade(p.arrived) };
+      return JSON.stringify(next) === JSON.stringify(p) ? p : next;
+    });
+  }, [routeVisits]);
   const navVisit = routeVisits.find(v => v.key === navKey);
   const dayVisits = navVisit ? routeVisits.filter(v => v.di === navVisit.di) : [];
-  const previousVisit = navVisit ? dayVisits[dayVisits.indexOf(navVisit) - 1] : undefined;
+  const previousPoint = navVisit ? transport.legs(route, navVisit.di).find(e => e.to.id === navVisit.point.id)?.from || dayVisits[dayVisits.indexOf(navVisit) - 1]?.point : undefined;
   useEffect(() => { setProgressSaved(saveProgress(tripSession, outing)); }, [outing, tripSession]);
   useEffect(() => {
     if (outing.day >= route.days.length && route.days.length) setOuting(p => ({ ...p, day: route.days.length - 1 }));
@@ -159,7 +225,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       setChatMsgs((prev) => [...prev, reply]);
       if (r.route && diff && diff.changed) {
         mutate((draft) => {
-          draft.days = r.route!.days;
+          // Model output cannot manufacture traffic query snapshots or change transport preferences.
+          draft.days = r.route!.days.map((d, di) => ({ ...d, traffic_mode: draft.days[di]?.traffic_mode, start_from_hotel: draft.days[di]?.start_from_hotel, transport: draft.days[di]?.transport }));
           draft.trip = r.route!.trip;
           draft.summary = r.route!.summary;
         }); // 同一历史栈：AI 改动可撤销
@@ -501,6 +568,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       const base = r.days[t.di];
       if (!base) return;
       const apply = (hh: Hotel) => {
+        if (hh.lat !== d.lat || hh.lng !== d.lng) { hh.source = 'user'; hh.confidence = 'high'; }
         hh.name = d.name; hh.note = d.note;
         hh.lat = d.lat; hh.lng = d.lng;
         hh.prices = d.prices.map((pr) => ({ ...pr }));
@@ -767,7 +835,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         view={mapView}
       />
 
-      {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousVisit?.point} city={route.trip.destination} onClose={() => setNavKey(null)} />}
+      {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}
       {!panelOpen && !chatOpen && !picking && !form && !hotelForm && (
         <button data-testid="outing-reentry" className="fixed left-3 right-3 bottom-8 md:left-auto md:w-[300px] z-[410] nav-primary shadow-card" onClick={() => { setOuting(p => ({ ...p, mode: "outing" })); setPanelOpen(true); }}>
           继续出行 · 第 {route.days[Math.min(outing.day, route.days.length - 1)]?.day || 1} 天 →
@@ -1058,6 +1126,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           <button data-testid="outing-mode" aria-pressed={outing.mode === "outing"} className={outing.mode === "outing" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "outing" }))}>出行视图</button>
         </div>
         {!progressSaved && <p role="status" className="text-xs text-danger px-[18px] py-2">浏览器无法保存出行进度，刷新后可能丢失。</p>}
+        {trafficMessage && <p role="status" className="text-xs text-ink-soft px-[18px] py-2">{trafficMessage}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :
           <Timeline
@@ -1076,6 +1145,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             onSaveHotelPrices={saveHotelPrices}
             view={mapView}
             onNavigate={setNavKey}
+            transportActions={trafficActions}
           />}
         </div>
         {/* 工具条 */}

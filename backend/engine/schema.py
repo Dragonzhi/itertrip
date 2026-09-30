@@ -4,6 +4,7 @@
 """
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -69,6 +70,9 @@ class Hotel(BaseModel):
     """当日酒店。"""
 
     name: str
+    id: str = ""
+    poi_id: str = ""
+    city_code: str = ""
     lat: float
     lng: float
     note: str = ""
@@ -123,6 +127,9 @@ class Place(BaseModel):
     """行程地点。"""
 
     name: str
+    id: str = ""
+    poi_id: str = ""
+    city_code: str = ""
     lat: float
     lng: float
     type: str = "attraction"  # attraction / food / transport / other
@@ -138,6 +145,35 @@ class Place(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TransportOption(BaseModel):
+    mode: Literal["walk", "bus", "car"]
+    status: Literal["ok", "unknown"]
+    reason: str = ""
+    duration_s: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    distance_m: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    walking_m: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    fee_yuan: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    tolls_yuan: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    fee_kind: str = ""
+    description: str = ""
+    queried_at: str
+    source: Literal["amap"] = "amap"
+    source_url: str = "https://lbs.amap.com/api/webservice/guide/api/direction"
+
+
+class TransportSnapshot(BaseModel):
+    signature: str
+    options: list[TransportOption] = Field(default_factory=list)
+
+
+class TransportSegment(BaseModel):
+    from_id: str
+    to_id: str
+    mode: Literal["", "walk", "bus", "car"] = ""
+    buffer_min: float = Field(default=0, ge=0, le=180)
+    snapshot: TransportSnapshot | None = None
+
+
 class DayPlan(BaseModel):
     """单日行程。"""
 
@@ -145,6 +181,10 @@ class DayPlan(BaseModel):
     theme: str = ""
     places: list[Place] = Field(default_factory=list)
     hotel: Hotel | None = None
+    # M26：可选交通设置与查询快照；旧路线兼容。查询结果只由交通服务生成。
+    traffic_mode: Literal["", "walk", "bus", "car"] = ""
+    start_from_hotel: bool | None = None
+    transport: list[TransportSegment] = Field(default_factory=list)
 
 
 class TripInfo(BaseModel):
