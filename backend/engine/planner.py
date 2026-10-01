@@ -170,7 +170,8 @@ async def plan_with_llm(req: dict, cfg: dict | None = None) -> RouteJSON:
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
-    return RouteJSON.model_validate(_extract_json(content))
+    from .weather import strip_generated
+    return RouteJSON.model_validate(strip_generated(_extract_json(content)))
 
 
 # ---------------- mock 规划器（Phase 1：坐标硬编码，无需 key 即可跑通全流程）----------------

@@ -990,7 +990,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 ):
                     yield ev
                 return
-            route = RouteJSON.model_validate(data)
+            from ..engine.weather import strip_generated
+            route = RouteJSON.model_validate(strip_generated(data))
             # M19 修复：提取路径此前漏了坐标基准转换（模型坐标是 WGS84，画在高德瓦片上偏移约 360~560m）
             route = route_to_gcj02(route)
             n_places = sum(len(d.places) for d in route.days)

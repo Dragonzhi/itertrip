@@ -49,6 +49,10 @@ powershell -ExecutionPolicy Bypass -File start.ps1 -Dev     # 开发模式：后
 
 发布后先确认「应用文件已准备」，再从桌面启动应用、关闭、断网重开；Android／iOS 和实际托管未由本次自动化验收，见 [M28 操作与验收清单](docs/M28_OFFLINE_PWA.md)。
 
+### M29 可选天气服务
+
+后台配置 `ITERTRIP_WEATHER_PROVIDER=qweather`、专属 `ITERTRIP_QWEATHER_HOST` 和 `ITERTRIP_QWEATHER_TOKEN`（按官方流程生成并更新 JWT）；或显式设 `ITERTRIP_WEATHER_PROVIDER=open_meteo`，商业客户填写 `ITERTRIP_OPEN_METEO_KEY`。密钥只留后端，未配置默认关闭，不影响编辑／导航。重启后端并重建完整前端，PWA 保存草稿后主动更新。接口缓存只在后端内存；反向代理不得缓存天气 POST 或带凭据请求。配置、预算及真实验证边界见 [M29 记录](docs/M29_WEATHER_ADJUSTMENT.md)。
+
 ## 一、后端部署（Railway，推荐）
 
 仓库已包含：`Dockerfile`、`railway.json`（Dockerfile 构建 + /api/health 健康检查）。

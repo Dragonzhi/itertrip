@@ -143,6 +143,7 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
       const labels = PLACE_FIELDS.filter(([f]) => norm(op[f] as string) !== norm(wp[f] as string)).map(([, l]) => l);
       if (JSON.stringify(op.visit) !== JSON.stringify(wp.visit)) labels.push('停留／预约');
       if (JSON.stringify(op.opening) !== JSON.stringify(wp.opening)) labels.push('开放资料');
+      if (JSON.stringify(op.weather_exposure) !== JSON.stringify(wp.weather_exposure)) labels.push('室内外属性');
       if (labels.length) updated.push({ di: w.di, pi: w.pi, name: (wp.name || "").trim(), labels });
     }
   }
@@ -165,6 +166,7 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
     if (posChanged) labels.push("位置");
     if (JSON.stringify(oh.visit) !== JSON.stringify(nh.visit)) labels.push('停留／预约');
     if (JSON.stringify(oh.opening) !== JSON.stringify(nh.opening)) labels.push('开放资料');
+    if (JSON.stringify(oh.weather_exposure) !== JSON.stringify(nh.weather_exposure)) labels.push('室内外属性');
     const hotelEntry: RouteDiff["hotels"][number] = { di, labels };
     if (pricesKey(oh.prices) !== pricesKey(nh.prices)) {
       labels.push("报价");

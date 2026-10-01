@@ -3,6 +3,7 @@ import MapView from "../components/MapView";
 import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import OfflinePanel from '../components/OfflinePanel';
+import WeatherPanel from '../components/WeatherPanel';
 import { isOnline, useOffline } from '../lib/offline';
 import { transport } from '../lib/transport';
 import { schedule } from '../lib/schedule';
@@ -78,6 +79,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const offline = useOffline();
   const { route, mutate, undo, redo, canUndo, canRedo, isCurrent } = useTripHistory(initialRoute);
   const [trafficBusy, setTrafficBusy] = useState(false);
+  const [weatherBlocking, setWeatherBlocking] = useState(false);
   const [trafficMessage, setTrafficMessage] = useState('');
   const trafficAbort = useRef<AbortController | null>(null);
   const trafficSeq = useRef(0);
@@ -1173,7 +1175,10 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         {trafficMessage && <p role="status" className="text-xs text-ink-soft px-[18px] py-2">{trafficMessage}</p>}
         {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
-          <OfflinePanel blocked={!progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
+          <OfflinePanel blocked={weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
+          <details open={outing.mode !== "outing"} className="my-2"><summary className="min-h-11 flex items-center cursor-pointer focus-ring">☂ 查看天气与局部调整</summary>
+          <WeatherPanel route={route} completed={completedIds} isCurrent={isCurrent} apply={(candidate,expected)=>mutate(r=>Object.assign(r,candidate),expected)} edit={scheduleActions.edit} onBlocking={setWeatherBlocking} blocked={!progressSaved || !!(form || hotelForm || scheduleTarget || picking || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
+          </details>
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
           {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :
           <Timeline
@@ -1302,12 +1307,12 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         />
       )}
     </div>
-    {scheduleTarget && scheduledPoint && <ScheduleEditor key={scheduleTarget.id} point={scheduledPoint} iso={schedule.dayDate(route,scheduleTarget.di)} city={route.trip.destination} onClose={() => setScheduleTarget(null)} onSave={(visit, opening) => {
+    {scheduleTarget && scheduledPoint && <ScheduleEditor key={scheduleTarget.id} point={scheduledPoint} iso={schedule.dayDate(route,scheduleTarget.di)} city={route.trip.destination} onClose={() => setScheduleTarget(null)} onSave={(visit, opening, exposure) => {
       if (!isCurrent(scheduleTarget.version)) return false;
       mutate(r => {
         const d = r.days[scheduleTarget.di];
         const p = [...d.places, ...(d.hotel ? [d.hotel] : [])].find(p => p.id === scheduleTarget.id);
-        if (p) { p.visit = visit; p.opening = opening; }
+        if (p) { p.visit = visit; p.opening = opening; p.weather_exposure = exposure; }
       }, scheduleTarget.version);
       return true;
     }} />}

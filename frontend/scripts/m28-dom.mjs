@@ -17,6 +17,7 @@ const consoleOutput = new VirtualConsole();
 consoleOutput.on('jsdomError', e => errors.push(e.message));
 consoleOutput.on('error', e => errors.push(String(e?.stack || e)));
 const pause = async () => { await new Promise(r => setTimeout(r, 30)); };
+const until = async predicate => { const end=Date.now()+2500; while(!predicate() && Date.now()<end) await pause(); assert.ok(predicate(),'asynchronous worker operation did not settle'); };
 async function open(savedEntries = []) {
   network.online = false;
   const restarted = worker();
@@ -123,7 +124,8 @@ assert.deepEqual(entries(), snapshot);
 assert.ok(text().includes('离线文件未准备完整'));
 assert.ok(![...storage.keys()].some(k => k.startsWith('itertrip-shell:')));
 online = true; network.online = true; w.dispatchEvent(new w.Event('online')); await pause();
-await click(byText('准备离线文件')); assert.ok(text().includes('应用文件已准备'));
+await until(()=>!byText('准备离线文件').disabled);
+await click(byText('准备离线文件')); await until(()=>text().includes('应用文件已准备'));
 assert.equal(applyCount, 0, 'update is never automatic');
 await click(byText('更新并重新打开')); assert.equal(applyCount, 1);
 assert.deepEqual(entries(), snapshot);

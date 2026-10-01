@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import admin, chat, export, geocode, llm, memory, plan, search, transport
+from .api import admin, chat, export, geocode, llm, memory, plan, search, transport, weather
 from .engine._llmutil import env_value
 
 app = FastAPI(
@@ -40,6 +40,7 @@ app.include_router(llm.router)
 app.include_router(admin.router)
 app.include_router(memory.router)
 app.include_router(transport.router)
+app.include_router(weather.router)
 
 
 @app.get("/api/health")

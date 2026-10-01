@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { RouteJSON, Place, Hotel, VisitPlan, OpeningFact } from '../types/route';
+import type { RouteJSON, Place, Hotel, VisitPlan, OpeningFact, WeatherExposure } from '../types/route';
+import {weather} from '../lib/weather';
 import { schedule, type ScheduleRow } from '../lib/schedule';
 import { onlineFetch, API_BASE } from '../api/client';
 
@@ -29,6 +30,7 @@ export function ScheduleVisit({point, row, onEdit}: {point: Place | Hotel; row?:
   return <section className="schedule-visit" data-testid="schedule-visit" onClick={e => e.stopPropagation()}>
     <div className="flex justify-between items-center gap-2"><strong>{schedule.fmt(row.start)} → {schedule.fmt(row.departure)}</strong>{onEdit && <button className="nav-secondary" onClick={onEdit}>安排／预约</button>}</div>
     <p>到达 {schedule.fmt(row.arrival)}{row.wait > 0 ? ` · 等待 ${row.wait} 分钟` : ''} · {point.visit?.duration_min == null ? row.hotel ? '酒店到达边界' : '停留未知' : `停留 ${point.visit.duration_min} 分钟（${point.visit.duration_source === 'user' ? '用户设置' : '估计'}）`}{row.fixed ? ' · 🔒 固定／已完成' : ''}{point.visit?.required ? ' · 必去' : ''}</p>
+    <p>天气属性：{weather.labels[weather.exposure(point)]}{point.weather_exposure?.confirmed_at && ` · 用户确认 ${point.weather_exposure.confirmed_at}`}</p>
     {r && <p>预约：{r.date || '日期未知'} {r.start}–{r.end} · {{needed: '待办理', pending: '待确认', confirmed: '用户记录已确认', cancelled: '已取消'}[r.status]}{schedule.url(r.url) && <a href={schedule.url(r.url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">打开提供的入口 ↗</a>}</p>}
     {row.fact?.known && row.fact.value && <p>开放资料：{row.fact.value.closed ? '当天关闭' : `${row.fact.value.open}–${row.fact.value.close}${row.fact.value.last_entry ? `，最后入场 ${row.fact.value.last_entry}` : ''}`} · 用户查阅后记录（{{official:'官方',map:'地图',user:'用户提供'}[row.fact.value.source_kind]}）<a href={schedule.url(row.fact.value.source_url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">来源 ↗</a><br/>查验 {row.fact.value.checked_at} · 有效 {row.fact.value.valid_from}–{row.fact.value.valid_to}</p>}
     {row.issues.map((text, i) => <p key={'i' + i} className="text-danger">⚠ {text}</p>)}
@@ -38,9 +40,10 @@ export function ScheduleVisit({point, row, onEdit}: {point: Place | Hotel; row?:
 }
 
 type Candidate = {title: string; url: string; excerpt: string};
-export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Place | Hotel; iso: string; city: string; onSave(v: VisitPlan, facts: OpeningFact[]): boolean; onClose(): void}) {
+export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Place | Hotel; iso: string; city: string; onSave(v: VisitPlan, facts: OpeningFact[], exposure?: WeatherExposure): boolean; onClose(): void}) {
   const [visit, setVisit] = useState<VisitPlan>(() => JSON.parse(JSON.stringify(point.visit || {duration_source: 'user', kind: 'visit'})));
   const [facts, setFacts] = useState<OpeningFact[]>(() => JSON.parse(JSON.stringify(point.opening || [])));
+  const [exposure, setExposure] = useState<WeatherExposure | undefined>(() => point.weather_exposure ? {...point.weather_exposure} : undefined);
   const [error, setError] = useState(''), [searching, setSearching] = useState(false), [candidates, setCandidates] = useState<Candidate[]>([]), [sourceMsg, setSourceMsg] = useState('');
   const panel = useRef<HTMLFormElement>(null), abort = useRef<AbortController>();
   useEffect(() => {
@@ -65,11 +68,17 @@ export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Plac
       if (reservation?.url && !schedule.url(reservation.url)) return setError('预约入口仅支持 http(s) 链接。');
       if (facts.some(f => f.confirmed && (!f.valid_from || !f.valid_to || f.valid_to < f.valid_from || !schedule.url(f.source_url)))) return setError('确认开放资料前，请补全有效日期范围和来源链接。');
       if (facts.some(f => f.confirmed && !f.closed && (schedule.clock(f.open) == null || schedule.clock(f.close) == null || schedule.clock(f.close)! <= schedule.clock(f.open)! || (f.entry_policy === 'last_entry' && (schedule.clock(f.last_entry) == null || schedule.clock(f.last_entry)! < schedule.clock(f.open)! || schedule.clock(f.last_entry)! > schedule.clock(f.close)!))))) return setError('已确认的开放资料需有完整同日时段，最后入场应落在开放时段内。');
-      if (onSave(visit, facts)) onClose();
+      if (onSave(visit, facts, exposure)) onClose();
       else setError('编辑期间路线已变化，草稿未写入。请取消后重新打开安排。');
     }}>
       <header className="flex justify-between items-center"><h2 id="schedule-title" className="font-bold text-lg">{point.name} · 时间安排</h2><button type="button" className="nav-secondary" onClick={onClose} aria-label="关闭时间安排">✕</button></header>
       <p className="text-xs text-ink-soft mt-2">原攻略时间保留。这里填写可计算的安排；每次保存可以撤销。手工改动固定时段仍会提示冲突。</p>
+      <fieldset className="mt-3"><legend>天气属性 · 按实际参观区域确认</legend>
+        <p className="text-xs">名称无法证明是室内。混合地点只有确认可以全程避雨后，才可改为室内。</p>
+        <label>室内外属性<select aria-label="室内外属性" value={exposure?.environment || 'unknown'} onChange={e => setExposure({environment:e.target.value as WeatherExposure['environment'], rain_sensitive:exposure?.rain_sensitive ?? true, source:'user', place_name:point.name, confirmed_at:new Date().toISOString()})}>{Object.entries(weather.labels).map(([v,t]) => <option key={v} value={v}>{t}</option>)}</select></label>
+        <label className="flex gap-2 items-center my-2"><input type="checkbox" checked={exposure?.rain_sensitive ?? true} onChange={e => setExposure({environment:exposure?.environment || 'unknown', rain_sensitive:e.target.checked, source:'user', place_name:point.name, confirmed_at:new Date().toISOString()})}/>下雨影响游览（交通步行仍单独检查）</label>
+        {exposure && <p className="text-xs">用户确认：{exposure.confirmed_at}</p>}
+      </fieldset>
       <div className="grid grid-cols-2 gap-3 mt-3">
         <label>停留分钟<input type="number" min="0" max="1440" step="1" value={visit.duration_min ?? ''} onChange={e => patch({duration_min: e.target.value === '' ? null : Number(e.target.value)})} /></label>
         <label>时长来源<select value={visit.duration_source || 'user'} onChange={e => patch({duration_source: e.target.value as VisitPlan['duration_source']})}><option value="user">用户设置</option><option value="estimate">估计（待确认）</option></select></label>

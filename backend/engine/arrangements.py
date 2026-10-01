@@ -31,6 +31,7 @@ def protect_arrangements(old: dict, proposed: dict) -> tuple[dict, list[str]]:
                 q["id"] = p["id"]
             q["visit"] = deepcopy(p.get("visit"))
             q["opening"] = deepcopy(p.get("opening", []))
+            q["weather_exposure"] = deepcopy(p.get("weather_exposure"))
             if hotel:
                 for quote in q.get("prices", []):
                     prior = next((v for v in p.get("prices", []) if v.get("platform") == quote.get("platform") and v.get("price") == quote.get("price") and bool(v.get("breakfast")) == bool(quote.get("breakfast"))), {})
@@ -40,7 +41,7 @@ def protect_arrangements(old: dict, proposed: dict) -> tuple[dict, list[str]]:
     # For genuinely new points, the model may propose prose but cannot mint confirmed records.
     for p, *_ in after:
         if id(p) not in matched:
-            p.pop("visit", None); p.pop("opening", None)
+            p.pop("visit", None); p.pop("opening", None); p.pop("weather_exposure", None)
             for quote in p.get("prices", []):
                 quote["breakfast_known"] = False
                 for key in ("source_url", "queried_at", "check_in", "check_out", "room", "occupancy", "cancellation", "unit"):
@@ -57,4 +58,9 @@ def protect_arrangements(old: dict, proposed: dict) -> tuple[dict, list[str]]:
             new.setdefault("trip", {})[key] = old["trip"][key]
         else:
             new.get("trip", {}).pop(key, None)
+    for key in ("weather", "weather_policy"):
+        if key in old:
+            new[key] = deepcopy(old[key])
+        else:
+            new.pop(key, None)
     return new, reasons

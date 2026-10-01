@@ -475,6 +475,8 @@
 <script>__EXPORT_TRANSPORT__</script>
 <script>__SCHEDULE_CORE__</script>
 <script>__EXPORT_SCHEDULE__</script>
+<script>__WEATHER_CORE__</script>
+<script>__EXPORT_WEATHER__</script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 /* ============ 导出用纯净快照 ============
@@ -488,6 +490,7 @@ IterTripTransport.normalize(TRIP);
 IterTripExportNavigation.init(() => TRIP);
 IterTripExportTransport.init(() => TRIP);
 IterTripExportSchedule.init(() => TRIP);
+IterTripExportWeather.init(() => TRIP);
 /* ==================================== */
 if (typeof L !== 'undefined') {
 const ESC = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
@@ -612,6 +615,7 @@ function render(){
     const body = block.querySelector('.day-body');
     IterTripExportTransport.summary(body, di);
     IterTripExportSchedule.summary(body, di);
+    IterTripExportWeather.summary(body, di);
     const itemRefs = {};
 
     (day.places||[]).forEach((p, pi) => {

@@ -20,6 +20,8 @@ TRANSPORT_PATH = NAVIGATION_PATH.parent / "transport.js"
 EXPORT_TRANSPORT_PATH = TEMPLATE_PATH.parent / "transport.js"
 SCHEDULE_PATH = NAVIGATION_PATH.parent / "schedule.js"
 EXPORT_SCHEDULE_PATH = TEMPLATE_PATH.parent / "schedule.js"
+WEATHER_PATH = NAVIGATION_PATH.parent / "weather.js"
+EXPORT_WEATHER_PATH = TEMPLATE_PATH.parent / "weather.js"
 
 
 class BuildError(Exception):
@@ -97,4 +99,6 @@ def build_html(route: dict) -> str:
             .replace("__EXPORT_TRANSPORT__", EXPORT_TRANSPORT_PATH.read_text(encoding="utf-8"))
             .replace("__SCHEDULE_CORE__", SCHEDULE_PATH.read_text(encoding="utf-8"))
             .replace("__EXPORT_SCHEDULE__", EXPORT_SCHEDULE_PATH.read_text(encoding="utf-8"))
+            .replace("__WEATHER_CORE__", WEATHER_PATH.read_text(encoding="utf-8"))
+            .replace("__EXPORT_WEATHER__", EXPORT_WEATHER_PATH.read_text(encoding="utf-8"))
             .replace(PLACEHOLDER, data_json))

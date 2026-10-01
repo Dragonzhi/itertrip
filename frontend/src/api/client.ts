@@ -1,4 +1,4 @@
-import type { PlanRequest, RouteJSON, TransportSnapshot } from "../types/route";
+import type { PlanRequest, RouteJSON, TransportSnapshot, Place, Hotel, WeatherForecast } from "../types/route";
 import type { Edge } from '../lib/transport';
 import { transport } from '../lib/transport';
 import type { ClarifyQuestion, TraceStats, TraceStep } from "../types/chat";
@@ -21,6 +21,12 @@ export async function onlineFetch(input: RequestInfo | URL, init?: RequestInit):
  * C-1 单进程形态下同源，留空即可。
  */
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
+
+export async function queryWeather(points: (Place | Hotel)[], signal?: AbortSignal): Promise<{results: WeatherForecast[]; error: string; calls: number | null}> {
+  const resp = await onlineFetch(API_BASE + '/api/route/weather', {method:'POST', headers:{'Content-Type':'application/json'}, signal, body:JSON.stringify({points:points.slice(0,12)})});
+  if (!resp.ok) throw new Error(`天气查询失败 (${resp.status})，旧记录未作为新预报。`);
+  return resp.json();
+}
 
 export async function queryTransport(edges: Edge[], signal?: AbortSignal): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
   const resp = await onlineFetch(API_BASE + '/api/route/transport', {
