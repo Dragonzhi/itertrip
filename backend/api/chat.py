@@ -157,6 +157,9 @@ class ChatRequest(BaseModel):
     route: dict | None = None
     # M15 截图解析：data:image/*;base64 data URL 列表（仅提取模式接受）
     images: list[str] = Field(default_factory=list)
+    agent_version: str = Field(default='', max_length=80)
+    completed_ids: list[str] = Field(default_factory=list, max_length=500)
+    agent_schedule: list[dict] = Field(default_factory=list, max_length=30)
 
 
 # ---------------- M15 截图（多模态输入） ----------------
@@ -767,6 +770,23 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             model=model_name, source=cfg_source,
         ))
 
+        # M30: bounded domain-tool path. Legacy prose/coordinate/price edits retain their
+        # existing parser; frontend always determines success from the actual applied diff.
+        from ..engine import agent_turn
+        if edit_mode and req.agent_version and agent_turn.handles(req.prompt):
+            try:
+                async with asyncio.timeout(90):
+                    async for frame in agent_turn.run(req, cfg):
+                        event = frame.pop('event')
+                        if event == 'reply':
+                            frame['stats'].update(model=model_name, provider=cfg_source)
+                        yield _sse(event, frame)
+            except TimeoutError:
+                yield _sse('reply', dict(reply='行程未修改：Agent 已达到 90 秒预算，请分步重试。', intent='chitchat', route=None))
+            except Exception as error:
+                yield _sse('error', dict(detail='Agent 未修改行程：' + (str(error)[:180] if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__)))
+            return
+
         # M18：提取模式检索长期记忆，注入 user payload 尾部（编辑模式不注入：上下文已含完整 route）
         if edit_mode:
             mem_ref, mem_meta = "", {"hits": 0, "reason": "编辑模式不注入（上下文已含完整路线）", "ms": 0}
@@ -1320,7 +1340,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         edit_detail = f"{len(data['__route'].get('days') or [])} 天 · {edited_places} 个地点"
         if price_recs:
             edit_detail += f" · 报价已设为 ¥{price_spec['price']:.0f}"
-        yield emit(_trace_step("edit", "edit", "done", "已应用路线改动", edit_detail))
+        yield emit(_trace_step("edit", "edit", "done", "路线候选已生成，等待客户端核对实际变更", edit_detail))
         for ev in _reply_events(
             tr,
             _summary_step(

@@ -122,6 +122,7 @@ export function useChatStream(opts: Options): ChatStreamState {
 
     try {
       const r = await chatStream(req, settings, onEvent, ac.signal);
+      if (ac.signal.aborted || reasonRef.current) throw new DOMException('已停止生成', 'AbortError');
       const merged = r.trace && r.trace.length ? r.trace : traceRef.current;
       cbs.current.onReply({ ...r, trace: merged.length ? merged : undefined }, textRef.current, merged);
     } catch (e) {

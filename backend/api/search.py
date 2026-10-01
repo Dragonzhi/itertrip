@@ -69,16 +69,16 @@ async def search_facts(req: FactSearchRequest) -> dict:
     """Return source leads only. Never turn snippets into confirmed facts or reservations."""
     key = env_value("ITERTRIP_SEARCH_API_KEY").strip()
     if not key:
-        return {"candidates": [], "note": "未配置搜索服务，请直接查阅地点官方网站／官方公告或地图资料并记录来源。"}
+        return {"candidates": [], "calls": 0, "note": "未配置搜索服务，请直接查阅地点官方网站／官方公告或地图资料并记录来源。"}
     try:
         async with httpx.AsyncClient(timeout=12) as client:
             resp = await client.post(env_value("ITERTRIP_SEARCH_BASE_URL", "https://api.tavily.com").rstrip("/") + "/search", json={"api_key": key, "query": f"{req.city} {req.name} {req.date} 官方公告 开放时间 最后入场 预约 闭馆", "max_results": 5})
             resp.raise_for_status()
             results = resp.json().get("results", [])
         candidates = [{"title": str(r.get("title") or "资料线索")[:200], "url": _url(str(r.get("url") or "")), "excerpt": str(r.get("content") or "")[:900]} for r in results[:5] if isinstance(r, dict) and _url(str(r.get("url") or ""))]
-        return {"candidates": candidates, "note": "搜索线索尚未核实。优先打开地点官方公告／地图页面，核对具体场馆、日期及例外，再确认结构化资料。"}
+        return {"candidates": candidates, "calls": 1, "note": "搜索线索尚未核实。优先打开地点官方公告／地图页面，核对具体场馆、日期及例外，再确认结构化资料。"}
     except Exception:
-        return {"candidates": [], "note": "资料搜索暂不可用，请手工查阅来源；当前开放规则仍未评估。"}
+        return {"candidates": [], "calls": 1, "note": "资料搜索暂不可用，请手工查阅来源；当前开放规则仍未评估。"}
 
 
 def _extract_prices(text: str) -> list[float]:

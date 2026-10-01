@@ -24,6 +24,7 @@ def strip_generated(data):
     """A model cannot mint user confirmations or external-service forecast provenance."""
     data.pop('weather', None)
     data.pop('weather_policy', None)
+    data.pop('agent_receipts', None)
     for day in data.get('days', []):
         for p in [*day.get('places', []), *([day['hotel']] if day.get('hotel') else [])]:
             p.pop('weather_exposure', None)

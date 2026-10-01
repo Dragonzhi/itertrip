@@ -15,6 +15,7 @@ const KIND_ICON: Record<TraceKind | string, string> = {
   geocode: "📍",
   facts: "🗓",
   edit: "🛠",
+  tool: "🔎",
   summary: "🏁",
 };
 

@@ -4,6 +4,8 @@ import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import OfflinePanel from '../components/OfflinePanel';
 import WeatherPanel from '../components/WeatherPanel';
+import AgentPreview from '../components/AgentPreview';
+import {agent, type AgentProposal, type AgentCandidate, type AgentEvidence} from '../lib/agent';
 import { isOnline, useOffline } from '../lib/offline';
 import { transport } from '../lib/transport';
 import { schedule } from '../lib/schedule';
@@ -154,6 +156,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const [scheduleTarget, setScheduleTarget] = useState<{di:number; id:string; version:RouteJSON} | null>(null);
   const [scheduleMsg, setScheduleMsg] = useState('');
   const aiVersion = useRef<RouteJSON>();
+  const agentVersion = useRef('');
+  const agentWeatherRequired=useRef(false);
+  const [agentPending,setAgentPending]=useState<{proposal:AgentProposal;candidate:AgentCandidate;expected:RouteJSON;messageId:string;completedKey:string;evidence:AgentEvidence[];requireWeather:boolean}|null>(null);
   const completedIds = visits(route).filter(v => outing.completed.includes(v.id)).map(v => v.point.id!).filter(Boolean);
   const scheduleActions: ScheduleActions = {
     completed: completedIds,
@@ -239,6 +244,21 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
    */
   const stream = useChatStream({
     onReply: (r, partial, trace) => {
+      if (r.agent_proposal) {
+        const id=uid(), stale=!isCurrent(aiVersion.current!) || r.agent_proposal.base_version!==agentVersion.current;
+        const moving=r.agent_proposal.actions.some(a=>a.op==='move_place'),requireWeather=moving&&agentWeatherRequired.current;
+        const candidate=agent.prepare(route,r.agent_proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct||requireWeather),r.agent_evidence,requireWeather);
+        const diff=diffRoute(route,candidate.route);
+        let applied=false, content='修改预览已准备，尚未应用。';
+        if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'生成期间路线已变化，请重新发起修改。':candidate.reasons.join('；')||'操作没有实际变化。');
+        else if(r.agent_direct) {
+          applied=mutate(draft=>Object.assign(draft,candidate.route),aiVersion.current);
+          content=applied?'已按要求更新行程。'+(candidate.unknown.length?'其他日程条件仍有未评估项，请在时间安排中查看。':''):'行程未修改：路线已变化，请重试。';
+        } else setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[],requireWeather});
+        const actualTrace=[...trace,{id:'agent-client',kind:'edit' as const,status:applied?'done' as const:'warn' as const,title:applied?'已应用实际变更':content,detail:applied?diff.summary.join('；'):'行程尚未修改'}];
+        setChatMsgs(prev=>[...prev,{id,role:'assistant',content,changed:applied,changeSummary:applied?diff.summary:undefined,trace:actualTrace,stats:r.stats}]);
+        return;
+      }
       if (r.route) {
         const guarded = schedule.protect(route, r.route, completedIds);
         if (aiVersion.current !== route || guarded.reasons.length) {
@@ -246,26 +266,25 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         } else r = {...r, route: guarded.route};
       }
       const diff: RouteDiff | null = r.route ? diffRoute(route, r.route) : null;
+      let applied=false;
+      if(r.route&&diff?.changed) applied=mutate(draft=>{
+        draft.days=r.route!.days.map((d,di)=>({...d,traffic_mode:draft.days[di]?.traffic_mode,start_from_hotel:draft.days[di]?.start_from_hotel,transport:draft.days[di]?.transport}));
+        draft.trip=r.route!.trip; draft.summary=r.route!.summary;
+      },aiVersion.current);
       const reply: ChatMessage = {
         id: uid(),
         role: "assistant",
-        content: r.reply || partial,
+        content: r.route ? (applied?'已更新行程。':'行程未修改：没有实际变化或路线已更新，请重新发起。') : (r.reply || partial),
         route: r.route || undefined,
-        changed: !!(diff && diff.changed),
-        changeSummary: diff && diff.changed ? diff.summary : undefined,
+        changed: applied,
+        changeSummary: applied ? diff?.summary : undefined,
         questions: r.questions,
         trace: trace.length ? trace : undefined,
         stats: r.stats,
         geo: coordDigest(r.route) || undefined, // M24：坐标来源/降级摘要随消息常驻
       };
       setChatMsgs((prev) => [...prev, reply]);
-      if (r.route && diff && diff.changed) {
-        mutate((draft) => {
-          // Model output cannot manufacture traffic query snapshots or change transport preferences.
-          draft.days = r.route!.days.map((d, di) => ({ ...d, traffic_mode: draft.days[di]?.traffic_mode, start_from_hotel: draft.days[di]?.start_from_hotel, transport: draft.days[di]?.transport }));
-          draft.trip = r.route!.trip;
-          draft.summary = r.route!.summary;
-        }, aiVersion.current); // 同一历史栈：AI 改动可撤销；拒绝旧响应
+      if (applied && diff) {
         const keys: string[] = [
           ...diff.added.map((a) => "d" + a.di + "-p" + a.pi),
           ...diff.moved.map((m) => "d" + m.toDi + "-p" + m.toPi),
@@ -297,6 +316,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       ]);
     },
   });
+  useEffect(()=>()=>stream.stop(),[stream.stop]);
 
   useEffect(() => {
     if (chatOpen) chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight });
@@ -333,6 +353,10 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     const t = text.trim();
     if (!t || stream.sending) return;
     if (!isOnline()) return;
+    if(agentPending) {
+      setChatMsgs(prev=>prev.map(m=>m.id===agentPending.messageId?{...m,content:'上一组预览已取消，行程未修改。'}:m));
+      setAgentPending(null);
+    }
     const userMsg: ChatMessage = { id: uid(), role: "user", content: t };
     const history = chatMsgs
       .filter((m) => !m.error)
@@ -341,7 +365,28 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     setChatMsgs((prev) => [...prev, userMsg]);
     setChatInput("");
     aiVersion.current = route;
-    void stream.send({ prompt: t, history, route }, settings);
+    agentVersion.current=uid();
+    agentWeatherRequired.current=/雨|天气|降水/.test(t);
+    void stream.send({ prompt: t, history, route, agent_version:agentVersion.current, completed_ids:completedIds, agent_schedule:route.days.map((_,di)=>schedule.calculate(route,di,completedIds)) }, settings);
+  };
+
+  const finishAgentPreview=(apply:boolean)=>{
+    const pending=agentPending;
+    if(!pending) return;
+    let content='已取消预览，行程未修改。', changed=false, summary:string[]|undefined;
+    if(apply) {
+      const stale=!isCurrent(pending.expected)||pending.completedKey!==JSON.stringify([...completedIds].sort());
+      const candidate=agent.prepare(route,pending.proposal,pending.proposal.base_version,completedIds,pending.proposal.actions.some(a=>a.op==='move_place'),pending.evidence,pending.requireWeather);
+      const diff=diffRoute(route,candidate.route);
+      if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'预览期间路线或出行进度已变化，请重新生成。':candidate.reasons.join('；')||'没有实际变化。');
+      else {
+        changed=mutate(draft=>Object.assign(draft,candidate.route),pending.expected);
+        summary=changed?diff.summary:undefined;
+        content=changed?'已应用这组修改，可撤销。'+(candidate.unknown.length?'仍有日程条件未充分评估。':''):'行程未修改：路线已变化。';
+      }
+    }
+    setChatMsgs(prev=>prev.map(m=>m.id===pending.messageId?{...m,content,changed,changeSummary:summary,trace:[...(m.trace||[]),{id:'agent-commit',kind:'edit',status:changed?'done':'warn',title:content,detail:summary?.join('；')}]}:m));
+    setAgentPending(null);
   };
 
   const activeDay = useMemo(() => {
@@ -1038,6 +1083,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                 {m.role === "assistant" && m.changed && (
                   <div className="text-xs text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}
+                {m.stats?.protocol&&<p className="text-[11px] text-ink-soft mt-2">工具 {m.stats.tool_calls??0} 次 · HTTP {m.stats.http_calls??'未知'} 次 · 已报告 token {m.stats.total_tokens??'未知'} · 费用未知</p>}
+                {agentPending?.messageId===m.id&&<AgentPreview proposal={agentPending.proposal} candidate={agentPending.candidate} original={agentPending.expected} disabled={stream.sending||!!(form||hotelForm||scheduleTarget||picking||trafficBusy||weatherBlocking)} apply={()=>finishAgentPreview(true)} cancel={()=>finishAgentPreview(false)}/>}
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
                 <div className="w-full max-w-[90%]">
@@ -1175,9 +1222,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         {trafficMessage && <p role="status" className="text-xs text-ink-soft px-[18px] py-2">{trafficMessage}</p>}
         {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
-          <OfflinePanel blocked={weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
+          <OfflinePanel blocked={!!agentPending || weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
           <details open={outing.mode !== "outing"} className="my-2"><summary className="min-h-11 flex items-center cursor-pointer focus-ring">☂ 查看天气与局部调整</summary>
-          <WeatherPanel route={route} completed={completedIds} isCurrent={isCurrent} apply={(candidate,expected)=>mutate(r=>Object.assign(r,candidate),expected)} edit={scheduleActions.edit} onBlocking={setWeatherBlocking} blocked={!progressSaved || !!(form || hotelForm || scheduleTarget || picking || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
+          <WeatherPanel route={route} completed={completedIds} isCurrent={isCurrent} apply={(candidate,expected)=>mutate(r=>Object.assign(r,candidate),expected)} edit={scheduleActions.edit} onBlocking={setWeatherBlocking} blocked={!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />
           </details>
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
           {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :

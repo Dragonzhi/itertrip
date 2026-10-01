@@ -58,7 +58,7 @@ def protect_arrangements(old: dict, proposed: dict) -> tuple[dict, list[str]]:
             new.setdefault("trip", {})[key] = old["trip"][key]
         else:
             new.get("trip", {}).pop(key, None)
-    for key in ("weather", "weather_policy"):
+    for key in ("weather", "weather_policy", "agent_receipts"):
         if key in old:
             new[key] = deepcopy(old[key])
         else:

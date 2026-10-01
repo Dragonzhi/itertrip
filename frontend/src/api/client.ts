@@ -106,9 +106,15 @@ export interface ChatStreamRequest {
   route?: RouteJSON | null;
   history?: { role: "user" | "assistant"; content: string }[];
   images?: string[];
+  agent_version?: string;
+  completed_ids?: string[];
+  agent_schedule?: import('../lib/schedule').ScheduleResult[];
 }
 
 export interface ChatStreamResult {
+  agent_proposal?: import('../lib/agent').AgentProposal;
+  agent_direct?: boolean;
+  agent_evidence?: import('../lib/agent').AgentEvidence[];
   reply: string;
   intent: "route_edit" | "chitchat";
   route: RouteJSON | null;
@@ -135,6 +141,7 @@ export async function chatStream(
     body: JSON.stringify(req),
     signal,
   });
+  if (signal?.aborted) throw new DOMException('已停止生成', 'AbortError');
   if (!resp.ok || !resp.body) {
     const detail = await resp.text();
     let msg = detail;
@@ -153,6 +160,7 @@ export async function chatStream(
   let gotReply = false;
   for (;;) {
     const { done, value } = await reader.read();
+    if (signal?.aborted) { await reader.cancel(); throw new DOMException('已停止生成', 'AbortError'); }
     if (done) break;
     buf += decoder.decode(value, { stream: true });
     let idx;
@@ -180,6 +188,9 @@ export async function chatStream(
         final = {
           reply: payload.reply || "", intent: payload.intent || "chitchat", route: payload.route ?? null,
           questions: payload.questions || undefined, trace: payload.trace, stats: payload.stats,
+          agent_proposal: (payload as ChatStreamEvent & Pick<ChatStreamResult,'agent_proposal'>).agent_proposal,
+          agent_direct: (payload as ChatStreamEvent & Pick<ChatStreamResult,'agent_direct'>).agent_direct,
+          agent_evidence: (payload as ChatStreamEvent & Pick<ChatStreamResult,'agent_evidence'>).agent_evidence,
         };
       }
     }

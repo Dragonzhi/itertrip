@@ -15,7 +15,7 @@ export interface RouteDiff {
    * M22.3 之前这几项完全没参与 diff —— 于是「改门票」「改备注」这类只动字段的修改
    * 会被 `changed=false` 判成「没有变化」，整条新路线被前端丢弃（用户以为没生效）。
    */
-  updated: { di: number; pi: number; name: string; labels: string[] }[];
+  updated: { di: number; pi: number; name: string; labels: string[]; detail?: string }[];
   /** 酒店信息变化（名称/备注/位置/报价）；`prices` 为变更后的报价数值，便于叙述 */
   hotels: { di: number; labels: string[]; prices?: number[] }[];
   /** 天主题变化 */
@@ -144,7 +144,14 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
       if (JSON.stringify(op.visit) !== JSON.stringify(wp.visit)) labels.push('停留／预约');
       if (JSON.stringify(op.opening) !== JSON.stringify(wp.opening)) labels.push('开放资料');
       if (JSON.stringify(op.weather_exposure) !== JSON.stringify(wp.weather_exposure)) labels.push('室内外属性');
-      if (labels.length) updated.push({ di: w.di, pi: w.pi, name: (wp.name || "").trim(), labels });
+      const detail:string[]=[];
+      if(op.visit?.duration_min!==wp.visit?.duration_min) detail.push(`停留 ${wp.visit?.duration_min??'未设置'} 分钟`);
+      if(!!op.visit?.locked!==!!wp.visit?.locked) detail.push(wp.visit?.locked?'已锁定':'已解锁');
+      if(JSON.stringify(op.visit?.reservation)!==JSON.stringify(wp.visit?.reservation)&&wp.visit?.reservation) {
+        const v=wp.visit.reservation;
+        detail.push(`预约 ${v.date} ${v.start}–${v.end}（${v.status==='confirmed'?'已确认':'待确认'}）`);
+      }
+      if (labels.length) updated.push({ di: w.di, pi: w.pi, name: (wp.name || "").trim(), labels, detail:detail.join('；') });
     }
   }
 
@@ -194,7 +201,7 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
   }
   for (const a of added) summary.push("新增了「" + a.name + "」（第 " + (a.di + 1) + " 天）");
   for (const r of removed) summary.push("从第 " + (r.di + 1) + " 天移除了「" + r.name + "」");
-  for (const u of updated) summary.push("更新了「" + u.name + "」的" + u.labels.join("、"));
+  for (const u of updated) summary.push("更新了「" + u.name + "」的" + u.labels.join("、")+(u.detail?'（'+u.detail+'）':''));
   for (const h of hotels) {
     const day = "第 " + (h.di + 1) + " 天";
     if (h.labels.includes("新增酒店")) summary.push(day + "新增了酒店");

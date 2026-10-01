@@ -309,6 +309,11 @@ class TripInfo(BaseModel):
     date_source: str = ""
 
 
+class AgentReceipt(BaseModel):
+    id: str = Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
+    payload: str = Field(max_length=16000)
+
+
 class RouteJSON(BaseModel):
     """route JSON 顶层结构（注入模板的 __TRIP_DATA__）。"""
 
@@ -317,3 +322,4 @@ class RouteJSON(BaseModel):
     summary: list[str] = Field(default_factory=list)
     weather: list[WeatherForecast] = Field(default_factory=list, max_length=64)
     weather_policy: WeatherPolicy | None = None
+    agent_receipts: list[AgentReceipt] = Field(default_factory=list, max_length=1000)

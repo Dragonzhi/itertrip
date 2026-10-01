@@ -140,6 +140,8 @@ export interface RouteJSON {
   summary?: string[];
   weather?: WeatherForecast[];
   weather_policy?: { probability: number; precipitation_mm: number };
+  /** Applied domain transactions; preserved by undo, persistence and export. */
+  agent_receipts?: {id:string;payload:string}[];
 }
 
 export interface WeatherExposure {

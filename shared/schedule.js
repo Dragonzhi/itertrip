@@ -170,6 +170,7 @@
     }));
     next.trip.start_date = previous.trip.start_date; next.trip.date_source = previous.trip.date_source; next.trip.dates = previous.trip.dates;
     next.weather = previous.weather; next.weather_policy = previous.weather_policy;
+    next.agent_receipts = previous.agent_receipts;
     return { route: refreshClosures(transport.normalize(next, previous)), reasons };
   }
   function comparable(p, checkIn, checkOut) {

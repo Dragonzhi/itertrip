@@ -15,7 +15,7 @@ export interface ClarifyQuestion {
 
 /* ---------- M19 决策轨迹：把 AI 的关键决策摊开给用户看（替代「盲盒」体验） ---------- */
 
-export type TraceKind = "provider" | "memory" | "llm" | "retry" | "geocode" | "facts" | "edit" | "summary";
+export type TraceKind = "provider" | "memory" | "llm" | "retry" | "geocode" | "facts" | "edit" | "summary" | "tool";
 
 export type TraceStatus = "run" | "done" | "warn" | "fail" | "skip";
 
@@ -32,6 +32,14 @@ export interface TraceStep {
 
 /** 本轮统计（reply.stats）：耗时/尝试次数/地点数/命中记忆数/实际使用的模型。 */
 export interface TraceStats {
+  tool_calls?: number;
+  http_calls?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  usage_complete?: boolean;
+  cost_usd?: number | null;
+  protocol?: string;
   elapsed_ms?: number;
   attempts?: number;
   places?: number;
