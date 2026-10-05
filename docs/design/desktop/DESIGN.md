@@ -1,28 +1,30 @@
-# M31 Desktop Design
+# Desktop Design · A 轻盈行程
+
+2026-10-05 用户在查看三版草图后选择 A。本文为下一轮深化规范，正式代码仍为此前 M31 工作台。依据见 [方向确认](research-2026-10/direction-approved.md)；视觉参照为 [A 草图](research-2026-10/design-demos/a-itinerary.html)。
 
 ## 1. Visual Theme & Atmosphere
-Warm travel workspace. The itinerary, rather than system status, leads the page. Desktop planning only (>=1024px).
+明亮、轻快、可阅读的旅行行程。行程为主体，AI 为调整能力，地图为地理辅助。电脑端用户先看今天的时间安排、交通代价和问题，再查看依据或修改。范围为桌面规划页（>=1024px）。
 
 ## 2. Color
-Paper #FAF6F0; ink #2B2B28; muted #6B6B64; moss #1F6B54; pale moss #E3EFE8; gold #C8903C; line #E8E0D4; danger #9C4038. White surfaces distinguish the itinerary and inspector. Day colors remain map identifiers.
+白色主内容；浅灰背景 #FAFBFC；正文 #242B35；次级文字 #69727D；分隔线 #E9EBEE；珊瑚主操作 #C84C37；浅选中背景 #FFF2ED；地图与辅助信息蓝灰 #536E8C；风险 #96600C，浅风险底 #FFF5DD。地图沿用按天的路线识别色。正文与可交互文字的对比度在正式实现中检查。
 
 ## 3. Typography
-Local system/CJK fonts, no network fonts. Body 14px, supporting text >=12px, title 20px, day title 18px. Times use tabular numerals. Long names wrap in content; toolbar titles truncate with full title available.
+本地中文字体，不加载在线字体。正文 14px，辅助文字 >=12px；行程标题约 28px，当天主题约 20px。到达时间比离开时间更醒目，时间数字对齐。长名称换行，工具栏标题截断时提供完整名称。
 
 ## 4. Spacing & Grid
-4px base; 8/12/16/24px spacing. Toolbar 80px. >=1280px: 360px itinerary, flexible map, optional 320px inspector. 1024–1279px: 320px itinerary/inspector shared column plus map. Independent scrolling, no body overflow. At <1024px use existing layout.
+4px 基础节奏，使用 8/12/16/24/32px 间距。顶部行程标题、核心操作与横向日期导航形成清楚层次。>=1280px 初始约 58% 行程 / 42% 地图与地点详情；行程有足够阅读宽度，地图拥有实际布局区域。1024–1279px 以保持行程可读与操作可访问为原则，辅助内容具体切换方式需真实浏览器验证。<1024px 保留现有手机行为。
 
 ## 5. Layout & Composition
-Toolbar: home/title/date, undo/redo, AI, export, more. Left: day selector, schedule/transport/weather summary, visits with connecting travel rows, add. Map owns its actual rectangle. Inspector: selected place/hotel/leg, AI, weather, map settings, offline management. Only one auxiliary surface visible at a time.
+顶部显示行程名称、出发日期、撤销／重做、AI 调整、导出；次级设置归入菜单。左侧宽幅当天行程依次呈现主题、天气与受影响时段、诚实摘要、地点和交通阅读流、住宿。右侧地图辅助查看路线，选中地点的详情提供编辑、预约与导航入口。AI、交通比较与天气候选按需展开，预览的变更与确认结果仍以行程内容表达。
 
 ## 6. Components
-Primary moss button, bordered secondary button, quiet icon action with text/title. Itinerary rows show arrival/departure/duration and urgent conflicts. Unknown and partial figures explicitly labelled. Detail shows full sources, facts, notes, hotel prices and explicit edit/booking/navigation/focus actions. Use simple inline SVGs for workspace actions. Preserve existing modal validation and reusable business components.
+珊瑚色主按钮、边框次级按钮与文字操作；地点以连续时间线为主，仅选中项明显强调。交通段位于两站之间并可直接比较，未知和部分数据明确标注。天气提示简洁地连接具体地点与时段。详情展示完整依据、备注、费用和已有来源；复用地点、酒店及预约表单，保留保存校验。操作图标统一 SVG。
 
 ## 7. Motion & Interaction
-Single click selects, double click focuses map. Day selection highlights/fits corresponding map day. Panel resizing invalidates map size without resetting zoom. Selection uses stable visit/edge IDs. Switching inspector views retains chat and weather state. Edits share existing undo; UI changes do not create history. Keyboard-visible focus; reduced motion supported. Native drag plus keyboard-accessible move/cross-day controls.
+单击选中并联动详情与地图；主动聚焦才改变地图视野。切换日期高亮对应路线，地图容器变化执行尺寸更新。稳定地点／交通 ID、撤销与旧异步结果保护沿用 M31。AI 的对话、输入、生成与待确认预览在切换或关闭面板时保留；停止仍是独立操作。候选先预览，确认才修改；实际修改可撤销。焦点可见、关闭回到触发入口，支持键盘移动和跨天调整。
 
 ## 8. Voice & Brand
-Concrete labels: 当天行程、让 AI 调整、交通耗时未知、查看依据. Confidence reflects existing calculations, not visual optimism. Competitor references guide capability expectations, not copied visual assets.
+用具体语言表达“AI 调整行程”“比较交通”“查看雨天候选”“预约待确认”。AI 说明修改依据、受影响地点和未解决事项，真实数据沿用来源和时效标注。保留自己的攻略和选择，是该桌面工具的核心体验。
 
 ## 9. Anti-patterns
-No full-screen map behind two covering desktop drawers. No edge-arrow-only AI entry. No offline setup or long weather configuration before the first visit. No automatic traffic query on selecting a row. No fake zero for unknown costs/time. No gradients, glass surfaces, decorative hero photography, animated prices, third-party UI framework or downloaded fonts.
+避免地图与常驻 AI 占据主要空间、每个地点都堆满同等强调的操作、过多卡片和管理后台指标。交通查询由用户主动触发，未知不填零。正式地图不能替换成草图关系图，演示天气和交通不能冒充接口结果。不增加 UI 框架、在线字体或装饰性旅行摄影。

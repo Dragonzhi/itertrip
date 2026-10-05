@@ -1,5 +1,11 @@
 # Desktop decision record
 
+2026-10-05 update: user selected A after seeing the three rendered alternatives. This decision supersedes the warm visual direction below; the following evidence table is the historical M31 implementation record. Current visual rules are in DESIGN.md.
+
+User quote: “A方案吧，看来确实路线和AI规划是主体，地图更适合作为辅助？”
+
+Approved reference: research-2026-10/design-demos/a-itinerary.html and screenshots/a-itinerary-1440.png. Use a bright, wide itinerary reading flow with coral actions and a supporting map/detail area. The itinerary remains the durable primary surface; AI proposes and explains edits; the map supports spatial judgement, selection and navigation. AI does not require an always-open main column. Approval and remaining implementation boundaries: [direction-approved.md](research-2026-10/direction-approved.md).
+
 Target: M31 desktop planning workspace. Audience: travellers checking and editing city itineraries before travel.
 
 | Evidence | Confidence | Decision |
