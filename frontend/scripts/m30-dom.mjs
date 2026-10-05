@@ -11,7 +11,8 @@ const dom=new JSDOM('<div id="root"></div>',{url:'http://itertrip.test/',pretend
 for(const k of ['window','document','navigator','HTMLElement','Element','Node','SVGElement','HTMLDialogElement','localStorage','history','location','getComputedStyle']) Object.defineProperty(globalThis,k,{configurable:true,value:k==='window'?w:w[k]});
 globalThis.requestAnimationFrame=w.requestAnimationFrame.bind(w);globalThis.cancelAnimationFrame=w.cancelAnimationFrame.bind(w);
 w.SVGSVGElement.prototype.createSVGRect=()=>({});w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLElement.prototype.scrollTo=()=>{};
-w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}});
+const desktop=process.env.M31_DESKTOP==='1';
+w.matchMedia=query=>({matches:desktop&&query.includes('1024'),addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}});
 class Observer{observe(){}unobserve(){}disconnect(){}}
 globalThis.IntersectionObserver=globalThis.ResizeObserver=Observer;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const bundle=await build({entryPoints:['src/App.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},external:['react','react-dom','react-dom/*'],define:{'import.meta.env':'{}'}});
@@ -23,7 +24,7 @@ fixture.days[0].transport=T.legs(fixture,0).map(e=>({from_id:e.from.id,to_id:e.t
 localStorage.setItem('itertrip:route',JSON.stringify(fixture));
 const saved=()=>JSON.parse(localStorage.getItem('itertrip:route'));
 const click=async b=>{assert.ok(b);await act(async()=>b.dispatchEvent(new w.MouseEvent('click',{bubbles:true})));};
-const byText=(t,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===t);
+const byText=(t,scope=document)=>[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===(desktop?t.replace(/^[↩↪] /,''):t));
 globalThis.fetch=async()=>{throw new Error('unexpected network');};
 let root=createRoot(document.getElementById('root'));await act(async()=>root.render(React.createElement(App)));
 await click(document.querySelector('[data-testid="chat-toggle"]'));
@@ -67,16 +68,17 @@ globalThis.fetch=async()=>sse({route:saved()});await send('修改备注');assert
 assert.ok(document.body.textContent.includes('行程未修改：没有实际变化'));
 
 model([{op:'set_duration',place_id:'a',minutes:40},{op:'set_duration',place_id:'b',minutes:45}],false);
-await send('调整两处');await act(async()=>{
+await send('调整两处');if(desktop)await click(byText('当天时间与交通设置'));await act(async()=>{
  const input=document.querySelector('[aria-label="第1天开始时间"]');Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(input,'09:15');input.dispatchEvent(new w.Event('input',{bubbles:true}));
 });
-const edited=JSON.stringify(saved());await click(byText('应用这组修改'));assert.equal(JSON.stringify(saved()),edited);assert.ok(document.body.textContent.includes('预览期间路线或出行进度已变化'));
+const edited=JSON.stringify(saved());if(desktop)await click(document.querySelector('[data-testid=chat-toggle]'));await click(byText('应用这组修改'));assert.equal(JSON.stringify(saved()),edited);assert.ok(document.body.textContent.includes('预览期间路线或出行进度已变化'));
 await click(byText('↩ 撤销'));assert.equal(JSON.stringify(saved()),original);
 
 // A fake fetch intentionally ignores AbortSignal to reproduce the late-reply race.
 let resolve,req;
 globalThis.fetch=async(url,options)=>{req=JSON.parse(options.body);return new Promise(r=>resolve=r);};
 await send('把春熙路休息点停留改成 45 分钟');
+if(desktop){await click(document.querySelector('[aria-label=关闭辅助区]'));assert.ok(document.querySelector('[data-testid=ai-streaming]'),'closing inspector does not stop stream');await click(document.querySelector('[data-testid=chat-toggle]'));}
 await click(document.querySelector('[data-testid="stop-btn"]'));
 await act(async()=>resolve(sse({agent_proposal:{transaction_id:req.agent_version,base_version:req.agent_version,actions:[{op:'set_duration',place_id:'a',minutes:45}]},agent_direct:true})));
 assert.equal(JSON.stringify(saved()),original,'stop prevents late successful reply from writing');assert.ok(document.querySelector('[data-testid="msg-interrupted"]'));

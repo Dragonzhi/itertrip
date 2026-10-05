@@ -9,6 +9,8 @@ import { navigation } from "../lib/navigation";
 import { isOnline, useOffline } from '../lib/offline';
 
 interface MapViewProps {
+  embedded?: boolean;
+  fitDay?: boolean;
   onNavigate?: (key: string) => void;
   route: RouteJSON | null;
   activeDay: number;               // 高亮的当天索引（-1 = 无）
@@ -81,7 +83,7 @@ function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
 
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
 export default function MapView({
-  route, activeDay, picking, onPick, onPlaceClick, onHotelClick,
+  route, activeDay, picking, onPick, onPlaceClick, onHotelClick, embedded = false, fitDay = false,
   onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick, onNavigate,
 }: MapViewProps) {
   const { online } = useOffline();
@@ -99,6 +101,7 @@ export default function MapView({
 
   /** M23：底部抽屉遮挡的高度（px）。用 ref 读，避免 fitBounds 的 [route] 依赖被撑开 */
   const padRef = useRef(0);
+  const fittedRef = useRef(false);
   padRef.current = bottomPadding;
   /**
    * M23：把目标点算到"未被抽屉遮住"的可见区中心（Leaflet 1.9 没有 setPadding）。
@@ -144,7 +147,10 @@ export default function MapView({
       if (key) { event.stopPropagation(); cbRef.current.onNavigate?.(key); }
     };
     container.addEventListener("click", onNavigateClick, true);
+    const observer = new ResizeObserver(() => map.invalidateSize({pan:false, animate:false}));
+    observer.observe(container);
     return () => {
+      observer.disconnect();
       container.removeEventListener("click", onNavigateClick, true);
       map.remove();
       mapRef.current = null;
@@ -208,13 +214,23 @@ export default function MapView({
     });
 
     // M23：底部抽屉打开时把下边距算进去，避免整条路线被 fit 到抽屉后面
-    if (bounds.length) {
+    if (bounds.length && (!embedded || !fittedRef.current)) {
+      fittedRef.current = true;
       map.fitBounds(bounds as L.LatLngBoundsExpression, {
         paddingTopLeft: [60, 60],
         paddingBottomRight: [60, 60 + padRef.current],
       });
     }
   }, [route]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A day change is deliberate navigation; inspector toggles and resizing keep the view.
+  useEffect(() => {
+    const map=mapRef.current, day=route?.days[activeDay];
+    if(!fitDay || !map || !day)return;
+    const points=dayPoints(day);
+    if(day.hotel && Number.isFinite(day.hotel.lat) && Number.isFinite(day.hotel.lng) && day.hotel.lat && day.hotel.lng && Math.abs(day.hotel.lat)<=90 && Math.abs(day.hotel.lng)<=180)points.push([day.hotel.lat,day.hotel.lng]);
+    if(points.length)map.fitBounds(points,{padding:[50,70],maxZoom:15,animate:false});
+  },[activeDay,fitDay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // popup 详情刷新（M16 showMeta）：不重建 marker、不重绘视野
   useEffect(() => {
@@ -388,7 +404,7 @@ export default function MapView({
     };
   }, [picking, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <><div ref={containerRef} className="fixed inset-0 z-0 bg-[#dfe6dd]" />
-    {(!online || tileFailed) && <div role="status" className="fixed left-1/2 -translate-x-1/2 top-[25vh] z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center">{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />打开行程面板可查看地点与日程</div>}
+  return <><div ref={containerRef} className={`${embedded?'absolute':'fixed'} inset-0 z-0 bg-[#dfe6dd]`} />
+    {(!online || tileFailed) && <div role="status" className={`${embedded?'absolute':'fixed'} left-1/2 -translate-x-1/2 top-[25vh] z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center`}>{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />打开行程面板可查看地点与日程</div>}
   </>;
 }

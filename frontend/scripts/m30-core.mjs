@@ -1,3 +1,4 @@
+import {futureFixture} from './fixture-time.mjs';
 /* Real travel constraints; synthetic locations/facts/transport, no network. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -66,7 +67,7 @@ check('旧版工具结果不能补新路线',route,proposal(move),false,[],true,
 check('工具旧耗时不作为当前依据',route,proposal(move),false,[],true,[{...evidence[0],options:[{...evidence[0].options[0],queried_at:'2000-01-01T00:00:00Z'}]}]);
 check('地点位置变化不能套旧交通依据',route,proposal(move),false,[],true,[{...evidence[0],from_point:{...evidence[0].from_point,lat:39}}]);
 check('要求避雨但缺小时预报不能应用',route,proposal(move),false,[],true,evidence,true);
-const rain=fresh(JSON.parse(fs.readFileSync('test-artifacts/m29/route.json','utf8')));rain.days[0].schedule.start='12:00';rain.weather[0].queried_at=now;
+const rain=fresh(futureFixture(JSON.parse(fs.readFileSync('test-artifacts/m29/route.json','utf8'))));rain.days[0].schedule.start='12:00';rain.weather[0].queried_at=now;
 const outdoor=rain.days[0].places[0],indoor=rain.days[0].places[1];
 const rainEvidence=[{base_version:version,from_id:indoor.id,to_id:outdoor.id,from_point:indoor,to_point:outdoor,options:[{mode:'car',status:'ok',duration_s:600,walking_m:0,queried_at:now,source:'amap'}]}];
 check('已有完整天气不能重排到更大的降水暴露',rain,proposal({op:'move_place',place_id:outdoor.id,to_day:1,before_id:''}),false,[],true,rainEvidence);

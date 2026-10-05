@@ -1,3 +1,4 @@
+import {futureFixture} from './fixture-time.mjs';
 /* Actual React history/persistence and both portable export paths. Synthetic data, offline jsdom. */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -5,12 +6,13 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {JSDOM, VirtualConsole} from 'jsdom';
 import {build} from 'esbuild';
-const dir=path.resolve('test-artifacts/m29'), fixture=JSON.parse(await fs.readFile(path.join(dir,'route.json'),'utf8'));
+const dir=path.resolve('test-artifacts/m29'), fixture=futureFixture(JSON.parse(await fs.readFile(path.join(dir,'route.json'),'utf8')));
 const dom=new JSDOM('<div id="root"></div>',{url:'http://itertrip.test/',pretendToBeVisual:true}),w=dom.window;
 for(const k of ['window','document','navigator','HTMLElement','Element','Node','SVGElement','HTMLDialogElement','localStorage','history','location','getComputedStyle']) Object.defineProperty(globalThis,k,{configurable:true,value:k==='window'?w:w[k]});
 globalThis.requestAnimationFrame=w.requestAnimationFrame.bind(w);globalThis.cancelAnimationFrame=w.cancelAnimationFrame.bind(w);
 w.SVGSVGElement.prototype.createSVGRect=()=>({});w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLElement.prototype.scrollTo=()=>{};
-w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}});
+const desktop=process.env.M31_DESKTOP==='1';
+w.matchMedia=query=>({matches:desktop&&query.includes('1024'),addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}});
 class Observer{observe(){}unobserve(){}disconnect(){}}
 globalThis.IntersectionObserver=globalThis.ResizeObserver=Observer;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const bundle=await build({entryPoints:['src/App.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},external:['react','react-dom','react-dom/*'],define:{'import.meta.env':'{}'}});
@@ -22,10 +24,11 @@ fixture.days[0].transport=T.legs(fixture,0).map(e=>({from_id:e.from.id,to_id:e.t
 localStorage.setItem('itertrip:route',JSON.stringify(fixture));
 const saved=()=>JSON.parse(localStorage.getItem('itertrip:route'));
 const click=async b=>act(async()=>b.dispatchEvent(new w.MouseEvent('click',{bubbles:true})));
-const byText=(t,scope=document)=>{const b=[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===t);assert.ok(b,t);return b;};
+const byText=(t,scope=document)=>{const b=[...scope.querySelectorAll('button')].find(b=>b.textContent.trim()===(desktop?t.replace(/^[↩↪] /,''):t));assert.ok(b,t);return b;};
 const input=async(n,v)=>act(async()=>{Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(n,v);n.dispatchEvent(new w.Event('input',{bubbles:true}));});
 globalThis.fetch=async()=>{throw new Error('unexpected network');};
 let root=createRoot(document.getElementById('root'));await act(async()=>root.render(React.createElement(App)));
+if(desktop)await click(document.querySelector('[data-testid=desktop-weather]'));
 assert.ok(document.querySelector('[data-testid="weather-panel"]'));
 assert.ok(document.body.textContent.includes('1 处降水风险'));
 const original=JSON.stringify(saved());
@@ -47,7 +50,9 @@ await click(byText('↩ 撤销'));assert.equal(saved().days[0].places[0].weather
 let resolve;
 globalThis.fetch=async(url)=>{assert.ok(url.endsWith('/api/route/weather'));return new Promise(r=>resolve=r);};
 await click(byText('刷新逐小时天气'));
+if(desktop)await click(byText('当天时间与交通设置'));
 await input(document.querySelector('[aria-label="第1天结束时间"]'),'21:00');
+if(desktop)await click(document.querySelector('[data-testid=desktop-weather]'));
 await act(async()=>resolve({ok:true,json:async()=>({results:[{...fixture.weather[0],queried_at:new Date().toISOString()}],error:'',calls:1})}));
 assert.equal(saved().days[0].schedule.end,'21:00','delayed weather does not overwrite edits');
 globalThis.fetch=async()=>{throw new TypeError('synthetic network failure');};
@@ -63,6 +68,7 @@ Object.defineProperty(w.navigator,'onLine',{configurable:true,value:false});
 globalThis.fetch=async()=>{throw new Error('offline must never call provider');};
 await act(async()=>w.dispatchEvent(new w.Event('offline')));
 root=createRoot(document.getElementById('root'));await act(async()=>root.render(React.createElement(App)));
+if(desktop)await click(document.querySelector('[data-testid=desktop-weather]'));
 assert.ok(document.body.textContent.includes('离线历史快照'));
 assert.equal(byText('刷新逐小时天气').disabled,true);
 assert.equal(saved().weather[0].queried_at,timestamp);

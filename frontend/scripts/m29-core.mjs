@@ -1,3 +1,4 @@
+import {futureFixture} from './fixture-time.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import '../src/lib/navigation.ts';
@@ -6,7 +7,7 @@ import '../src/lib/schedule.ts';
 import '../../shared/weather.js';
 const W=globalThis.IterTripWeather, T=globalThis.IterTripTransport, S=globalThis.IterTripSchedule;
 const clone=r=>JSON.parse(JSON.stringify(r));
-const r=JSON.parse(fs.readFileSync('test-artifacts/m29/route.json','utf8'));
+const r=futureFixture(JSON.parse(fs.readFileSync('test-artifacts/m29/route.json','utf8')));
 T.normalize(r);const now=new Date().toISOString();
 const fresh=r=>{
  T.normalize(r); r.days.forEach((d,i)=>d.transport=T.legs(r,i).map(e=>({from_id:e.from.id,to_id:e.to.id,buffer_min:0,snapshot:{signature:T.sign(e),options:[{mode:'car',status:'ok',duration_s:600,walking_m:0,fee_yuan:12,queried_at:now,source:'amap'}]}})));

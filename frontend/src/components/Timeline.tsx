@@ -12,8 +12,14 @@ import { TransportDay, TransportLeg, type TransportActions } from './TransportVi
 import { transport } from '../lib/transport';
 import { schedule } from '../lib/schedule';
 import { ScheduleDay, ScheduleVisit, type ScheduleActions } from './ScheduleView';
+import DayItinerary from './desktop/DayItinerary';
+import type {Edge} from '../lib/transport';
 
-interface TimelineProps {
+export interface TimelineProps {
+  desktopDay?: number;
+  onLegSelect?: (edge:Edge) => void;
+  onWeatherSelect?: () => void;
+  onDaySettings?: () => void;
   scheduleActions?: ScheduleActions;
   transportActions?: TransportActions;
   onNavigate?: (key: string) => void;
@@ -40,12 +46,13 @@ interface TimelineProps {
 }
 
 /** 时间线面板：按天分组、可折叠；点击条目与地图双向联动。 */
-export default function Timeline({
+export default function Timeline(props: TimelineProps) {
+ const {
   route, activeKey, onPlaceClick, onHotelClick,
   editing = false, onDeletePlace, onEditPlace, onDropMove, onMovePlace, onPlaceFocus, onHotelFocus,
   onEditHotel, onSaveHotelPrices,
   view, onNavigate, transportActions, scheduleActions,
-}: TimelineProps) {
+ } = props;
   const showSummary = view?.showSummary !== false;
   const showMeta = view?.showMeta !== false;
   const [closed, setClosed] = useState<Set<number>>(new Set());
@@ -61,6 +68,7 @@ export default function Timeline({
     });
   };
 
+  if (props.desktopDay != null) return <DayItinerary {...props} desktopDay={props.desktopDay}/>;
   return (
     <div>
       {showSummary && route.summary && route.summary.length > 0 && (

@@ -3,6 +3,7 @@ import type { MapSettings as MapSettingsType } from "../lib/settings";
 import { isMobile } from "../lib/viewport";
 
 interface MapSettingsProps {
+  embedded?: boolean;
   value: MapSettingsType;
   onChange: (patch: Partial<MapSettingsType>) => void;
   /** 右侧时间线面板展开时，让位以贴地图可见区右下角 */
@@ -81,7 +82,7 @@ function GroupTitle({ children }: { children: ReactNode }) {
 }
 
 /** 地图显示设置面板（M16）：右下角齿轮按钮 → 弹出，纯前端视图态。 */
-export default function MapSettings({ value, onChange, panelOpen }: MapSettingsProps) {
+export default function MapSettings({ value, onChange, panelOpen, embedded = false }: MapSettingsProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -101,10 +102,10 @@ export default function MapSettings({ value, onChange, panelOpen }: MapSettingsP
   return (
     <div
       ref={ref}
-      className="fixed z-[500] flex flex-col items-end gap-2 max-md:flex-col-reverse max-md:top-[60px] max-md:right-3 max-md:bottom-auto md:bottom-4"
-      style={{ right: isMobile() ? 12 : right }}
+      className={embedded ? 'dw-map-settings' : "fixed z-[500] flex flex-col items-end gap-2 max-md:flex-col-reverse max-md:top-[60px] max-md:right-3 max-md:bottom-auto md:bottom-4"}
+      style={embedded ? undefined : { right: isMobile() ? 12 : right }}
     >
-      {open && (
+      {(open || embedded) && (
         <div
           data-testid="map-settings-panel"
           className="w-[230px] bg-white border border-line rounded-[14px] shadow-card p-3"
@@ -160,7 +161,7 @@ export default function MapSettings({ value, onChange, panelOpen }: MapSettingsP
           </Row>
         </div>
       )}
-      <button
+      {!embedded && <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="地图显示设置"
@@ -169,7 +170,7 @@ export default function MapSettings({ value, onChange, panelOpen }: MapSettingsP
         className="w-11 h-11 max-md:w-9 max-md:h-9 rounded-full bg-white border border-line shadow-card text-moss text-xl max-md:text-base flex items-center justify-center transition-colors hover:bg-moss-soft"
       >
         ⚙️
-      </button>
+      </button>}
     </div>
   );
 }

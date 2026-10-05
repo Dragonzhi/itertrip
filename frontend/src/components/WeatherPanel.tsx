@@ -16,7 +16,8 @@ function hydrate(r:RouteJSON, snapshots:TransportSnapshot[]) {
     if (snapshot) s.snapshot=snapshot;
   }
 }
-export default function WeatherPanel({route, completed, isCurrent, apply, edit, blocked, onBlocking}: {
+export default function WeatherPanel({route, completed, isCurrent, apply, edit, blocked, onBlocking, day, onDayChange}: {
+  day?:number; onDayChange?(day:number):void;
   route:RouteJSON; completed:string[]; isCurrent(r:RouteJSON):boolean;
   apply(candidate:RouteJSON, expected:RouteJSON):boolean; edit(di:number,id:string):void;
   blocked:boolean; onBlocking(value:boolean):void;
@@ -27,10 +28,10 @@ export default function WeatherPanel({route, completed, isCurrent, apply, edit, 
   const [,tick]=useState(0);
   const completedKey=JSON.stringify(completed.slice().sort());
   useEffect(()=>{const timer=window.setInterval(()=>tick(n=>n+1),60000); return ()=>window.clearInterval(timer);},[]);
-  useEffect(()=>{seq.current++; abort.current?.abort(); abort.current=undefined; setBusy(false); setPreview(null);},[route,completedKey]);
+  useEffect(()=>{seq.current++; abort.current?.abort(); abort.current=undefined; setBusy(false); setPreview(null);},[route,completedKey,day]);
   useEffect(()=>()=>{seq.current++; abort.current?.abort();},[]);
   useEffect(()=>onBlocking(busy || !!preview),[busy,preview,onBlocking]);
-  const active=route.days[Math.min(di,route.days.length-1)], index=route.days.indexOf(active);
+  const active=route.days[Math.max(0,Math.min(day ?? di,route.days.length-1))], index=route.days.indexOf(active);
   const assessment=weather.assess(route,index,completed), thresholds=weather.policy(route);
   const forecasts=records(route).filter(f=>active.places.some(p=>weather.forecast(route,p).value===f));
   const refresh=async(dayIndex:number)=>{
@@ -64,7 +65,7 @@ export default function WeatherPanel({route, completed, isCurrent, apply, edit, 
   };
   useEffect(()=>{
     if (opening.current) return; opening.current=true;
-    if (isOnline() && !blocked && route.days[0]?.places.some(p=>weather.forecast(route,p).reason)) void refresh(0);
+    if (isOnline() && !blocked && route.days[0]?.places.some(p=>weather.forecast(route,p).reason)) void refresh(day ?? 0);
     // One foreground lookup per opening; edits never trigger an automatic provider loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
@@ -106,7 +107,7 @@ export default function WeatherPanel({route, completed, isCurrent, apply, edit, 
   const delta=preview && weather.delta(preview.baseline,preview.route,preview.days);
   const number=(v:number|null|undefined,unit:string)=>v==null?'未知':`${v>0?'+':''}${Math.round(v*10)/10}${unit}`;
   return <section className="weather-panel" data-testid="weather-panel">
-    <header className="flex justify-between items-center gap-2"><strong>☂ 按天气调整</strong><select aria-label="天气评估天数" value={index} onChange={e=>{setDay(Number(e.target.value));setPreview(null);}}>{route.days.map((d,i)=><option key={i} value={i}>D{d.day} · {schedule.dayDate(route,i) || '日期未知'}</option>)}</select></header>
+    <header className="flex justify-between items-center gap-2"><strong>☂ 按天气调整</strong><select aria-label="天气评估天数" value={index} onChange={e=>{if(onDayChange)onDayChange(Number(e.target.value));else setDay(Number(e.target.value));setPreview(null);}}>{route.days.map((d,i)=><option key={i} value={i}>D{d.day} · {schedule.dayDate(route,i) || '日期未知'}</option>)}</select></header>
     <p className="mt-2 font-medium">{assessment.label}{!offline.online && ' · 离线历史快照'}</p>
     <p className="text-xs">降水概率 ≥ {thresholds.probability}% 或每小时降水 ≥ {thresholds.precipitation_mm} mm 即提醒。逐小时为区域估计，不能保证具体地点不淋雨。</p>
     {!!forecasts.length && <p className="text-xs">天气数据：{[...new Set(forecasts.map(f=>f.provider))].map(p=><a key={p} href={p==='qweather'?'https://www.qweather.com/':'https://open-meteo.com/'} target="_blank" rel="noopener noreferrer" className="underline mr-2">{p==='qweather'?'和风天气':'Open-Meteo'} ↗</a>)} · 已按行程时段整理</p>}
