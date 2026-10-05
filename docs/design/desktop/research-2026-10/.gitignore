@@ -1,0 +1,8 @@
+# Exploratory capture outputs. The three cited UI references are tracked explicitly.
+/capture-public.cjs
+/render-report.json
+/references/*-assets.json
+/references/wanderlog.png
+/references/tripsy.png
+/references/mindtrip.png
+/references/roadtrippers-ui.png
