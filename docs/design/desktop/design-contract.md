@@ -1,5 +1,7 @@
 # Desktop decision record
 
+2026-10-17 implementation: subsequent user choices retain the existing cream/moss/gold palette and put AI in the right supporting area. These supersede the coral palette in the October 5 prototype. A now uses a wide itinerary plus one supporting column, with real map/selected-place details or a full tool panel; desktop map selection uses a pin ring rather than duplicate popups. See [implementation and validation](../../M31_A_DESKTOP_REFINEMENT.md).
+
 2026-10-05 update: user selected A after seeing the three rendered alternatives. This decision supersedes the warm visual direction below; the following evidence table is the historical M31 implementation record. Current visual rules are in DESIGN.md.
 
 User quote: “A方案吧，看来确实路线和AI规划是主体，地图更适合作为辅助？”

@@ -14,7 +14,7 @@ import type { TransportActions } from '../components/TransportView';
 import { loadProgress, saveProgress, visits, type OutingProgress } from "../lib/outing";
 import MapSettings from "../components/MapSettings";
 import Timeline from "../components/Timeline";
-import Workspace, {type Auxiliary, type Selection} from '../components/desktop/Workspace';
+import Workspace, {Icon, type Auxiliary, type Selection} from '../components/desktop/Workspace';
 import {ScheduleDay, ScheduleVisit} from '../components/ScheduleView';
 import {TransportDay, TransportLeg} from '../components/TransportView';
 import HotelCard from '../components/HotelCard';
@@ -489,6 +489,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
   /* ---------- 编辑器：选点新增 / 编辑表单 ---------- */
   const openAddFlow = () => {
+    if(desktop)openAux(null);
     setForm(null);
     setPicking({ purpose: "add" });
   };
@@ -603,6 +604,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const startRepick = () => {
     if (!form || form.mode !== "edit") return;
     const t = form.target;
+    if(desktop)openAux(null);
     setForm(null);          // 关表单（清 target，参照旧版 startRepick 先复制目标）
     setPicking({ purpose: "repick", target: t });
   };
@@ -666,6 +668,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const startHotelRepick = () => {
     if (!hotelForm) return;
     const t = hotelForm.target;
+    if(desktop)openAux(null);
     setHotelForm(null);
     setPicking({ purpose: "repick-hotel", target: t });
   };
@@ -942,7 +945,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           <span className="h-1.5 w-10 rounded-full bg-line" />
         </div>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
-          <span className="text-lg">🤖</span>
+          <span className="text-lg">{desktop?<Icon name="ai"/>:'🤖'}</span>
           <h2 className="text-sm font-bold">AI 改行程</h2>
           {lastStats && (
             <span
@@ -961,7 +964,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             data-testid="plan-clear-chat"
             className="text-ink-soft hover:text-danger disabled:opacity-30 leading-none px-1"
           >
-            🗑
+            {desktop?'清空':'🗑'}
           </button>
           <button onClick={toggleChat} className="text-ink-soft hover:text-ink leading-none" aria-label="关闭对话抽屉">✕</button>
         </div>
@@ -1081,6 +1084,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 </>);
   const mapContent=(<>      <MapView
         embedded={desktop}
+        selectedKey={desktop?activeKey:undefined}
         fitDay={desktop}
         route={route}
         activeDay={desktop ? visibleDay : outing.mode === "outing" ? outing.day : activeDay}
@@ -1143,7 +1147,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     <MotionConfig reducedMotion="user">
     <div className={desktop ? 'dw-plan' : undefined}>
     <div className={`h-[100dvh] overflow-hidden ${desktop?'dw-plan':''}`}>
-      {desktop&&<Workspace route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} weather={weatherContent} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
+      {desktop&&<Workspace visitDetail={!!selectedVisit&&!daySettings} aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} weather={weatherContent} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}

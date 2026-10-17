@@ -11,6 +11,7 @@ import { isOnline, useOffline } from '../lib/offline';
 interface MapViewProps {
   embedded?: boolean;
   fitDay?: boolean;
+  selectedKey?: string | null;
   onNavigate?: (key: string) => void;
   route: RouteJSON | null;
   activeDay: number;               // 高亮的当天索引（-1 = 无）
@@ -83,7 +84,7 @@ function arrowIcon(color: string, deg: number, scale: number): L.DivIcon {
 
 /** Leaflet 地图组件：接收 route 数据，渲染标记 / 连线 / 箭头（逻辑移植自旧版模板 render()）。 */
 export default function MapView({
-  route, activeDay, picking, onPick, onPlaceClick, onHotelClick, embedded = false, fitDay = false,
+  route, activeDay, picking, onPick, onPlaceClick, onHotelClick, embedded = false, fitDay = false, selectedKey,
   onPlaceFocus, onHotelFocus, flashKeys, focus, view, bottomPadding = 0, onMapClick, onNavigate,
 }: MapViewProps) {
   const { online } = useOffline();
@@ -186,7 +187,7 @@ export default function MapView({
           }),
           title: p.name,
         }).addTo(layers);
-        m.bindPopup(popupHtml(p, emoji, true, `d${di}-p${pi}`), { className: "iter-popup", autoPan: false });
+        if(!embedded)m.bindPopup(popupHtml(p, emoji, true, `d${di}-p${pi}`), { className: "iter-popup", autoPan: false });
         m.on("click", () => callbacks.onPlaceClick(di, pi));
         m.on("dblclick", () => callbacks.onPlaceFocus?.(di, pi));
         markersRef.current.set("d" + di + "-p" + pi, m);
@@ -198,14 +199,14 @@ export default function MapView({
         const hm = L.marker([h.lat, h.lng], {
           icon: L.divIcon({
             className: "",
-            html: '<div class="iter-pin hotel"><span class="e">🏨</span></div>',
+            html: `<div class="iter-pin hotel" data-pin-key="d${di}-hotel"><span class="e">🏨</span></div>`,
             iconSize: [30, 30],
             iconAnchor: [15, 27],
             popupAnchor: [0, -24],
           }),
           title: h.name,
         }).addTo(layers);
-        hm.bindPopup(hotelPopupHtml(h, true, `d${di}-hotel`), { className: "iter-popup", autoPan: false });
+        if(!embedded)hm.bindPopup(hotelPopupHtml(h, true, `d${di}-hotel`), { className: "iter-popup", autoPan: false });
         hm.on("click", () => callbacks.onHotelClick(di));
         hm.on("dblclick", () => callbacks.onHotelFocus?.(di));
         markersRef.current.set("d" + di + "-hotel", hm);
@@ -222,6 +223,12 @@ export default function MapView({
       });
     }
   }, [route]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Desktop details live beside the map; selection uses a pin ring rather than a duplicate popup.
+  useEffect(()=>{
+    if(!embedded)return;
+    containerRef.current?.querySelectorAll<HTMLElement>('[data-pin-key]').forEach(pin=>pin.classList.toggle('active',pin.dataset.pinKey===selectedKey));
+  },[route,selectedKey,embedded]);
 
   // A day change is deliberate navigation; inspector toggles and resizing keep the view.
   useEffect(() => {
@@ -347,7 +354,7 @@ export default function MapView({
         pin.classList.add("flash");
         window.setTimeout(() => pin.classList.remove("flash"), 6600);
       }
-    } else {
+    } else if(!embedded) {
       marker.openPopup();
     }
   }, [focus?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -405,6 +412,6 @@ export default function MapView({
   }, [picking, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <><div ref={containerRef} className={`${embedded?'absolute':'fixed'} inset-0 z-0 bg-[#dfe6dd]`} />
-    {(!online || tileFailed) && <div role="status" className={`${embedded?'absolute':'fixed'} left-1/2 -translate-x-1/2 top-[25vh] z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center`}>{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />打开行程面板可查看地点与日程</div>}
+    {(!online || tileFailed) && <div role="status" className={`${embedded?'absolute top-1/2 -translate-y-1/2':'fixed top-[25vh]'} left-1/2 -translate-x-1/2 z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center`}>{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />{embedded?'左侧可继续查看和编辑日程':'打开行程面板可查看地点与日程'}</div>}
   </>;
 }

@@ -1,5 +1,11 @@
 # M31 implementation handoff
 
+## Implemented refinement (2026-10-17)
+
+A is implemented using the existing cream/moss/gold tokens. Reference: [warm A prototype](research-2026-10/design-demos/a-cream-workspace.html). Desktop uses 58%/42% columns, or 56%/44% at 1024–1279px. The right side shows map with selected-place details below, or a full AI/weather/transport/settings/offline panel. AI, weather and the actual map remain mounted, and the itinerary remains visible. Ordering controls are opt-in. Desktop map pins highlight selection; legacy mobile popups retain their behavior.
+
+The implementation reuses existing Plan handlers and adds only frontend presentation props; RouteJSON, backend endpoints and storage contracts are unchanged. Four-size real-browser checks use the actual production bundle and offline synthetic data, alongside existing DOM/core/offline regressions. Validation and remaining external-service boundaries: [record](../../M31_A_DESKTOP_REFINEMENT.md). Earlier notes below are historical.
+
 ## Current handoff: A 轻盈行程 (2026-10-05)
 
 User chose A after reviewing three real rendered drafts. Use the updated DESIGN.md, [approval record](research-2026-10/direction-approved.md), and [A prototype](research-2026-10/design-demos/a-itinerary.html). The prior implementation notes below describe the already completed M31 structure, not the current visual target.
