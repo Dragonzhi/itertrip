@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.11 · 2026-10-01 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.12 · 2026-11-07 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -675,7 +675,7 @@ M22 文本闭馆警告本地幂等重算；时间结果是派生值，不写成 
 | 管理后台 | 未配置 `ITERTRIP_ADMIN_TOKEN` 即整体关闭；单 provider 无多 key 轮换 |
 | 单进程形态 | 规划/对话长请求阻塞 uvicorn worker 数有限；无队列/限流，多人并发共享同一免费源时可能 429 |
 
-**非功能性约束**：移动端适配（M23）：<768px 顶栏单行 + 两个侧栏改底部抽屉（互斥、可拖手柄下滑关闭）、日期卡移入抽屉表头、触屏用 ↑/↓ 跨天排序（桌面 HTML5 拖拽保留）、输入框 16px 防 iOS 缩放、`100dvh` + safe-area、Leaflet 下边距补偿；验收脚本 `frontend/scripts/mobile-shot.mjs`（零依赖 CDP，截图 + 溢出/可达性探针 + 拖拽/排序/价格功能断言，支持 `SHOT_URL` 量任意页面）。**包管理器只选一个：本仓已统一为 npm**（`frontend/package-lock.json` 是唯一锁文件；pnpm 的 `pnpm-lock.yaml` 与 `pnpm-workspace.yaml` 已于 2026-09-15 清除）——历史教训：npm 与 pnpm 混装会让 node_modules 出现两份 react（Invalid hook call），切换后先删 `node_modules` 再装；**一键启动脚本的文件编码是硬约束**：`start.cmd` 必须 CRLF、`start.ps1` 必须带 UTF-8 BOM（根目录 `.gitattributes` 已锁 `*.cmd eol=crlf`）——历史教训：LF 的 `.cmd` 会被 cmd.exe 解析成乱码命令（`'v' is not recognized…`）双击直接闪退；无 BOM 的 `.ps1` 会被 `start.cmd` 调用的 Windows PowerShell 5.1 当 ANSI 读，中文字符串里的定界符被吃掉、直接抛 `Unexpected token`。这两种故障 `git status` 一律不提示（git 规范化换行后看起来无差异）、用 pwsh 7 手测也测不出，改完这两个文件请核对首字节与换行；**Tailwind 的 `outline-<宽度>` 只设 outline-width，`outline-style` 的初值是 none**（实测 tailwindcss 3.4.19：产物里 `.focus-visible\:outline-2` 只有 `outline-width:2px`）——单写 `focus-visible:outline-2 focus-visible:outline-moss` 的焦点环**画不出来**；本仓现存 19 处 `focus:outline-2 focus:outline-moss-soft` 是靠同时改 `focus:border-moss` 才侥幸可见，纯文字可聚焦元素（地点名 / 酒店名 / 内联链接）一律用 `index.css` 的 `.focus-ring`，别自己拼 outline 类；
+**非功能性约束**：移动端适配（M23 奠基，M32 推广到全 <1024，见 `docs/M32_PLAN_COMPACT.md`）：**<1024px 紧凑交互** —— 顶栏单行（🧭 返回 + 标题 + 🤖/🗺 圆钮）+ AI/行程两个底部抽屉（互斥、可拖手柄下滑关闭）、日期卡与元信息只在抽屉表头渲染、触屏 ↑/↓ 跨天排序（桌面 HTML5 拖拽保留）、输入框 16px 防 iOS 缩放、`100dvh` + safe-area、Leaflet 缩放控件隐藏；768–1023px 平板带自此不再回落桌面式双侧栏（380+400px 互叠盖满地图的旧账）；**≥1024px 桌面工作台**（M31）。验收脚本 `frontend/scripts/mobile-shot.mjs`（零依赖 CDP，5 尺寸含 768 平板腿：截图 + 溢出/可达性探针 + 拖拽/排序/互斥/布局分支/价格断言，支持 `SHOT_URL` 量任意页面）。**包管理器只选一个：本仓已统一为 npm**（`frontend/package-lock.json` 是唯一锁文件；pnpm 的 `pnpm-lock.yaml` 与 `pnpm-workspace.yaml` 已于 2026-09-15 清除）——历史教训：npm 与 pnpm 混装会让 node_modules 出现两份 react（Invalid hook call），切换后先删 `node_modules` 再装；**一键启动脚本的文件编码是硬约束**：`start.cmd` 必须 CRLF、`start.ps1` 必须带 UTF-8 BOM（根目录 `.gitattributes` 已锁 `*.cmd eol=crlf`）——历史教训：LF 的 `.cmd` 会被 cmd.exe 解析成乱码命令（`'v' is not recognized…`）双击直接闪退；无 BOM 的 `.ps1` 会被 `start.cmd` 调用的 Windows PowerShell 5.1 当 ANSI 读，中文字符串里的定界符被吃掉、直接抛 `Unexpected token`。这两种故障 `git status` 一律不提示（git 规范化换行后看起来无差异）、用 pwsh 7 手测也测不出，改完这两个文件请核对首字节与换行；**Tailwind 的 `outline-<宽度>` 只设 outline-width，`outline-style` 的初值是 none**（实测 tailwindcss 3.4.19：产物里 `.focus-visible\:outline-2` 只有 `outline-width:2px`）——单写 `focus-visible:outline-2 focus-visible:outline-moss` 的焦点环**画不出来**；本仓现存 19 处 `focus:outline-2 focus:outline-moss-soft` 是靠同时改 `focus:border-moss` 才侥幸可见，纯文字可聚焦元素（地点名 / 酒店名 / 内联链接）一律用 `index.css` 的 `.focus-ring`，别自己拼 outline 类；
 key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`；导出文件名按 RFC 5987 双写
 （HTTP 头仅 latin-1，中文目的地走 `filename*=UTF-8''` 百分号编码，ASCII 兜底）；admin token 常量时间比较。
 
@@ -746,6 +746,7 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 - [x] **M28 随身行程与离线查看**：manifest／图标、构建白名单 worker、正式应用离线冷加载、同步行程与进度保存、离线编辑、状态／清理／显式更新已落地；生产构建、worker／离线 DOM 与 M25–M27 回归通过，真机安装和浏览器生命周期待人工验收。见 [M28 施工记录](docs/M28_OFFLINE_PWA.md)。
 - [x] **M29 天气评估与局部调整**：带来源与时效的小时预报、人工室内外属性、游览／交通降水风险、有限候选预览与约束检查、一次撤销、离线／导出已实现；自动化和构建通过，Open-Meteo 成都／北京公开接口验证通过，和风凭据及真机途中使用待验收。见 [施工记录](docs/M29_WEATHER_ADJUSTMENT.md)。
 - [x] **M30 Agent 工具与评估**：单模型只读工具、严格领域操作、同版本派生日程、原生工具／双段协议能力回退、预算与真实轨迹、组合预览／原子应用／重放保护已落地；35 个约束场景、9 个合成服务模型交互、实际 React DOM 和构建通过。真实模型与途中效果未验收；见 [M30 施工记录](docs/M30_AGENT_TOOLS_EVALUATION.md)。M25–M30 开发范围完成，后续按实际使用反馈确定新阶段。
+- [x] **M32 规划页全尺寸打通**：`isMobile()`/768px 断点语义上移为 `isCompact()`/1024px —— <1024 一律底部抽屉+互斥（平板带不再双栏互叠、开局不再双开），AI 左缘手柄与「☰ 行程」退役、顶栏收敛单行；窄屏观感与 Chat 页/ChatPanel 对齐工作台设计语言（dw 按钮 token、12px 辅助字号、白表头+米纸内容）；mobile-shot 覆盖 5 尺寸并新增结构/互斥断言，修复被 M31/M27 打红的桌面价格断言（点 dw-hotel + fixture 补 M27 可比报价字段）。构建、desktop-a-browser 与 m25–m31 DOM 检查全过；真机人工回归未做。见 [M32 施工记录](docs/M32_PLAN_COMPACT.md)。
 - [x] **M31 桌面行程工作台与 A 深化**：>=1024px 使用宽幅当天行程与右侧地图／详情／工具区；保留现有配色，AI 展开不挤走行程，排序控件按需显示。稳定 ID、受控天气日期、地图尺寸观察、撤销与异步保护沿用；自动化、离线与生产构建通过，四种桌面尺寸的实际浏览器离线合成场景已检查。见 [A 改造与验证记录](docs/M31_A_DESKTOP_REFINEMENT.md)与[桌面设计规范](docs/design/desktop/DESIGN.md)。
 - [ ] **多 provider 故障转移 + 用量统计**：免费源多人并发实测会 429；等真出现压力再做（避免过度设计）
 - [ ] **见 `docs/TODO.md`（等反馈的两件事）**：① 记忆档案 id（tid）的可携带性 —— 导出/导入，否则清站点数据后服务端那份记忆就成孤儿；② 静默自动中断（`PING_ABORT_MS` = 60s）是否需要降级为「只告警不自动停」
