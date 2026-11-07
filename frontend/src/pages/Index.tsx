@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { RouteJSON } from "../types/route";
 import { parseRouteFile } from "../lib/routeImport";
 import OfflinePanel from '../components/OfflinePanel';
@@ -35,6 +35,8 @@ export default function Index({
   updateBlocked,
 }: IndexProps) {
   const importRef = useRef<HTMLInputElement>(null);
+  /** ui-fix-plan 收尾：导入失败不再用原生 alert（会打断且样式割裂），改卡片内联错误行 */
+  const [importError, setImportError] = useState("");
 
   return (
     <div className="min-h-[100dvh] bg-cream flex flex-col">
@@ -50,6 +52,11 @@ export default function Index({
             )}
             {hasRoute ? <RoutePreviewCard route={route} /> : <HowItWorksCard />}
           </div>
+          {importError && (
+            <p role="alert" data-testid="import-error" className="mt-6 max-w-[560px] text-[13px] leading-relaxed text-danger bg-[#F6E7E7] rounded-md px-3.5 py-2.5">
+              ⚠️ 导入失败：{importError}
+            </p>
+          )}
           <OfflinePanel blocked={updateBlocked} />
         </div>
       </main>
@@ -66,9 +73,10 @@ export default function Index({
           if (!f) return;
           try {
             const r = parseRouteFile(await f.text(), f.name);
+            setImportError("");
             onImportRoute(r);
           } catch (err) {
-            window.alert(err instanceof Error ? err.message : String(err));
+            setImportError(err instanceof Error ? err.message : String(err));
           }
         }}
       />
@@ -90,21 +98,18 @@ function BrandBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       <div className="max-w-[1200px] mx-auto px-6 sm:px-4 flex items-center justify-between gap-4 py-[22px]">
         <div className="flex items-center gap-3 min-w-0">
           <span
-            className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg bg-moss text-white text-base shrink-0"
+            className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-md bg-moss text-white text-base shrink-0"
             aria-hidden
           >
             🧭
           </span>
           <div className="flex flex-col gap-1.5 min-w-0">
             <h1 className="text-[17px] font-bold leading-tight tracking-tight text-ink">IterTrip</h1>
-            <p className="text-[10px] font-medium leading-snug tracking-[0.2em] text-ink-soft">
-              LATIN · ITER · ROAD
-            </p>
           </div>
         </div>
         <button
           onClick={onOpenSettings}
-          className="shrink-0 inline-flex items-center justify-center gap-2 h-9 px-3.5 border border-line rounded-lg text-ink-soft text-[13px] font-medium leading-none hover:bg-moss-soft hover:text-ink transition-colors focus-ring"
+          className="shrink-0 inline-flex items-center justify-center gap-2 h-9 px-3.5 border border-line rounded-md text-ink-soft text-[13px] font-medium leading-none hover:bg-moss-soft hover:text-ink transition-colors focus-ring"
           data-testid="settings-btn"
         >
           <span aria-hidden>⚙️</span>
@@ -140,7 +145,7 @@ function EmptyCol({
       </p>
 
       {/* paste-shell：左侧占位输入 + 右侧主按钮（hover 时箭头右移 2px） */}
-      <div className="mt-8 flex items-center gap-2 w-full p-1.5 bg-white border border-line rounded-lg hover:border-moss focus-within:border-moss transition-colors">
+      <div className="mt-8 flex items-center gap-2 w-full p-1.5 bg-white border border-line rounded-md hover:border-moss focus-within:border-moss transition-colors">
         <button
           type="button"
           onClick={() => onChat()}
@@ -318,7 +323,7 @@ function HowItWorksCard() {
     <aside className="home-card" data-testid="how-it-works">
       <div className="flex items-center justify-between gap-3">
         <h3 className="m-0 text-[18px] font-bold leading-snug text-ink">三步拿到路线</h3>
-        <span className="inline-flex items-center justify-center h-6 px-2.5 bg-moss-soft text-[#175740] rounded-full text-[11px] font-medium leading-none whitespace-nowrap">
+        <span className="inline-flex items-center justify-center h-6 px-2.5 bg-moss-soft text-[#175740] rounded-full text-xs font-medium leading-none whitespace-nowrap">
           无需配置
         </span>
       </div>
@@ -333,7 +338,7 @@ function HowItWorksCard() {
             key={s.num}
             className={`grid grid-cols-[24px_minmax(0,1fr)] gap-3 items-start${i > 0 ? " pt-5 border-t border-line" : ""}`}
           >
-            <span className="inline-flex items-center justify-center w-6 h-6 shrink-0 rounded-full bg-moss-soft text-[#175740] text-[11px] font-bold leading-none tabular-nums">
+            <span className="inline-flex items-center justify-center w-6 h-6 shrink-0 rounded-full bg-moss-soft text-[#175740] text-xs font-bold leading-none tabular-nums">
               {s.num}
             </span>
             <span className="flex flex-col gap-2 min-w-0">
@@ -367,11 +372,11 @@ function RoutePreviewCard({ route }: { route?: RouteJSON | null }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <h3 className="m-0 text-[18px] font-bold leading-snug text-ink truncate">{title}</h3>
-          <p className="m-0 text-[11px] leading-snug text-ink-soft">
+          <p className="m-0 text-xs leading-snug text-ink-soft">
             路线可拖拽调整 · 对话随时改
           </p>
         </div>
-        <span className="inline-flex items-center justify-center h-6 px-2.5 bg-moss-soft text-[#175740] rounded-full text-[11px] font-medium leading-none whitespace-nowrap shrink-0">
+        <span className="inline-flex items-center justify-center h-6 px-2.5 bg-moss-soft text-[#175740] rounded-full text-xs font-medium leading-none whitespace-nowrap shrink-0">
           {dayCount > 0 ? `${destination} · ${dayCount} 天` : "上次编辑"}
         </span>
       </div>
@@ -389,7 +394,7 @@ function RoutePreviewCard({ route }: { route?: RouteJSON | null }) {
                   <span className="text-[12px] font-bold leading-snug tracking-[0.08em] text-ink">
                     D{d.day}
                   </span>
-                  <span className="ml-auto text-[11px] leading-snug text-ink-soft">
+                  <span className="ml-auto text-xs leading-snug text-ink-soft">
                     {d.places.length} 个地点
                   </span>
                 </div>
@@ -399,7 +404,7 @@ function RoutePreviewCard({ route }: { route?: RouteJSON | null }) {
                       key={i}
                       className={`flex items-center gap-3 py-2 min-w-0${i > 0 ? " border-t border-line" : ""}`}
                     >
-                      <span className="shrink-0 w-4 text-[11px] font-medium leading-snug text-center text-ink-soft tabular-nums">
+                      <span className="shrink-0 w-4 text-xs font-medium leading-snug text-center text-ink-soft tabular-nums">
                         {i + 1}
                       </span>
                       <span className="flex-1 min-w-0 text-[14px] leading-snug text-ink truncate">
@@ -428,7 +433,7 @@ function RoutePreviewCard({ route }: { route?: RouteJSON | null }) {
         <span className="text-[13px] font-bold leading-snug text-[#175740] whitespace-nowrap">
           已规划
         </span>
-        <span className="text-[11px] leading-snug text-ink-soft">
+        <span className="text-xs leading-snug text-ink-soft">
           接着上次的进度继续调整
         </span>
       </div>

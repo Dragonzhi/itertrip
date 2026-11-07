@@ -254,7 +254,7 @@ body { overscroll-behavior-y: none; }
 .schedule-day,.schedule-visit{font-size:12px;line-height:1.65;background:#fffdf7;border:1px solid #d8dfd2;border-radius:12px;padding:12px;margin:10px 0;overflow-wrap:anywhere}
 .schedule-day{background:#edf1e7}
 .schedule-day input,.schedule-editor input:not([type=checkbox]),.schedule-editor select{display:block;min-height:44px;width:100%;background:white;border:1px solid #d8dfd2;border-radius:8px;padding:8px;color:#2b2b28;margin-top:4px}
-.schedule-editor{background:#fffdf7;border-radius:18px;padding:20px;width:min(100%,560px);max-height:calc(100dvh - 24px);overflow-y:auto;color:#2b2b28;font-size:13px}
+.schedule-editor{background:#fffdf7;border-radius:14px;padding:20px;width:min(100%,560px);max-height:calc(100dvh - 24px);overflow-y:auto;color:#2b2b28;font-size:13px}
 .schedule-editor fieldset{border-top:1px solid #d8dfd2;padding-top:12px}
 .schedule-editor legend{font-weight:700;padding-right:8px}
 .schedule-editor input[type=checkbox]{width:20px;height:20px;accent-color:#1F6B54;flex-shrink:0}

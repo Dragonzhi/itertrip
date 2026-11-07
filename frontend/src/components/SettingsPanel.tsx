@@ -58,7 +58,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
   };
 
   const inputCls =
-    "border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss";
+    "border border-line rounded-md px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss";
 
   const handleClearMemory = async () => {
     if (memBusy) return;
@@ -87,7 +87,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
       <div
         role="dialog"
         aria-label="模型设置"
-        className="bg-white border border-line rounded-[18px] shadow-card p-6 w-full max-w-md flex flex-col gap-4"
+        className="bg-white border border-line rounded-[14px] shadow-card p-6 w-full max-w-md flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -128,7 +128,7 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
             <button
               type="button"
               onClick={() => setShowKey((v) => !v)}
-              className="border border-line rounded-lg px-2.5 text-xs text-ink-soft hover:bg-moss-soft"
+              className="border border-line rounded-md min-h-[36px] px-2.5 text-[13px] text-ink-soft hover:bg-moss-soft"
             >
               {showKey ? "隐藏" : "显示"}
             </button>
@@ -150,17 +150,17 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
           <button
             onClick={handleTest}
             disabled={test.status === "testing"}
-            className="border border-moss text-moss rounded-lg px-3.5 py-2 text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+            className="border border-moss text-moss rounded-md min-h-[36px] px-3.5 py-2 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-40"
           >
             {test.status === "testing" ? "测试中…" : "测试连接"}
           </button>
           {test.status === "ok" && (
-            <span role="status" className="text-xs text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="llm-test-ok">
+            <span role="status" className="text-xs text-moss bg-moss-soft rounded-md px-2.5 py-1.5" data-testid="llm-test-ok">
               {test.message}
             </span>
           )}
           {test.status === "fail" && (
-            <span role="status" className="text-xs text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5 flex-1" data-testid="llm-test-fail">
+            <span role="status" className="text-xs text-danger bg-[#F6E7E7] rounded-md px-2.5 py-1.5 flex-1" data-testid="llm-test-fail">
               {test.message}
             </span>
           )}
@@ -169,9 +169,9 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
         <div className="border-t border-line pt-3 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-ink-soft">🧠 旅行记忆</span>
-            <span className="text-[11px] text-ink-soft" data-testid="memory-count">{memText}</span>
+            <span className="text-xs text-ink-soft" data-testid="memory-count">{memText}</span>
           </div>
-          <p className="text-[11px] text-ink-soft leading-relaxed">
+          <p className="text-xs text-ink-soft leading-relaxed">
             开启后，你提取过的攻略会按「匿名档案」存进服务器记忆库，下次聊到同一目的地时
             AI 会引用旧攻略回答；你在地图上手动改过的地点坐标也会被记住，之后同名地点直接定位、不再猜。
             记忆只与浏览器本地生成的随机 id 关联，可随时清空。
@@ -181,20 +181,20 @@ export default function SettingsPanel({ settings, onChange, onClose }: SettingsP
               type="button"
               onClick={handleClearMemory}
               disabled={memBusy || !mem?.enabled || !mem.total}
-              className="border border-line bg-white text-moss rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+              className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-40"
               data-testid="memory-clear"
             >
               {memBusy ? "清空中…" : "清空我的记忆"}
             </button>
-            {memMsg && <span role="status" className="text-[11px] text-ink-soft" data-testid="memory-msg">{memMsg}</span>}
+            {memMsg && <span role="status" className="text-xs text-ink-soft" data-testid="memory-msg">{memMsg}</span>}
             {mem?.enabled && mem.embed_model && (
-              <span className="text-[11px] text-ink-soft">embedding: {mem.embed_provider} / {mem.embed_model}</span>
+              <span className="text-xs text-ink-soft">embedding: {mem.embed_provider} / {mem.embed_model}</span>
             )}
           </div>
         </div>
 
         <OfflinePanel blocked />
-        <div className="border-t border-line pt-3 text-[11px] text-ink-soft leading-relaxed">
+        <div className="border-t border-line pt-3 text-xs text-ink-soft leading-relaxed">
           未配置时：若本机后端设置了 ITERTRIP_LLM_* 环境变量则使用之；两者皆无则使用
           <b>内置免费供应商</b>（openrouter/free，无需 key 即可用真实 AI）。
           <span className="block mt-1">

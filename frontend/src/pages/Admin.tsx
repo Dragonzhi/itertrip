@@ -176,7 +176,7 @@ export default function Admin() {
   };
 
   const inputCls =
-    "border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss";
+    "border border-line rounded-md px-3 py-2 text-sm text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss";
 
   return (
     <div className="min-h-screen bg-cream p-6">
@@ -186,7 +186,6 @@ export default function Admin() {
             <span className="text-2xl">🛠️</span>
             <div>
               <h1 className="text-lg font-extrabold tracking-wide">IterTrip 后台</h1>
-              <p className="text-[11px] text-ink-soft tracking-[1px]">AI 服务管理 · ADMIN</p>
             </div>
           </div>
           <a href={import.meta.env.BASE_URL || "/"} className="text-xs text-moss font-semibold hover:underline">
@@ -197,7 +196,7 @@ export default function Admin() {
         {!token ? (
           <LoginCard onLogin={handleLogin} />
         ) : (
-          <div className="bg-white border border-line rounded-[18px] shadow-card p-6 flex flex-col gap-4">
+          <div className="bg-white border border-line rounded-[14px] shadow-card p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold">免费 AI 服务配置</h2>
               <button onClick={handleLogout} className="text-xs text-ink-soft hover:text-ink">
@@ -206,7 +205,7 @@ export default function Admin() {
             </div>
 
             {error && (
-              <div className="text-xs text-danger bg-[#F6E7E7] rounded-lg px-3 py-2" data-testid="admin-error">
+              <div className="text-xs text-danger bg-[#F6E7E7] rounded-md px-3 py-2" data-testid="admin-error">
                 {error}
               </div>
             )}
@@ -215,7 +214,7 @@ export default function Admin() {
 
             {!loading && status && (
               <>
-                <div className="text-xs text-ink-soft bg-moss-soft rounded-lg px-3 py-2.5 leading-relaxed">
+                <div className="text-xs text-ink-soft bg-moss-soft rounded-md px-3 py-2.5 leading-relaxed">
                   当前实际生效：<b className="text-moss">{sourceLabel(status.active_source)}</b>
                   {status.active_model && (
                     <span className="block mt-0.5">模型：{status.active_model}</span>
@@ -253,7 +252,7 @@ export default function Admin() {
                     <button
                       type="button"
                       onClick={() => setShowKey((v) => !v)}
-                      className="border border-line rounded-lg px-2.5 text-xs text-ink-soft hover:bg-moss-soft"
+                      className="border border-line rounded-md min-h-[36px] px-2.5 text-[13px] text-ink-soft hover:bg-moss-soft"
                     >
                       {showKey ? "隐藏" : "显示"}
                     </button>
@@ -290,7 +289,7 @@ export default function Admin() {
                     <button
                       type="button"
                       onClick={() => setShowAmap((v) => !v)}
-                      className="border border-line rounded-lg px-2.5 text-xs text-ink-soft hover:bg-moss-soft"
+                      className="border border-line rounded-md min-h-[36px] px-2.5 text-[13px] text-ink-soft hover:bg-moss-soft"
                     >
                       {showAmap ? "隐藏" : "显示"}
                     </button>
@@ -311,7 +310,7 @@ export default function Admin() {
                 {test.status !== "idle" && (
                   <div
                     className={
-                      "text-xs rounded-lg px-3 py-2.5 leading-relaxed " +
+                      "text-xs rounded-md px-3 py-2.5 leading-relaxed " +
                       (test.status === "ok"
                         ? "text-moss bg-moss-soft"
                         : test.status === "fail"
@@ -328,14 +327,14 @@ export default function Admin() {
                   <button
                     onClick={handleTest}
                     disabled={test.status === "testing"}
-                    className="border border-moss text-moss rounded-lg px-3.5 py-2 text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+                    className="border border-moss text-moss rounded-md min-h-[36px] px-3.5 py-2 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-40"
                   >
                     {test.status === "testing" ? "探测中…" : "探测连接"}
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-moss text-white rounded-lg px-4 py-2 text-xs font-bold hover:bg-[#175740] disabled:opacity-40"
+                    className="bg-moss text-white rounded-md min-h-[36px] px-4 py-2 text-[13px] font-bold hover:bg-[#175740] disabled:opacity-40"
                     data-testid="admin-save"
                   >
                     {saving ? "保存中…" : "保存"}
@@ -361,7 +360,7 @@ export default function Admin() {
 function LoginCard({ onLogin }: { onLogin: (token: string) => void }) {
   const [input, setInput] = useState("");
   return (
-    <div className="bg-white border border-line rounded-[18px] shadow-card p-6 flex flex-col gap-4">
+    <div className="bg-white border border-line rounded-[14px] shadow-card p-6 flex flex-col gap-4">
       <h2 className="text-base font-bold">🔐 需要登录</h2>
       <p className="text-xs text-ink-soft leading-relaxed">
         请输入后台管理 token（服务器 .env 中的 ITERTRIP_ADMIN_TOKEN）。
@@ -374,13 +373,13 @@ function LoginCard({ onLogin }: { onLogin: (token: string) => void }) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && input.trim() && onLogin(input.trim())}
           placeholder="admin token"
-          className="border border-line rounded-lg px-3 py-2 text-sm flex-1 focus:outline-2 focus:outline-moss-soft focus:border-moss"
+          className="border border-line rounded-md px-3 py-2 text-sm flex-1 focus:outline-2 focus:outline-moss-soft focus:border-moss"
           autoComplete="off"
         />
         <button
           onClick={() => input.trim() && onLogin(input.trim())}
           disabled={!input.trim()}
-          className="bg-moss text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-[#175740] disabled:opacity-40"
+          className="bg-moss text-white rounded-md min-h-[36px] px-4 py-2 text-sm font-bold hover:bg-[#175740] disabled:opacity-40"
         >
           登录
         </button>

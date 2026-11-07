@@ -85,7 +85,7 @@ export default function PlaceForm({
             onChange={(e) => onChange({ name: e.target.value })}
             placeholder="地点名称（必填）"
             maxLength={60}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
         </label>
 
@@ -94,7 +94,7 @@ export default function PlaceForm({
           <select
             value={draft.type}
             onChange={(e) => onChange({ type: e.target.value as PlaceType })}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink bg-white"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink bg-white"
           >
             {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -106,7 +106,7 @@ export default function PlaceForm({
             <select
               value={dayIdx}
               onChange={(e) => setDayIdx(Number(e.target.value))}
-              className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink bg-white"
+              className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink bg-white"
             >
               {dayOptions.map((d) => <option key={d.index} value={d.index}>{d.label}</option>)}
             </select>
@@ -121,7 +121,7 @@ export default function PlaceForm({
             onChange={(e) => onChange({ time: e.target.value })}
             placeholder="如 09:00-11:30（可选）"
             maxLength={40}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
           <datalist id="time-presets">
             {TIME_PRESETS.map((t) => <option key={t} value={t} />)}
@@ -136,7 +136,7 @@ export default function PlaceForm({
             onChange={(e) => onChange({ transport: e.target.value })}
             placeholder="如 地铁 3 号线（可选）"
             maxLength={60}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
           <datalist id="transport-presets">
             {TRANSPORT_PRESETS.map((t) => <option key={t} value={t} />)}
@@ -151,7 +151,7 @@ export default function PlaceForm({
             onChange={(e) => onChange({ ticket: e.target.value })}
             placeholder="如 50 元（可选）"
             maxLength={40}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
           <datalist id="ticket-presets">
             {TICKET_PRESETS.map((t) => <option key={t} value={t} />)}
@@ -165,7 +165,7 @@ export default function PlaceForm({
             onChange={(e) => onChange({ note: e.target.value })}
             placeholder="可选"
             maxLength={120}
-            className="border border-line rounded-lg px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+            className="border border-line rounded-md px-2.5 py-[7px] text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
           />
         </label>
 
@@ -176,7 +176,7 @@ export default function PlaceForm({
               <button
                 type="button"
                 onClick={onStartRepick}
-                className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft"
+                className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft"
               >
                 🗺 更改位置
               </button>
@@ -187,7 +187,7 @@ export default function PlaceForm({
                   disabled={relocating || !draft.name.trim()}
                   data-testid="place-relocate"
                   title="按名称重新查一次坐标（优先高德 POI，再退到模型知识）"
-                  className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
+                  className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-40"
                 >
                   {relocating ? "🔍 定位中…" : "🔍 按名称重新定位"}
                 </button>
@@ -196,33 +196,33 @@ export default function PlaceForm({
           </label>
         )}
 
-        <div className="text-[11px] text-ink-soft tabular-nums flex items-center gap-1.5 flex-wrap">
+        <div className="text-xs text-ink-soft tabular-nums flex items-center gap-1.5 flex-wrap">
           <span>{posText}</span>
           {badge && (
             <span
               title={badge.title}
               data-testid="coord-badge"
-              className={"rounded-md px-1.5 py-px text-[11px] font-semibold " + BADGE_CLASS[badge.tone]}
+              className={"rounded-md px-1.5 py-px text-xs font-semibold " + BADGE_CLASS[badge.tone]}
             >
               {badge.text}
             </span>
           )}
         </div>
         {relocateMsg && (
-          <div className="text-[11px] text-ink-soft bg-cream border border-line/60 rounded-lg px-2 py-1" data-testid="relocate-msg">
+          <div className="text-xs text-ink-soft bg-cream border border-line/60 rounded-lg px-2 py-1" data-testid="relocate-msg">
             {relocateMsg}
           </div>
         )}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onCancel} className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft">
+          <button type="button" onClick={onCancel} className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft">
             取消
           </button>
           <button
             type="button"
             onClick={() => { onSave(); }}
             disabled={okDisabled}
-            className="bg-moss text-white border border-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-[#175740] disabled:opacity-40"
+            className="bg-moss text-white border border-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-[#175740] disabled:opacity-40"
           >
             {isEdit ? "保存修改" : "确定添加"}
           </button>

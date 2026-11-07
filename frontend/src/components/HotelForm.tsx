@@ -74,7 +74,7 @@ export default function HotelForm({
         className="bg-white border border-line rounded-[14px] shadow-card p-[18px] w-[min(360px,calc(100vw-48px))] max-h-[calc(100vh-40px)] overflow-y-auto flex flex-col gap-2.5"
       >
         <h3 className="text-sm font-bold">{mode === "edit" ? "✎ 编辑酒店" : "🏨 添加酒店"}</h3>
-        <div className="text-[11px] text-ink-soft">{dayLabel}</div>
+        <div className="text-xs text-ink-soft">{dayLabel}</div>
 
         <label className="flex flex-col gap-1 text-xs font-semibold text-ink-soft">
           酒店名称
@@ -104,7 +104,7 @@ export default function HotelForm({
             报价 <span className="font-normal">（自己填；工具不抓取、不预订）</span>
           </div>
           {prices.length === 0 && (
-            <div className="text-[11px] text-ink-soft" data-testid="price-empty">
+            <div className="text-xs text-ink-soft" data-testid="price-empty">
               暂无报价 —— 看到的价格点「＋ 添加一条报价」记下来，补全相同条件才会比较最低价。
             </div>
           )}
@@ -121,7 +121,7 @@ export default function HotelForm({
                   className="flex-1 min-w-0 border border-line rounded-md px-2 py-[5px] text-[12px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
                 />
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <span className="text-[11px] text-ink-soft">¥</span>
+                  <span className="text-xs text-ink-soft">¥</span>
                   <input
                     value={priceText(i)}
                     onChange={(e) => onPriceInput(i, e.target.value)}
@@ -136,7 +136,7 @@ export default function HotelForm({
                   onClick={() => removePrice(i)}
                   title="删除这条报价"
                   data-testid="price-remove"
-                  className="shrink-0 w-6 h-6 rounded-md border border-line bg-white text-ink-soft text-[11px] leading-none hover:bg-[#F6E7E7] hover:text-danger"
+                  className="shrink-0 w-6 h-6 rounded-md border border-line bg-white text-ink-soft text-xs leading-none hover:bg-[#F6E7E7] hover:text-danger"
                 >
                   ✕
                 </button>
@@ -148,9 +148,9 @@ export default function HotelForm({
                   placeholder="备注（可选，如 不可取消 / 含双早）"
                   maxLength={40}
                   data-testid="price-note"
-                  className="flex-1 min-w-0 border border-line rounded-md px-2 py-[5px] text-[11.5px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
+                  className="flex-1 min-w-0 border border-line rounded-md px-2 py-[5px] text-xs text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
                 />
-                <label className="flex items-center gap-1 text-[11.5px] text-ink-soft whitespace-nowrap shrink-0">
+                <label className="flex items-center gap-1 text-xs text-ink-soft whitespace-nowrap shrink-0">
                   <input
                     type="checkbox"
                     checked={!!pr.breakfast}
@@ -163,8 +163,8 @@ export default function HotelForm({
               <details className="text-xs"><summary className="min-h-11 flex items-center cursor-pointer">报价条件与来源（可选，缺项不参与最低比较）</summary>
                 <div className="grid grid-cols-2 gap-2">{([
                   ['check_in','入住','date'],['check_out','离店','date'],['room','房型','text'],['occupancy','人数／间数','text'],['cancellation','退改条件','text'],['source_url','来源链接','url'],
-                ] as const).map(([key,label,type]) => <label key={key}>{label}<input type={type} aria-label={label} className="w-full min-h-11 border border-line rounded-lg px-2" value={pr[key] || ''} onChange={e => setPrice(i,{[key]:e.target.value})} /></label>)}</div>
-                <label>计价单位<select className="w-full min-h-11 border border-line rounded-lg" value={pr.unit || ''} onChange={e => setPrice(i,{unit:e.target.value as PriceItem['unit']})}><option value="">未知</option><option value="night">每晚</option><option value="stay">整次入住</option></select></label>
+                ] as const).map(([key,label,type]) => <label key={key}>{label}<input type={type} aria-label={label} className="w-full min-h-11 border border-line rounded-md px-2" value={pr[key] || ''} onChange={e => setPrice(i,{[key]:e.target.value})} /></label>)}</div>
+                <label>计价单位<select className="w-full min-h-11 border border-line rounded-md" value={pr.unit || ''} onChange={e => setPrice(i,{unit:e.target.value as PriceItem['unit']})}><option value="">未知</option><option value="night">每晚</option><option value="stay">整次入住</option></select></label>
                 <label className="flex gap-2 min-h-11 items-center"><input type="checkbox" checked={!!pr.queried_at} onChange={e => setPrice(i,{queried_at:e.target.checked ? new Date().toISOString() : '',breakfast_known:e.target.checked})} />我已查阅报价与上述条件（含是否含早）</label>
                 {pr.queried_at && <p className="break-all text-ink-soft">查阅／查询：{pr.queried_at}</p>}
               </details>
@@ -174,7 +174,7 @@ export default function HotelForm({
             type="button"
             onClick={addPrice}
             data-testid="price-add"
-            className="self-start border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft"
+            className="self-start border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft"
           >
             ＋ 添加一条报价
           </button>
@@ -189,14 +189,14 @@ export default function HotelForm({
             <button
               type="button"
               onClick={onStartRepick}
-              className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft"
+              className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft"
             >
               🗺 在地图上重定位置
             </button>
           </span>
         </label>
 
-        <div className="text-[11px] text-ink-soft tabular-nums">{posText}</div>
+        <div className="text-xs text-ink-soft tabular-nums">{posText}</div>
 
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-soft">
           应用到
@@ -204,32 +204,32 @@ export default function HotelForm({
             <button
               type="button"
               onClick={() => setScope("day")}
-              className={"flex-1 rounded-[8px] px-2 py-1 text-[11px] font-semibold transition-colors " + (scope === "day" ? "bg-white text-moss shadow-sm" : "text-ink-soft hover:text-ink")}
+              className={"flex-1 rounded-[8px] px-2 py-1 text-xs font-semibold transition-colors " + (scope === "day" ? "bg-white text-moss shadow-sm" : "text-ink-soft hover:text-ink")}
             >
               仅改这一天
             </button>
             <button
               type="button"
               onClick={() => setScope("all")}
-              className={"flex-1 rounded-[8px] px-2 py-1 text-[11px] font-semibold transition-colors " + (scope === "all" ? "bg-white text-moss shadow-sm" : "text-ink-soft hover:text-ink")}
+              className={"flex-1 rounded-[8px] px-2 py-1 text-xs font-semibold transition-colors " + (scope === "all" ? "bg-white text-moss shadow-sm" : "text-ink-soft hover:text-ink")}
             >
               设为所有天默认
             </button>
           </div>
           {scope === "all" && (
-            <span className="text-[11px] text-ink-soft font-normal">会覆盖其他天的酒店（含你单独改过的天）。</span>
+            <span className="text-xs text-ink-soft font-normal">会覆盖其他天的酒店（含你单独改过的天）。</span>
           )}
         </label>
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onCancel} className="border border-line bg-white text-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-moss-soft">
+          <button type="button" onClick={onCancel} className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-moss-soft">
             取消
           </button>
           <button
             type="button"
             onClick={() => onSave(scope)}
             disabled={okDisabled}
-            className="bg-moss text-white border border-moss rounded-lg px-2.5 py-[6px] text-xs font-semibold hover:bg-[#175740] disabled:opacity-40"
+            className="bg-moss text-white border border-moss rounded-md min-h-[36px] px-3 py-[6px] text-[13px] font-semibold hover:bg-[#175740] disabled:opacity-40"
           >
             {scope === "all" ? "设为所有天默认" : (mode === "edit" ? "保存修改" : "添加酒店")}
           </button>

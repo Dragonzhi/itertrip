@@ -16,7 +16,7 @@ export default function NavigationDialog({ point, previous, city, onClose }: { p
   const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const links = navigation.links(point, { provider, mode, city, confirmed, previous, mobile, ios: /iPhone|iPad|iPod/i.test(navigator.userAgent) });
   const copyText = `${city} · ${point.name}${risk !== "search" ? `\nGCJ-02：${point.lat}, ${point.lng}` : ""}`;
-  return <dialog ref={dialog} onCancel={onClose} aria-labelledby="nav-title" className="navigation-dialog w-[calc(100%-24px)] max-w-[430px] rounded-[22px] bg-cream p-5 text-ink shadow-card">
+  return <dialog ref={dialog} onCancel={onClose} aria-labelledby="nav-title" className="navigation-dialog w-[calc(100%-24px)] max-w-[430px] rounded-[14px] bg-cream p-5 text-ink shadow-card">
     <div className="flex items-start gap-3"><div className="flex-1 min-w-0"><p className="text-xs text-moss font-semibold">把下一站交给地图</p><h2 id="nav-title" className="text-xl font-bold mt-2 break-words">{point.name}</h2></div><button className="nav-secondary shrink-0" aria-label="关闭导航选项" onClick={onClose}>✕</button></div>
     <p className="text-xs text-ink-soft leading-relaxed my-3">起点由地图软件定位或选择。这里交接当前保存点位，出入口请在地图中核对。</p>
     {risk === "search" && <p role="status" className="rounded-xl bg-gold-soft p-3 text-sm">该地点缺少可用于导航的准确坐标，请先在地图中按名称搜索并确认地点。</p>}
