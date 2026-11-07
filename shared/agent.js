@@ -15,7 +15,7 @@
     if (!x || typeof x !== 'object' || Array.isArray(x) || required.some(k=>!(k in x)) || Object.keys(x).some(k=>![...required,...optional].includes(k))) reject('操作参数缺失或包含未知字段');
   }
   function integer(x, min, max) { if (!Number.isInteger(x) || x < min || x > max) reject('操作数值无效'); }
-  function prepare(route, raw, version, completed=[], requireComplete=false, evidence=[], requireWeather=false) {
+  function prepare(route, raw, version, completed=[], requireComplete=false, evidence=[]) {
     try {
       const p=clone(raw);
       keys(p,['transaction_id','base_version','actions']);
@@ -112,13 +112,6 @@
           if(old.start===null||next.start===null||(old.start!==null&&next.start!==old.start)||(old.departure!==null&&next.departure!==old.departure)) reasons.push('修改影响固定访问的时间或无法确认：'+old.name);
         }
       });
-      if(p.actions.some(a=>a.op==='move_place') && root.IterTripWeather) {
-        if(requireWeather) reasons.push(...root.IterTripWeather.validate(route,out,affected,completed).reasons);
-        else for(const di of affected) {
-          const before=root.IterTripWeather.assess(route,di,completed),after=root.IterTripWeather.assess(out,di,completed);
-          if(!before.unknown.length&&!after.unknown.length&&after.riskMinutes>before.riskMinutes) reasons.push(`第 ${di+1} 天已知降水暴露增加`);
-        }
-      } else if(requireWeather) reasons.push('缺少天气评估工具，不能确认避雨调整');
       if(reasons.length) return {route,changed:false,reasons:[...new Set(reasons)],unknown:[...new Set(unknown)]};
       const changed=canonical(out)!==canonical(route);
       if(changed) out.agent_receipts=[...receipts,{id:p.transaction_id,payload}];

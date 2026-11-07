@@ -161,7 +161,7 @@
     next.days.forEach(d => [...d.places, ...(d.hotel ? [d.hotel] : [])].forEach(p => {
       const old = oldPoints.find(o => o.id === p.id);
       // Only the human editor can record/confirm structured arrangements and facts in M27.
-      p.visit = old?.visit; p.opening = old?.opening; p.weather_exposure = old?.weather_exposure;
+      p.visit = old?.visit; p.opening = old?.opening;
       (p.prices || []).forEach(quote => {
         const prior = (old?.prices || []).find(v => v.platform === quote.platform && v.price === quote.price && !!v.breakfast === !!quote.breakfast);
         ['source_url', 'queried_at', 'check_in', 'check_out', 'room', 'occupancy', 'cancellation', 'unit'].forEach(k => { quote[k] = prior?.[k] || ''; });
@@ -169,7 +169,6 @@
       });
     }));
     next.trip.start_date = previous.trip.start_date; next.trip.date_source = previous.trip.date_source; next.trip.dates = previous.trip.dates;
-    next.weather = previous.weather; next.weather_policy = previous.weather_policy;
     next.agent_receipts = previous.agent_receipts;
     return { route: refreshClosures(transport.normalize(next, previous)), reasons };
   }
