@@ -258,12 +258,18 @@ for (const [w, h] of sizes) {
   await send("Emulation.setTouchEmulationEnabled", { enabled: compact, maxTouchPoints: compact ? 5 : 0 }, S);
   await send("Page.navigate", { url: BASE }, S);
   await waitEvent("Page.loadEventFired", S);
-  await evalIn("localStorage.setItem('itertrip:route', " + JSON.stringify(JSON.stringify(FIXTURE)) + ")");
-  await send("Page.reload", {}, S);
+  // SKIP_FIXTURE=1 量别的页面（如起始页）时不注入行程 —— 否则 App 见到 route 会直接进规划页
+  if (!process.env.SKIP_FIXTURE) {
+    await evalIn("localStorage.setItem('itertrip:route', " + JSON.stringify(JSON.stringify(FIXTURE)) + ")");
+    await send("Page.reload", {}, S);
+  }
   await waitEvent("Page.loadEventFired", S);
   await sleep(compact ? 1800 : 1200);          // 等瓦片与布局稳定
-  await shoot("plan", w, h);
+  const label = process.env.SKIP_FIXTURE ? "page" : "plan";
+  await shoot(label, w, h);
   await probe(w, h);
+  // SKIP_FIXTURE = 纯量页模式（截图 + 溢出探针），不跑规划页专属断言
+  if (process.env.SKIP_FIXTURE) continue;
 
   // M32 结构断言：断点两侧各归其位（≥1024 工作台且无紧凑抽屉 / <1024 反之）
   const structure = await evalIn("(() => ({ ws: !!document.querySelector('.dw-workspace'), ai: !!document.querySelector('[data-testid=ai-drawer]') }))()");
