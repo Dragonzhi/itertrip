@@ -50,7 +50,7 @@ await click(byText('↩ 撤销'));assert.equal(saved().days[0].places[0].weather
 let resolve;
 globalThis.fetch=async(url)=>{assert.ok(url.endsWith('/api/route/weather'));return new Promise(r=>resolve=r);};
 await click(byText('刷新逐小时天气'));
-if(desktop)await click(byText('当天时间与交通设置'));
+if(desktop)await click(document.querySelector('[data-testid=day-settings]'));
 await input(document.querySelector('[aria-label="第1天结束时间"]'),'21:00');
 if(desktop)await click(document.querySelector('[data-testid=desktop-weather]'));
 await act(async()=>resolve({ok:true,json:async()=>({results:[{...fixture.weather[0],queried_at:new Date().toISOString()}],error:'',calls:1})}));

@@ -68,7 +68,7 @@ globalThis.fetch=async()=>sse({route:saved()});await send('修改备注');assert
 assert.ok(document.body.textContent.includes('行程未修改：没有实际变化'));
 
 model([{op:'set_duration',place_id:'a',minutes:40},{op:'set_duration',place_id:'b',minutes:45}],false);
-await send('调整两处');if(desktop)await click(byText('当天时间与交通设置'));await act(async()=>{
+await send('调整两处');if(desktop)await click(document.querySelector('[data-testid=day-settings]'));await act(async()=>{
  const input=document.querySelector('[aria-label="第1天开始时间"]');Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(input,'09:15');input.dispatchEvent(new w.Event('input',{bubbles:true}));
 });
 const edited=JSON.stringify(saved());if(desktop)await click(document.querySelector('[data-testid=chat-toggle]'));await click(byText('应用这组修改'));assert.equal(JSON.stringify(saved()),edited);assert.ok(document.body.textContent.includes('预览期间路线或出行进度已变化'));

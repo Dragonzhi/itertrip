@@ -406,7 +406,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
               )}
               {m.role === "assistant" && <CoordReport digest={m.geo} />}
               {m.role === "assistant" && m.changed && (
-                <div className="text-[11px] text-ink-soft mt-1">地图已更新 · 可撤销</div>
+                <div className="text-[12px] text-ink-soft mt-1">地图已更新 · 可撤销</div>
               )}
               {m.role === "assistant" && m.interrupted && (
                 <div className="text-[11px] text-gold-deep mt-1 font-medium" data-testid="msg-interrupted">
@@ -532,9 +532,14 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
             onStop={stream.stop}
           />
         </div>
-        <p className="text-xs text-ink-soft mt-1.5">
-          {!online ? '当前离线 · AI 需要联网；已保存行程可在规划页手工修改' : hasRoute ? "当前行程可继续对话修改 · Enter 发送 · Shift+Enter 换行" : "Enter 发送 · Shift+Enter 换行"}
-        </p>
+        {/* 键盘快捷键提示只在 ≥1024 显示 —— 触屏没有物理键盘，桌面残留（盲审修缮 #5） */}
+        {!online ? (
+          <p className="text-xs text-ink-soft mt-1.5">当前离线 · AI 需要联网；已保存行程可在规划页手工修改</p>
+        ) : (
+          <p className="hidden lg:block text-xs text-ink-soft mt-1.5">
+            {hasRoute ? "当前行程可继续对话修改 · " : ""}Enter 发送 · Shift+Enter 换行
+          </p>
+        )}
       </form>
     </div>
   );
