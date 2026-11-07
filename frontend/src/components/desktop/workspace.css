@@ -57,15 +57,13 @@
 .dw-weather-link small { display: block; font-size: 12px; color: var(--dw-muted); margin-top: 4px; }
 .dw-weather-link > span:last-child { font-size: 12px; white-space: nowrap; color: var(--dw-green); }
 .dw-weather-risk { background: #F6EBD8; border-color: #C8903C70; }
-.dw-summary { display: flex; flex-wrap: wrap; gap: 10px 24px; padding-bottom: 16px; border-bottom: 1px solid var(--dw-line); font-variant-numeric: tabular-nums; }
-.dw-summary > div, .dw-summary-status { text-align: left; }
-.dw-summary span, .dw-summary small { font-size: 12px; color: var(--dw-muted); }
-.dw-summary strong { font-size: 14px; font-weight: 600; margin-left: 8px; }
-.dw-summary small { display: inline; margin-left: 6px; }
-.dw-summary-status { border: 0; background: transparent; padding: 0; }
-.dw-summary-status:hover strong { text-decoration: underline; }
-.dw-day-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 12px 0; color: var(--dw-muted); font-size: 12px; }
-.dw-day-actions button { color: var(--dw-green); font-size: 12px; }
+/* 当天摘要单行（M33，取代原四格 + 重复按钮）：与 dw-weather-link 同一视觉语言的一行状态条 */
+.dw-statusline { width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; background: #FAF6F0; border: 1px solid var(--dw-line); border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; text-align: left; font-size: 12px; color: var(--dw-muted); font-variant-numeric: tabular-nums; }
+.dw-statusline strong { font-size: 13px; font-weight: 600; margin-left: 4px; }
+.dw-statusline strong.dw-danger { color: #9C4038; }
+.dw-statusline small { margin-left: 4px; color: var(--dw-muted); }
+.dw-statusline:hover { border-color: var(--dw-green); }
+.dw-statusline-action { margin-left: auto; color: var(--dw-green); white-space: nowrap; }
 .dw-danger, .dw-row-warnings { color: #9C4038; }
 .dw-alert { padding: 10px; background: #FCF1EC; color: #9C4038; border-radius: 6px; margin: 12px 0; font-size: 12px; }
 .dw-visit { position: relative; padding: 12px 10px 12px 0; margin: 2px 0; border-radius: 6px; }
@@ -144,7 +142,6 @@
   .dw-itinerary > footer { padding-inline: 24px; }
   .dw-map { margin: 16px; }
   .dw-split .dw-inspector { margin: 0 16px 16px; }
-  .dw-summary { gap: 10px 16px; }
 }
 @media(min-width:1024px) {
   .dw-plan [role=dialog] { font-size: 14px; }

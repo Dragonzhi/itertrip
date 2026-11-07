@@ -63,7 +63,7 @@ export default function Workspace(props:{
     <div className="dw-body">
       <section className="dw-itinerary" aria-label="当天行程">
         <div className="dw-scroll" data-testid="desktop-itinerary">{props.messages}{props.itinerary}</div>
-        <footer><button className="dw-add" onClick={props.onAdd}><Icon name="plus"/>添加地点</button><span>按自己的节奏，调整每一天。</span></footer>
+        <footer><button className="dw-add" onClick={props.onAdd}><Icon name="plus"/>添加地点</button></footer>
       </section>
       <section className={`dw-support ${split?'dw-split':''}`} aria-label="地图与行程辅助">
       <section className="dw-map" aria-label="行程地图" hidden={fullPanel}>{props.map}<div className="dw-map-caption">D{props.route.days[props.day]?.day||props.day+1} · 地点顺序 <span>连线不代表实际道路</span></div></section>

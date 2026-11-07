@@ -426,7 +426,12 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const chooseDay=(di:number)=>{setDesktopDay(di);lastActiveDayRef.current=di;setSelection(null);setActiveKey(null);setDaySettings(false);};
 
   const trip = route.trip;
-  const metas = [trip.destination, trip.dates, trip.budget, trip.travelers].filter(Boolean);
+  const metas = [
+    trip.destination,
+    trip.dates,
+    trip.budget ? (/^\d+([.]\d+)?$/.test(trip.budget.trim()) ? `预算 ¥${trip.budget.trim()}` : `预算 ${trip.budget.trim()}`) : "",
+    trip.travelers,
+  ].filter(Boolean);
 
   /**
    * M18：用户在地图上手动确定/修改的位置就是坐标真值，回传记忆库（实体记忆）。
@@ -881,7 +886,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   };
   const pickHint = picking ? (picking.purpose === "repick-hotel" ? PICK_HINT_REPICK_HOTEL : picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
-  /** M32（原 M23 双渲染）：日期卡与元信息只在行程抽屉表头渲染一份（桌面工作台的日期卡单独走 Workspace date 槽）。 */
+  /** M32（原 M23 双渲染）：日期卡与元信息只在行程抽屉表头渲染一份（桌面工作台的日期卡单独走 Workspace date 槽）。
+   * 预算补上「预算 ¥」前缀 —— 裸数字「3000」读不出含义（盲审修缮清单 #6）。 */
   const metasJsx = (
     <div className="text-xs text-ink-soft mt-0.5">
       {metas.map((m, k) => (
@@ -895,7 +901,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           data-testid="date-card"
         >
           <div className="flex items-center gap-2">
-            <div className="w-[188px]">
+            <div className="min-w-0 flex-1 max-w-[260px]">
               <CalendarPicker
                 value={trip.start_date || ""}
                 onChange={(v) => void handleDateCheck(v)}
@@ -1106,7 +1112,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       {desktop&&pickHint&&<div className="dw-pick-hint" role="status">{pickHint}<button className="focus-ring" onClick={()=>setPicking(null)}>取消</button></div>}
       </>);
   const weatherContent=route.days.length?(          <WeatherPanel day={desktop?visibleDay:undefined} onDayChange={desktop?chooseDay:undefined} route={route} completed={completedIds} isCurrent={isCurrent} apply={(candidate,expected)=>mutate(r=>Object.assign(r,candidate),expected)} edit={scheduleActions.edit} onBlocking={setWeatherBlocking} blocked={!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />):<p>暂无行程可评估天气。</p>;
-  const offlineContent=(          <OfflinePanel blocked={!!agentPending || weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />);
+  const offlineContent=(          <OfflinePanel quiet blocked={!!agentPending || weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />);
   const desktopTimeline=(          <Timeline
             desktopDay={visibleDay}
             onWeatherSelect={()=>openAux('weather')}
@@ -1153,7 +1159,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}
-      {!desktop && !panelOpen && !chatOpen && !picking && !form && !hotelForm && (
+      {/* M25 出行视图的再入口。M33 起只在出行视图出现 —— 规划视图的地图上
+          常驻一颗「继续出行」大按钮是错位的 CTA（回出行应走 🗺 面板切换）。 */}
+      {!desktop && outing.mode === "outing" && !panelOpen && !chatOpen && !picking && !form && !hotelForm && (
         <button data-testid="outing-reentry" className="fixed left-3 right-3 bottom-8 z-[410] nav-primary shadow-card" onClick={() => { setOuting(p => ({ ...p, mode: "outing" })); setPanelOpen(true); }}>
           继续出行 · 第 {route.days[Math.min(outing.day, route.days.length - 1)]?.day || 1} 天 →
         </button>
@@ -1176,11 +1184,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           <h1 className="text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto shrink-0">
-          {source === "mock" && (
-            <span className="hidden bg-gold-soft text-gold-deep text-xs font-semibold rounded-full px-3 shadow-card sm:inline-flex items-center" title="后端未配置 LLM key，当前为 mock 草稿">
-              mock 草稿
-            </span>
-          )}
           <button onClick={toggleChat} data-testid="chat-toggle" title="AI 改行程"
             className="border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card hover:bg-moss-soft focus-ring">
             🤖
@@ -1264,7 +1267,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           {offlineContent}
-          <details open={outing.mode !== "outing"} className="my-2"><summary className="min-h-11 flex items-center cursor-pointer focus-ring">☂ 查看天气与局部调整</summary>
+          {/* M33 起默认收起：M29 曾让它在规划视图常开，天气解释文案把时间线顶出两屏，
+              而「☂ 查看天气」本身就是一级入口 —— 不需要再替用户展开一次。 */}
+          <details className="my-2"><summary className="min-h-11 flex items-center cursor-pointer focus-ring">☂ 查看天气与局部调整</summary>
           {weatherContent}
           </details>
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
@@ -1353,7 +1358,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
               {exportError}
             </div>
           )}
-          <div className="mt-2 text-xs text-ink-soft text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div> : <div className="px-[18px] py-3 border-t border-line text-xs text-ink-soft">{progressSaved ? "当天与进度已保存 · 编辑和导出请切回规划视图" : "进度仅保留在本次页面，请勿刷新"}</div>}
         </motion.div>
       </aside>

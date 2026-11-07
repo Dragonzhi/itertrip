@@ -19,15 +19,16 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   return <div className="dw-day">
     <div className="dw-day-heading"><div><p>DAY {String(day.day||di+1).padStart(2,'0')} · {result.date||'日期待确认'}</p><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2></div>{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div>
     <button className={`dw-weather-link ${rain.items.length?'dw-weather-risk':''}`} data-testid="desktop-weather" onClick={p.onWeatherSelect}>
-      <span><strong>{rain.items.length?`${rain.items.length} 处天气风险${rain.unknown.length?` · ${rain.unknown.length} 项未评估`:''}`:rain.label}</strong><small>{rain.items.length?'受影响安排：'+rain.items.slice(0,2).map(item=>`${item.name} ${schedule.fmt(item.start)}–${schedule.fmt(item.end)}`).join(' · '):'查看天气覆盖与依据，按需查询或调整'}{rain.items.length>2?` 等 ${rain.items.length} 处`:''}</small></span><span>查看天气与调整 →</span>
+      <span><strong>{rain.items.length?`${rain.items.length} 处天气风险${rain.unknown.length?` · ${rain.unknown.length} 项未评估`:''}`:rain.label}</strong>{rain.items.length>0&&<small>受影响安排：{rain.items.slice(0,2).map(item=>`${item.name} ${schedule.fmt(item.start)}–${schedule.fmt(item.end)}`).join(' · ')}{rain.items.length>2?` 等 ${rain.items.length} 处`:''}</small>}</span><span>查看天气与调整 →</span>
     </button>
-    <section className="dw-summary" aria-label="当天摘要">
-      <div><span>预计安排</span><strong>{day.schedule?.start||'开始未知'}–{schedule.fmt(result.end)}</strong></div>
-      <div><span>{traffic.known===traffic.total&&traffic.total?'预计交通':'已知交通小计'}</span><strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'耗时未知'}</strong><small>{traffic.known}/{traffic.total} 段 · 缓冲 {traffic.buffer} 分钟</small></div>
-      <div><span>已知步行</span><strong>{traffic.walkKnown?`${(traffic.walking/1000).toFixed(1)} km`:'距离未知'}</strong><small>{traffic.walkKnown}/{traffic.total} 段</small></div>
-      <button className="dw-summary-status" onClick={()=>p.onDaySettings?.()}><span>日程检查</span><strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 项冲突`:result.label}</strong><small>{result.unknown.length} 项未评估 · 查看安排</small></button>
-    </section>
-    <div className="dw-day-actions"><button onClick={p.onDaySettings}>当天时间与交通设置</button><span>交通为查询时估算</span></div>
+    {/* M33：原 dw-summary 四格（默认全是「未知/未评估」）+ 重复的「当天时间与交通设置」按钮
+        收成一行 —— 数字仍可一眼扫到，逐项细节走二级的当天安排与交通面板。 */}
+    <button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>
+      <span>预计 <strong>{day.schedule?.start||'开始未知'}–{schedule.fmt(result.end)}</strong></span>
+      <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'未知'}</strong><small>{traffic.known}/{traffic.total} 段 · 缓冲 {traffic.buffer} 分钟</small></span>
+      <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 项冲突`:result.label}</strong>{result.unknown.length>0&&!result.label.includes('未评估')&&<small> · {result.unknown.length} 项未评估</small>}</span>
+      <span className="dw-statusline-action">安排与交通 →</span>
+    </button>
     <div className="dw-visits" onDragOver={e=>{if(drag.current)e.preventDefault();}} onDrop={e=>drop(e,day.places.length)}>
       {day.places.map((point,pi)=>{
         const key=`d${di}-p${pi}`, row=result.rows.find(r=>r.id===point.id);

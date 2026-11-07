@@ -18,7 +18,8 @@ export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number;
       <label>{route.days[di].start_from_hotel ? '离开酒店' : '首站开始'}<input aria-label={`第${di + 1}天开始时间`} type="time" value={config.start || ''} onChange={e => actions.day(di, {start: e.target.value})} /></label>
       <label>当天结束<input aria-label={`第${di + 1}天结束时间`} type="time" value={config.end || ''} onChange={e => actions.day(di, {end: e.target.value})} /></label>
     </div>}
-    <p>目的地本地时间（首版中国境内，Asia/Shanghai）。{route.days[di].start_from_hotel ? '含酒店出发交通。' : '开始时间表示已到首站；不含出发地到首站交通。'}交通采用查询时估算，未来时段可能变化。</p>
+    {/* 实现细节（时区常量、版本范围）不进界面 —— 只说用户需要拿来做决定的部分 */}
+    <p>时间均为目的地当地时间。{route.days[di].start_from_hotel ? '开始 = 离开酒店的时刻。' : '开始 = 到达首站的时刻，不含前往首站的交通。'}交通耗时为查询时估算，未来时段可能变化。</p>
     {!!result.issues.length && <ul className="text-danger">{result.issues.map((v, i) => <li key={i}>⚠ {v.text}</li>)}</ul>}
     {!!result.unknown.length && <details><summary>查看未评估条件（{result.unknown.length}）</summary><ul>{result.unknown.map((v, i) => <li key={i}>{v.text}</li>)}</ul></details>}
     {!!result.issues.length && <p>尚无已验证的可行方案。下方候选需修改后重新评估，固定／已完成部分保持原位。</p>}
