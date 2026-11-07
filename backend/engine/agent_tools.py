@@ -32,8 +32,14 @@ class ScheduleArgs(Strict):
     day: StrictInt = Field(ge=1, le=30)
 
 
-ARGS = dict(search_place=PlaceArgs, search_facts=IdArgs, query_weather=IdArgs,
+ARGS = dict(search_place=PlaceArgs, search_facts=IdArgs,
             query_transport=TransportArgs, check_schedule=ScheduleArgs)
+
+
+def strip_generated(data):
+    """A model cannot mint user confirmations. 天气字段已随 M34 退役，本护栏只剩回执。"""
+    data.pop('agent_receipts', None)
+    return data
 
 
 class Tools:
@@ -103,11 +109,6 @@ class Tools:
             found = await geocode_amap_scored(a['name'], city, session=self.amap)
             data = dict(name=a['name'], lat=found[0], lng=found[1], confidence='high' if found[2] >= .85 else 'low') if found else None
             return data, ['https://restapi.amap.com/v3/place/text'] if found else [], self.amap.calls - before, bool(found)
-        if name == 'query_weather':
-            from .weather import query
-            data = await query([self.point(a['place_id'])])
-            rows = data.get('results') or []
-            return data, list({r['source_url'] for r in rows if r.get('source_url')}), data.get('calls'), bool(rows)
         if name == 'query_transport':
             from .transport import query
             start, end = self.point(a['from_id']), self.point(a['to_id'])

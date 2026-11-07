@@ -118,43 +118,6 @@ class OpeningFact(BaseModel):
         return v
 
 
-class WeatherExposure(BaseModel):
-    environment: Literal['indoor', 'outdoor', 'mixed', 'unknown'] = 'unknown'
-    rain_sensitive: bool = True
-    source: Literal['user'] = 'user'
-    place_name: str = ''
-    confirmed_at: str = ''
-
-
-class WeatherHour(BaseModel):
-    start: str
-    end: str
-    probability: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False, strict=True)
-    precipitation_mm: float | None = Field(default=None, ge=0, le=1000, allow_inf_nan=False, strict=True)
-
-
-class WeatherForecast(BaseModel):
-    provider: Literal['qweather', 'open_meteo']
-    source_url: str = ''
-    attributions: list[str] = Field(default_factory=list, max_length=8)
-    queried_at: str
-    issued_at: str | None = None
-    timezone: str
-    granularity: Literal['hourly', 'daily'] = 'hourly'
-    kind: Literal['forecast', 'historical'] = 'forecast'
-    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
-    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
-    valid_from: str
-    valid_to: str
-    hours: list[WeatherHour] = Field(default_factory=list, max_length=400)
-    refresh_error: str = ''
-
-
-class WeatherPolicy(BaseModel):
-    probability: float = Field(default=60, ge=1, le=100, allow_inf_nan=False, strict=True)
-    precipitation_mm: float = Field(default=0.5, ge=0.1, le=100, allow_inf_nan=False, strict=True)
-
-
 class Hotel(BaseModel):
     """当日酒店。"""
 
@@ -173,7 +136,6 @@ class Hotel(BaseModel):
     bookingUrl: str = ""
     visit: VisitPlan | None = None
     opening: list[OpeningFact] = Field(default_factory=list)
-    weather_exposure: WeatherExposure | None = None
 
     @field_validator("prices", mode="before")
     @classmethod
@@ -241,7 +203,6 @@ class Place(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     visit: VisitPlan | None = None
     opening: list[OpeningFact] = Field(default_factory=list)
-    weather_exposure: WeatherExposure | None = None
 
 
 class TransportOption(BaseModel):
@@ -320,6 +281,4 @@ class RouteJSON(BaseModel):
     trip: TripInfo
     days: list[DayPlan] = Field(min_length=1)
     summary: list[str] = Field(default_factory=list)
-    weather: list[WeatherForecast] = Field(default_factory=list, max_length=64)
-    weather_policy: WeatherPolicy | None = None
     agent_receipts: list[AgentReceipt] = Field(default_factory=list, max_length=1000)

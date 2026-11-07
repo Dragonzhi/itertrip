@@ -33,7 +33,7 @@ move=dict(op='move_place',place_id='a',to_day=2,before_id='')
 original=json.dumps(route)
 assert not A.handles('把每天酒店报价调整到 200 元')
 assert not A.handles('地点位置不对，请调整到长沙')
-assert A.handles('看一下今天的天气') and A.handles('下午下雨，帮我调整路线')
+assert not A.handles('看一下今天的天气') and not A.handles('下午下雨，帮我调整路线')
 candidate,p,changed=O.validate(route,proposal(duration),version)
 assert changed and candidate['days'][0]['places'][0]['visit']['duration_min']==45
 assert json.dumps(route)==original
@@ -79,16 +79,14 @@ async def tools_checks():
     assert '预算' in (await runtime.run('search_place',dict(name='超额')))['reason']
     assert json.dumps(route)==original
     # Actual adapter paths with fixture provider return values.
-    from backend.engine import transport, weather, coordinates
+    from backend.engine import transport, coordinates
     options=[dict(mode='walk',status='ok',duration_s=600,source='amap',queried_at=datetime.now(timezone.utc).isoformat())]
     runtime=T.Tools(route,version,[])
     with patch.object(transport,'query',new=AsyncMock(return_value=dict(results=[dict(options=options)],stats=dict(calls=1)))) as q:
         result=await runtime.run('query_transport',dict(from_id='b',to_id='a',mode='walk'))
         assert result['status']=='ok' and runtime.evidence[0]['from_id']=='b'
         assert q.call_args.args[0][0]['from']['id']=='b'
-    with patch.object(weather,'query',new=AsyncMock(return_value=dict(results=[],error='unconfigured',calls=0))):
-        assert (await runtime.run('query_weather',dict(place_id='a')))['status']=='unknown'
-    assert (await runtime.run('query_weather',dict(place_id='missing')))['status']=='error'
+    assert (await runtime.run('query_weather',dict(place_id='a')))['status']=='error'
     assert (await runtime.run('check_schedule',dict(day=1)))['status']=='unknown'
     with patch.object(coordinates,'geocode_amap_scored',new=AsyncMock(return_value=(30.66,104.06,.9,1))):
         assert (await runtime.run('search_place',dict(name='人民公园')))['source']
@@ -158,12 +156,12 @@ assert result['agent_proposal'] and result['stats']['tool_calls']==1 and '查询
 def cost(req):return httpx.Response(200,json=dict(choices=[],usage=dict(prompt_tokens=17000,completion_tokens=1,total_tokens=17001)))
 result,text=scenario('已报告 token 超出阈值，停止后续','protocol',cost)
 assert not result.get('agent_proposal') and result['stats']['attempts']==1
-large=copy.deepcopy(route);large['agent_receipts']=[dict(id='older-turn',payload='x'*200000)];large['weather']=[dict(provider='open_meteo',hours=[dict(start='x',end='y')]*10000)]
+large=copy.deepcopy(route);large['agent_receipts']=[dict(id='older-turn',payload='x'*200000)]
 def compact(req):
     user=json.loads(json.loads(req.content)['messages'][-1]['content'])
-    assert 'agent_receipts' not in user['current_route'] and 'hours' not in user['current_route']['weather'][0]
+    assert 'agent_receipts' not in user['current_route']
     return completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(duration))))
-result,_=scenario('历史事务与原始天气网格不挤占模型上下文','protocol',compact,dict(route=large))
+result,_=scenario('历史事务不挤占模型上下文','protocol',compact,dict(route=large))
 assert result['agent_proposal']
 
 async def cancel_check():

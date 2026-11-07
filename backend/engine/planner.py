@@ -59,7 +59,7 @@ JSON 结构：
 要求：
 1. 每天安排 3-5 个地点，lat/lng 必须是你确定知道的真实坐标（WGS84 近似即可）
 2. type 只能是 attraction / food / transport / other 之一
-3. summary 给 2-4 条综合建议（性价比 / 交通 / 天气等）
+3. summary 给 2-4 条综合建议（性价比 / 交通 / 节奏等）
 4. hotel.prices 留空数组——价格由用户后续手动提供
 """
 
@@ -170,7 +170,7 @@ async def plan_with_llm(req: dict, cfg: dict | None = None) -> RouteJSON:
         )
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"]
-    from .weather import strip_generated
+    from .agent_tools import strip_generated
     return RouteJSON.model_validate(strip_generated(_extract_json(content)))
 
 
