@@ -943,8 +943,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
   );
 
-  const aiContent=(<>        <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1.5" onPointerDown={(e) => chatDrag.start(e)}>
-          <span className="h-1.5 w-10 rounded-full bg-line" />
+  const aiContent=(<>        <div className="sheet-handle shrink-0 flex justify-center pt-2.5 pb-2" onPointerDown={(e) => chatDrag.start(e)}>
+          <span className="h-[5px] w-12 rounded-full bg-[#CFC5B0]" />
         </div>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
           <span className="text-lg">{desktop?<Icon name="ai"/>:'🤖'}</span>
@@ -1244,8 +1244,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
         {/* 抽屉固定表头（日期/元信息；桌面工作台这些在顶栏） */}
         <div className="shrink-0 border-b border-line bg-white">
-          <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1" onPointerDown={(e) => panelDrag.start(e)}>
-            <span className="h-1.5 w-10 rounded-full bg-line" />
+          <div className="sheet-handle shrink-0 flex justify-center pt-2.5 pb-2" onPointerDown={(e) => panelDrag.start(e)}>
+            <span className="h-[5px] w-12 rounded-full bg-[#CFC5B0]" />
           </div>
           <div className="px-[18px] pb-3 flex flex-col gap-1.5">
             {dateCardJsx}
@@ -1255,7 +1255,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 px-[18px] py-2 shrink-0 border-b border-line" aria-label="行程视图">
+        <div className="grid grid-cols-2 gap-2 px-[18px] py-2 shrink-0 border-b border-line bg-white" aria-label="行程视图">
           <button data-testid="planning-mode" aria-pressed={outing.mode === "plan"} className={outing.mode === "plan" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "plan" }))}>规划视图</button>
           <button data-testid="outing-mode" aria-pressed={outing.mode === "outing"} className={outing.mode === "outing" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "outing" }))}>出行视图</button>
         </div>
@@ -1289,17 +1289,17 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             scheduleActions={scheduleActions}
           />}
         </div>
-        {/* 工具条 */}
+        {/* 工具条（M32：按钮 token 对齐 dw-toolbar —— 1px line / 6px 圆角 / min-h 36 / 13px） */}
         {outing.mode === "plan" ? <div className="px-[18px] py-3 border-t border-line bg-white">
           <div className="flex gap-1.5 items-center justify-center flex-wrap">
-            <button onClick={undo} disabled={!canUndo} className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-35">
+            <button onClick={undo} disabled={!canUndo} className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-35 focus-ring">
               ↩ 撤销
             </button>
-            <button onClick={redo} disabled={!canRedo} className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-35">
+            <button onClick={redo} disabled={!canRedo} className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-35 focus-ring">
               ↪ 重做
             </button>
             <span className="w-px h-4 bg-line" />
-            <button onClick={openAddFlow} className="bg-gold text-ink border border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:opacity-90">
+            <button onClick={openAddFlow} className="bg-gold text-ink border border-gold rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:opacity-90 focus-ring">
               📍 添加地点
             </button>
             {/* M20 坐标重校准：修历史遗留的错坐标（同名异地 POI 带偏的那种） */}
@@ -1307,7 +1307,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
               onClick={handleRecheck}
               disabled={rechecking}
               title="用高德重新核验整条路线的坐标（你手改过的点不会被覆盖，可撤销）"
-              className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft disabled:opacity-45"
+              className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:bg-moss-soft disabled:opacity-45 focus-ring"
               data-testid="recheck-coords"
             >
               {rechecking ? "🔍 校准中…" : "🔍 校准坐标"}
@@ -1318,7 +1318,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                 onClick={() => setExportOpen((v) => !v)}
                 aria-haspopup="true"
                 aria-expanded={exportOpen}
-                className="border border-line bg-white text-moss rounded-lg px-2.5 py-1.5 text-xs font-semibold hover:bg-moss-soft"
+                className="border border-line bg-white text-moss rounded-md min-h-[36px] px-3 py-1.5 text-[13px] font-semibold hover:bg-moss-soft focus-ring"
                 title="导出行程"
                 data-testid="export-trigger"
               >
@@ -1344,16 +1344,16 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             </div>
           </div>
           {recheckMsg && (
-            <div role="status" className="mt-1.5 text-[11px] text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
+            <div role="status" className="mt-1.5 text-xs text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
               {recheckMsg}
             </div>
           )}
           {exportError && (
-            <div role="status" className="mt-1.5 text-[11px] text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
+            <div role="status" className="mt-1.5 text-xs text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
               {exportError}
             </div>
           )}
-          <div className="mt-2 text-[11px] text-ink-soft text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
+          <div className="mt-2 text-xs text-ink-soft text-center">由 IterTrip · AI 生成行程 · 价格由用户手动提供</div>
         </div> : <div className="px-[18px] py-3 border-t border-line text-xs text-ink-soft">{progressSaved ? "当天与进度已保存 · 编辑和导出请切回规划视图" : "进度仅保留在本次页面，请勿刷新"}</div>}
         </motion.div>
       </aside>

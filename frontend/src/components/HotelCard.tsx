@@ -97,11 +97,11 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, check
               catch (e) { if (queryVersion.current === version) setSearchErr(e instanceof Error ? e.message : String(e)); }
               finally { if (queryVersion.current === version) setSearching(false); }
             }}
-            className="border border-line bg-white text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-moss-soft disabled:opacity-40"
+            className="border border-line bg-white text-moss rounded-lg px-2 py-1 text-xs font-semibold hover:bg-moss-soft disabled:opacity-40"
           >
             {searching ? "搜索中…" : "🔍 搜索网络报价"}
           </button>
-          {searchErr && <span className="text-[11px] text-danger ml-2">{searchErr}</span>}
+          {searchErr && <span className="text-xs text-danger ml-2">{searchErr}</span>}
           {searchResult && searchResult.prices.length > 0 && onSavePrices && (
             <button
               type="button"
@@ -113,20 +113,20 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, check
               disabled={saved}
               title="把这些搜索到的报价记进行程（之后可在「编辑酒店」里改）"
               data-testid="hotel-save-prices"
-              className="ml-2 border border-moss bg-moss-soft text-moss rounded-lg px-2 py-1 text-[11px] font-semibold hover:bg-white disabled:opacity-50"
+              className="ml-2 border border-moss bg-moss-soft text-moss rounded-lg px-2 py-1 text-xs font-semibold hover:bg-white disabled:opacity-50"
             >
               {saved ? "✓ 已存入" : "＋ 存入行程"}
             </button>
           )}
         </div>
-        <p className="text-[11px] text-ink-soft mb-2">{checkIn && checkOut ? `入住 ${checkIn} · 离店 ${checkOut}` : '入住／离店日期未知'} · 仅相同日期、房型、人数、早餐、退改和计价单位的完整报价可比较。</p>
+        <p className="text-xs text-ink-soft mb-2">{checkIn && checkOut ? `入住 ${checkIn} · 离店 ${checkOut}` : '入住／离店日期未知'} · 仅相同日期、房型、人数、早餐、退改和计价单位的完整报价可比较。</p>
         </>}
       </div>}
       {showMeta && <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr>
             {["平台", "价格", "早餐", "备注"].map((th) => (
-              <th key={th} className="text-left text-[11px] text-ink-soft font-semibold px-2 py-1.5 border-b border-line uppercase">
+              <th key={th} className="text-left text-xs text-ink-soft font-semibold px-2 py-1.5 border-b border-line uppercase">
                 {th}
               </th>
             ))}
@@ -144,21 +144,21 @@ export default function HotelCard({ hotel, active, onClick, onFocus, city, check
               <tr key={i} className={(isBest ? "bg-gold-soft " : "") + "price-row" + (isBest ? " price-row-best" : "")}>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-semibold align-middle">
                   {pr.platform}
-                  {isBest && <span className="bg-gold-deep text-white text-[11px] font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">同条件最低</span>}
+                  {isBest && <span className="bg-gold-deep text-white text-xs font-bold rounded px-1.5 py-px ml-1.5 align-[1px]">同条件最低</span>}
                 </td>
                 <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 font-extrabold text-sm tabular-nums text-ink">
                   {/* 静态渲染：价格必须一眼可读、可直接上下比较（不做 0→N 的计数动效） */}
                   ¥{fmtPrice(pr.price)}
                 </td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{!pr.breakfast_known ? '未知' : pr.breakfast ? "含早" : "无早"}</td>
-                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-[11px] text-ink-soft">{pr.note || ""}<br/>{schedule.comparable(pr,checkIn,checkOut) ? `${pr.room} · ${pr.occupancy} · ${pr.cancellation} · ${pr.unit === 'night' ? '每晚' : '整次入住'}` : '日期／报价条件未核对，不参与最低比较'}{pr.queried_at && <div>查询 {pr.queried_at}</div>}{schedule.url(pr.source_url) && <a className="underline text-moss" href={schedule.url(pr.source_url)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>逐条来源 ↗</a>}</td>
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-xs text-ink-soft">{!pr.breakfast_known ? '未知' : pr.breakfast ? "含早" : "无早"}</td>
+                <td className="px-2 py-2 border-b border-[#F3EDE3] last:border-0 text-xs text-ink-soft">{pr.note || ""}<br/>{schedule.comparable(pr,checkIn,checkOut) ? `${pr.room} · ${pr.occupancy} · ${pr.cancellation} · ${pr.unit === 'night' ? '每晚' : '整次入住'}` : '日期／报价条件未核对，不参与最低比较'}{pr.queried_at && <div>查询 {pr.queried_at}</div>}{schedule.url(pr.source_url) && <a className="underline text-moss" href={schedule.url(pr.source_url)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}>逐条来源 ↗</a>}</td>
               </tr>
             );
           })}
         </tbody>
       </table>}
       {showMeta && searchResult && (
-        <div className="mt-2 text-[11px] text-ink-soft">🔍 {searchResult.note}</div>
+        <div className="mt-2 text-xs text-ink-soft">🔍 {searchResult.note}</div>
       )}
       {showMeta && hotel.verdict && (
         <div className="mt-3.5 pt-2.5 border-t border-dashed border-line">

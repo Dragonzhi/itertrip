@@ -223,7 +223,7 @@ export default function Timeline(props: TimelineProps) {
                             <span
                               title={badge.title}
                               data-testid="coord-badge"
-                              className={"text-[11px] font-semibold rounded-md px-1.5 py-px " + BADGE_CLASS[badge.tone]}
+                              className={"text-xs font-semibold rounded-md px-1.5 py-px " + BADGE_CLASS[badge.tone]}
                             >
                               {badge.text}
                             </span>
