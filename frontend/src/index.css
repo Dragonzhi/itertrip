@@ -267,3 +267,6 @@ body { overscroll-behavior-y: none; }
 /* M28: local persistence and offline state stay in the itinerary's scroll area. */
 .offline-panel { margin: 8px 0; padding: 12px; border: 1px solid #D7DFD6; border-radius: 12px; background: #FAF6F0; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
 .offline-panel p + p { margin-top: 6px; }
+/* quiet 变体（首页 / 行程抽屉）：常态的联网与准备状态不值得一张卡，收成一行入口；
+ * 需要注意的事（离线 / 保存失败 / 有更新 / 出错）仍由各自 role=status|alert 主动可见。 */
+.offline-panel-quiet { margin: 4px 0; padding: 0; border: 0; background: transparent; }

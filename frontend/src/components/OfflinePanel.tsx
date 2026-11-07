@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import { applyUpdate, clearOffline, installApp, prepareOffline, startOffline, useOffline } from '../lib/offline';
 import { routeSaveStatus } from '../lib/settings';
 
-/** Inline in the itinerary, so it stays reachable without covering mobile controls. */
-export default function OfflinePanel({ blocked = false }: { blocked?: boolean }) {
+/** Inline in the itinerary, so it stays reachable without covering mobile controls.
+ * quiet 变体（首页/行程抽屉）：常态的联网/准备状态不值得一张卡 —— 状态并进 summary
+ * 一行（既是入口也是状态），卡片壳与独立状态行只留给设置面板；
+ * 需要注意的事（保存失败 / 有更新 / 出错）仍然主动可见（M28 契约：离线口径与准备结果不静默）。 */
+export default function OfflinePanel({ blocked = false, quiet = false }: { blocked?: boolean; quiet?: boolean }) {
   const s = useOffline();
   const [saved, setSaved] = useState(routeSaveStatus);
   useEffect(() => {
@@ -14,11 +17,14 @@ export default function OfflinePanel({ blocked = false }: { blocked?: boolean })
     return () => { window.removeEventListener('itertrip:route-saved', read); window.removeEventListener('storage', read); };
   }, []);
   const canUpdate = !blocked && !saved.failed;
-  return <section className="offline-panel" aria-label="离线与安装" data-testid="offline-panel">
-    <p role="status" className="font-semibold">{s.online ? '在线' : '当前离线 · 可以手工编辑'} · {s.ready ? '应用文件已准备' : '离线文件未准备完整'}</p>
+  const status = !s.online
+    ? `当前离线 · 可以手工编辑 · ${s.ready ? '应用文件已准备' : '离线文件未准备完整'}`
+    : (s.ready ? '应用文件已准备' : '离线文件未准备完整');
+  return <section className={quiet ? 'offline-panel offline-panel-quiet' : 'offline-panel'} aria-label="离线与安装" data-testid="offline-panel">
+    {!quiet && <p role="status" className="font-semibold">{s.online ? '在线' : '当前离线 · 可以手工编辑'} · {s.ready ? '应用文件已准备' : '离线文件未准备完整'}</p>}
     {saved.failed && <p role="alert" className="text-danger">行程保存失败，修改仅在当前页面；请导出 JSON 备份，暂勿刷新。</p>}
     <details>
-      <summary className="min-h-11 flex items-center cursor-pointer focus-ring">随身行程 · 安装与离线设置</summary>
+      <summary className="min-h-11 flex items-center cursor-pointer focus-ring">{quiet ? <><span aria-hidden className="mr-1.5">🧳</span>随身行程 · {status}</> : '随身行程 · 安装与离线设置'}</summary>
       <p>{saved.at ? `行程保存于 ${new Date(saved.at).toLocaleString('zh-CN')}` : saved.exists ? '已有本地行程（旧记录没有保存时间）' : '尚无本地行程，先生成或导入路线'}</p>
       <p>{s.preparedAt ? `应用文件准备于 ${new Date(s.preparedAt).toLocaleString('zh-CN')}` : '联网打开正式版并等待准备完成后，再断网重开。'}{s.version ? ` · 版本 ${s.version.slice(0, 8)}` : ''}</p>
       <p>离线保留当前行程、预约、交通快照与出行进度。AI、信息搜索、HTML 导出和地图底图需要网络；JSON 可随时备份。外部导航取决于地图 App 的网络与离线地图。</p>
