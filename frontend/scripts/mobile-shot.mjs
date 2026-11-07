@@ -23,7 +23,12 @@ const FIXTURE = {
     { day: 1, theme: "抵达与夜市", places: [
       { name: "橘子洲头", lat: 28.1663, lng: 112.9636, type: "attraction", time: "14:00", transport: "地铁2号线", ticket: "免费", note: "看毛主席青年艺术雕塑" },
       { name: "太平老街", lat: 28.1946, lng: 112.9696, type: "attraction", time: "18:00", transport: "步行", ticket: "免费", note: "小吃街" },
-    ], hotel: { name: "五一广场某酒店", lat: 28.1952, lng: 112.9828, note: "含早", prices: [{ platform: "携程", price: 468, breakfast: true, note: "" }] } },
+    ], hotel: { name: "五一广场某酒店", lat: 28.1952, lng: 112.9828, note: "含早", prices: [
+      // M27 起「同条件最低」只在 ≥2 条可比报价里产生（comparable 要求完整房况/日期/来源），
+      // fixture 必须给足字段，否则 price-row-best-ring 断言结构性打不起来
+      { platform: "携程", price: 468, breakfast: true, breakfast_known: true, note: "", room: "大床房", occupancy: "2人", cancellation: "免费取消", unit: "night", check_in: "2025-10-01", check_out: "2025-10-02", source_url: "https://example.com/ctrip", queried_at: "2026-10-20T08:00:00.000Z" },
+      { platform: "美团", price: 520, breakfast: true, breakfast_known: true, note: "", room: "大床房", occupancy: "2人", cancellation: "免费取消", unit: "night", check_in: "2025-10-01", check_out: "2025-10-02", source_url: "https://example.com/meituan", queried_at: "2026-10-20T08:00:00.000Z" },
+    ] } },
     { day: 2, theme: "博物馆与湘菜", places: [
       { name: "湖南博物院", lat: 28.2113, lng: 112.9955, type: "attraction", time: "09:00", transport: "打车", ticket: "免费预约", note: "周一闭馆" },
     ], hotel: null },
@@ -31,7 +36,9 @@ const FIXTURE = {
   summary: ["节假日地铁比打车快；博物院需提前预约。"],
 };
 
-const sizes = (process.argv.slice(2).length ? process.argv.slice(2) : ["320x568", "375x667", "390x844", "1280x800"]).map((s) => s.split("x").map(Number));
+const sizes = (process.argv.slice(2).length ? process.argv.slice(2) : ["320x568", "375x667", "390x844", "768x1024", "1280x800"]).map((s) => s.split("x").map(Number));
+// 量导出 HTML（SHOT_URL 指向文件）时才启用模板专属探针 —— 在 React 页上它们恒为 null，纯噪音
+const isExportHtml = !!process.env.SHOT_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
 
@@ -100,8 +107,9 @@ const shoot = async (label, w, h) => {
   console.log("  shot", label + "." + w + "x" + h + ".png");
 };
 
-/** 探针：横向溢出 + 关键控件是否在视口内可达（手机验收的核心断言） */
-const PROBES = ["[data-testid=settings-gear]", "[data-testid=chat-toggle]", "[data-testid=panel-toggle]", "[data-testid=export-trigger]", "[data-testid=date-picker-trigger]", "#topbar", ".brand", ".trip-title", "#toggle-panel", "#panel"];
+/** 探针：横向溢出 + 关键控件是否在视口内可达（紧凑屏验收的核心断言） */
+const PROBES = ["[data-testid=settings-gear]", "[data-testid=chat-toggle]", "[data-testid=panel-toggle]"]
+  .concat(isExportHtml ? ["[data-testid=export-trigger]", "[data-testid=date-picker-trigger]", "#topbar", ".brand", ".trip-title", "#toggle-panel", "#panel"] : []);
 const probe = async (w, h) => {
   const out = await evalIn(`(() => {
     const de = document.documentElement;
@@ -244,31 +252,55 @@ const checkReorder = async () => {
 
 let failures = 0;
 for (const [w, h] of sizes) {
-  const mobile = w < 768;
+  const compact = w < 1024;   // M32：<1024 一律紧凑交互（底部抽屉+互斥），≥1024 工作台
   console.log("== " + w + "x" + h + " ==");
-  await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: mobile ? 2 : 1, mobile }, S);
-  await send("Emulation.setTouchEmulationEnabled", { enabled: mobile, maxTouchPoints: mobile ? 5 : 0 }, S);
+  await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: compact ? 2 : 1, mobile: compact }, S);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: compact, maxTouchPoints: compact ? 5 : 0 }, S);
   await send("Page.navigate", { url: BASE }, S);
   await waitEvent("Page.loadEventFired", S);
   await evalIn("localStorage.setItem('itertrip:route', " + JSON.stringify(JSON.stringify(FIXTURE)) + ")");
   await send("Page.reload", {}, S);
   await waitEvent("Page.loadEventFired", S);
-  await sleep(mobile ? 1800 : 1200);          // 等瓦片与布局稳定
+  await sleep(compact ? 1800 : 1200);          // 等瓦片与布局稳定
   await shoot("plan", w, h);
   await probe(w, h);
-  if (!mobile && !(await checkPrice())) failures++;   // 手机上酒店行在抽屉外，单独不查
-  // 抽屉打开态：用 testid 点（md:hidden 的元素 .click() 依然有效）
-  if (await evalIn("(() => { const b = document.querySelector('[data-testid=chat-toggle]'); if (!b) return false; b.click(); return true; })()")) {
-    await sleep(700); await shoot("plan-chat-open", w, h);
-    if (mobile && !(await checkSheetDrag())) failures++;
-    const stillOpen = await evalIn("document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden') === 'false'");
-    if (stillOpen) { await evalIn("document.querySelector('[data-testid=chat-toggle]').click()"); await sleep(400); }
+
+  // M32 结构断言：断点两侧各归其位（≥1024 工作台且无紧凑抽屉 / <1024 反之）
+  const structure = await evalIn("(() => ({ ws: !!document.querySelector('.dw-workspace'), ai: !!document.querySelector('[data-testid=ai-drawer]') }))()");
+  const structOk = compact ? !structure.ws && structure.ai : structure.ws && !structure.ai;
+  console.log("  " + (structOk ? "✓" : "✗") + " 布局分支正确:", JSON.stringify(structure));
+  if (!structOk) failures++;
+
+  if (!compact) {
+    // 桌面腿：M31 后报价表不在初始视图 —— 点酒店行让 inspector 渲染 HotelCard 再断言
+    const clicked = await evalIn("(() => { const b = document.querySelector('button.dw-hotel'); if (!b) return false; b.click(); return true; })()");
+    await sleep(600);
+    if (!clicked) console.log("  ✗ 桌面腿没找到 dw-hotel 按钮");
+    if (!clicked || !(await checkPrice())) failures++;
   }
-  if (await evalIn("(() => { const b = document.querySelector('[data-testid=panel-toggle]'); if (!b) return false; b.click(); return true; })()")) {
-    await sleep(700); await shoot("plan-panel-open", w, h);
-    if (mobile && !(await probeSheet())) failures++;
-    if (mobile && !(await checkReorder())) failures++;
-    await evalIn("document.querySelector('[data-testid=panel-toggle]').click()"); await sleep(400);
+
+  // 紧凑腿：抽屉功能断言（桌面腿没有这些入口，自然跳过）
+  if (compact) {
+    if (await evalIn("(() => { const b = document.querySelector('[data-testid=chat-toggle]'); if (!b) return false; b.click(); return true; })()")) {
+      await sleep(700); await shoot("plan-chat-open", w, h);
+      if (!(await checkSheetDrag())) failures++;
+      const stillOpen = await evalIn("document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden') === 'false'");
+      if (stillOpen) { await evalIn("document.querySelector('[data-testid=chat-toggle]').click()"); await sleep(400); }
+    }
+    if (await evalIn("(() => { const b = document.querySelector('[data-testid=panel-toggle]'); if (!b) return false; b.click(); return true; })()")) {
+      await sleep(700); await shoot("plan-panel-open", w, h);
+      if (!(await probeSheet())) failures++;
+      if (!(await checkReorder())) failures++;
+      // M32 互斥真断言：面板开着时开 AI → 面板必须被收起、AI 打开
+      await evalIn("document.querySelector('[data-testid=chat-toggle]').click()");
+      await sleep(500);
+      const mutex = await evalIn("(() => ({ panel: document.querySelector('[data-testid=timeline-panel]').getAttribute('aria-hidden'), aiOpen: document.querySelector('[data-testid=ai-drawer]').getAttribute('aria-hidden') === 'false' }))()");
+      const mutexOk = mutex.panel === "true" && mutex.aiOpen;
+      console.log("  " + (mutexOk ? "✓" : "✗") + " 互斥: 面板aria-hidden=" + mutex.panel + " AI已开=" + mutex.aiOpen);
+      if (!mutexOk) failures++;
+      await evalIn("document.querySelector('[data-testid=chat-toggle]').click()");   // 收尾关 AI（面板已被互斥收起）
+      await sleep(400);
+    }
   }
 }
 
