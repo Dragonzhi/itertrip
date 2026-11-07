@@ -254,7 +254,7 @@ try {
   await evalIn("document.querySelector('[data-testid=stop-btn]') && document.querySelector('[data-testid=stop-btn]').click(); true");
 
   // ⑤ M24 回归：生成路线（会跳规划页）后回对话页，AI 消息不能只剩用户那一半
-  console.log("[5] 生成路线 → 回对话页：AI 消息 + 坐标摘要仍在");
+  console.log("[5] 生成路线 → 返回首页 → 新建行程 = 清旧对话的新会话（M24 落库断言保留）");
   await sendPrompt("route");
   check("生成路线后进入地图页", !!(await until("!!document.querySelector('[data-testid=timeline-panel]')", 10000)));
   const stored = await evalIn("JSON.parse(localStorage.getItem('itertrip:chat') || '[]')");
@@ -262,21 +262,17 @@ try {
         Array.isArray(stored) && stored.some((m) => m.role === "assistant" && String(m.content).includes("已为你排好")),
         JSON.stringify((stored || []).map((m) => m.role)));
   check("落库的 AI 消息带坐标摘要", Array.isArray(stored) && stored.some((m) => m.geo && m.geo.total === 5));
-  // 用户实际走的路径：返回首页 → 新建行程再进对话（原「和 AI 继续改这条行程」按钮
-  // 实际就是 onChat() 开新对话，与新建行程同一路径，M33 按用户反馈删除）
+  // 用户实际走的路径：返回首页 → 新建行程。M33 后「新建行程」= 清掉上一段对话的新会话
+  //（原「和 AI 继续改这条行程」顶着错标签做同一件事，已删；继续改旧行程走规划页 AI 抽屉）
   const back = await evalIn("(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.title || '').startsWith('返回首页')); if (!b) return false; b.click(); return true; })()");
   check("规划页能返回首页", !!back);
   check("首页进入已行程态", !!(await until("!!document.querySelector('[data-testid=new-trip-entry]')", 6000)));
   await evalIn("document.querySelector('[data-testid=new-trip-entry]').click(); true");
-  check("回到对话页仍能看到 AI 回复", !!(await until(TEXT + ".includes('已为你排好 2 天行程')", 6000)));
-  check("回到对话页仍能看到坐标摘要", !!(await until("!!document.querySelector('[data-testid=geo-digest]')", 6000)));
-  const digest = await evalIn("(document.querySelector('[data-testid=geo-digest]') || {}).innerText || ''");
-  check("摘要：来源分布正确", /坐标 5 处/.test(digest) && /高德核验 2/.test(digest) && /AI 推测 1/.test(digest)
-        && /城市中心 1/.test(digest) && /无来源 1/.test(digest), digest.replace(/\n/g, " | "));
-  check("摘要：降级项点名（含无坐标与低置信酒店）",
-        /4 处坐标降级/.test(digest) && /待定位点」无坐标/.test(digest) && /测试酒店」高德低置信/.test(digest),
-        digest.replace(/\n/g, " | "));
-  await shot("chat-after-route");
+  check("新建行程进入空的新会话（旧 AI 回复不再续聊）",
+        !!(await until(`!!document.querySelector('[data-testid=chat-input]') && !${TEXT}.includes('已为你排好')`, 6000)));
+  const fresh = await evalIn("JSON.parse(localStorage.getItem('itertrip:chat') || '[]')");
+  check("新建行程已清空 itertrip:chat", Array.isArray(fresh) && fresh.length === 0, JSON.stringify(fresh && fresh.length));
+  await shot("chat-after-new-trip");
 
   check("整轮没有页面异常", errors.length === 0, errors.join(" | "));
 } catch (e) {

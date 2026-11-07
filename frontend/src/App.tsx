@@ -7,6 +7,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import {
   loadCurrentRoute,
   loadSettings,
+  saveChatHistory,
   saveCurrentRoute,
   saveSettings,
   type LlmSettings,
@@ -82,6 +83,14 @@ function MainApp() {
     setScreen({ name: "chat", prefill });
   };
 
+  /** 续改态「新建行程」：先清掉上一段对话再进对话页 —— Chat 页挂载时读 itertrip:chat，
+   * 不清的话「新建」会顶着旧对话继续聊（按钮逻辑反了的根因）。继续改已有行程不走这里：
+   * 规划页 AI 抽屉是编辑模式，带完整路线上下文。 */
+  const startNewTrip = () => {
+    saveChatHistory([]);
+    openChat();
+  };
+
   const backToIndex = () => {
     setChatPrefill(undefined);
     setScreen({ name: "index" });
@@ -136,6 +145,7 @@ function MainApp() {
     <>
       <Index
         onChat={openChat}
+        onNewTrip={startNewTrip}
         onEnterMap={enterMap}
         onOpenSettings={() => setShowSettings(true)}
         hasModel={hasModel}

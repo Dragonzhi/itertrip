@@ -5,6 +5,8 @@ import OfflinePanel from '../components/OfflinePanel';
 
 interface IndexProps {
   onChat: (prefill?: string) => void;
+  /** 续改态「新建行程」：清掉上一段对话后进对话页（真正的新会话，见 App.startNewTrip） */
+  onNewTrip: () => void;
   /** 直接进入地图（已有行程则进规划页，否则转去对话生成） */
   onEnterMap: () => void;
   onOpenSettings: () => void;
@@ -26,6 +28,7 @@ interface IndexProps {
  *   右列 = 真实行程预览卡（D1/D2/D3 分组 + 角标 + 状态条），两态共用 brand-bar / page-foot。 */
 export default function Index({
   onChat,
+  onNewTrip,
   onEnterMap,
   onOpenSettings,
   hasModel,
@@ -46,7 +49,7 @@ export default function Index({
         <div className="max-w-[1200px] mx-auto px-6 lg:px-6 sm:px-4 pt-14">
           {hasRoute ? (
             <div className="home-grid">
-              <ResumeCol onChat={onChat} onEnterMap={onEnterMap} onPickFile={pickFile} />
+              <ResumeCol onNewTrip={onNewTrip} onEnterMap={onEnterMap} onPickFile={pickFile} />
               <RoutePreviewCard route={route} />
             </div>
           ) : (
@@ -231,11 +234,11 @@ function EmptyCol({
 /* ==================== resume 态 · 左列 ==================== */
 
 function ResumeCol({
-  onChat,
+  onNewTrip,
   onEnterMap,
   onPickFile,
 }: {
-  onChat: () => void;
+  onNewTrip: () => void;
   onEnterMap: () => void;
   onPickFile: () => void;
 }) {
@@ -264,9 +267,10 @@ function ResumeCol({
         </button>
 
         <div className="mt-3 flex flex-wrap gap-3 w-full">
+          {/* 新建行程 = 清旧对话的真新会话（onNewTrip），不再复用 onChat —— 那会顶着旧对话继续聊 */}
           <button
             type="button"
-            onClick={() => onChat()}
+            onClick={onNewTrip}
             className="inline-flex items-center justify-center gap-2 h-10 px-4 bg-white text-ink border border-line rounded-md font-sans text-[14px] font-medium leading-none hover:border-moss hover:text-moss transition-colors focus-ring"
             data-testid="new-trip-entry"
           >
