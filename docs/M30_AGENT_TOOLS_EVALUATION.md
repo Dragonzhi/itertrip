@@ -54,7 +54,7 @@
 | --- | --- | --- |
 | `search_place` | `name` | 目的地由路线决定，只查高德 POI；无额外 LLM 降级、无自动坐标写入 |
 | `query_transport` | `from_id`、`to_id`、`mode` | 坐标由访问 ID 查得；复用 M26 服务及缓存／熔断 |
-| `query_weather` | `place_id` | 复用 M29；未配置、无可信位置或失败时未知 |
+| ~~`query_weather`~~ | — | **M34 已移除**（天气系统退役）；模型无法再查询天气，也不再渲染天气行 |
 | `search_facts` | `place_id` | 官方开放／预约资料线索；不升级为用户确认事实 |
 | `check_schedule` | `day` | 同版本派生日程；没有客户端结果时未评估 |
 | `propose_edits` | 领域候选 | 原生调用中的提案出口；不是提交／预订接口 |
