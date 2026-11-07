@@ -233,11 +233,14 @@ body { overscroll-behavior-y: none; }
   .home-card:hover { transform: none; }
 }
 
-/* M25: large navigation targets and native modal focus containment. */
+/* M25: large navigation targets and native modal focus containment.
+ * 全站绿统一为 tailwind.config.js 的 moss（#1F6B54）——M25 曾硬编码 #285844，
+ * 2026-10-20 已并回 token 值；hover 深档 #175740 与 desktop/workspace.css 的
+ * dw-primary:hover 一致。不要再引入第三个绿。 */
 .nav-primary,.nav-secondary{min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;border-radius:12px;font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;text-decoration:none;transition:background-color .15s}
-.nav-primary{background:#285844;color:#fff;border:1px solid #285844}
-.nav-primary:hover{background:#1c4535}
-.nav-secondary{background:#fffdf7;color:#285844;border:1px solid #d8dfd2}
+.nav-primary{background:#1F6B54;color:#fff;border:1px solid #1F6B54}
+.nav-primary:hover{background:#175740}
+.nav-secondary{background:#fffdf7;color:#1F6B54;border:1px solid #d8dfd2}
 .nav-secondary:hover{background:#eaf0e5}
 .nav-primary:focus-visible,.nav-secondary:focus-visible{outline:3px solid #bf923c;outline-offset:3px}
 .navigation-dialog{max-height:calc(100dvh - 24px);overflow-y:auto;border:1px solid #d8dfd2}
@@ -251,7 +254,7 @@ body { overscroll-behavior-y: none; }
 .schedule-editor{background:#fffdf7;border-radius:18px;padding:20px;width:min(100%,560px);max-height:calc(100dvh - 24px);overflow-y:auto;color:#2b2b28;font-size:13px}
 .schedule-editor fieldset{border-top:1px solid #d8dfd2;padding-top:12px}
 .schedule-editor legend{font-weight:700;padding-right:8px}
-.schedule-editor input[type=checkbox]{width:20px;height:20px;accent-color:#285844;flex-shrink:0}
+.schedule-editor input[type=checkbox]{width:20px;height:20px;accent-color:#1F6B54;flex-shrink:0}
 .schedule-editor label:has(input[type=checkbox]){min-height:44px;display:flex;align-items:center;gap:6px}
 .weather-panel{background:#f6f8f0;border:1px solid #d8dfd2;border-radius:16px;padding:14px;margin:12px 0;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
 .weather-panel input,.weather-panel select{min-height:44px;border:1px solid #d8dfd2;background:#fffdf7;border-radius:8px;padding:8px;max-width:100%;color:#2b2b28}
