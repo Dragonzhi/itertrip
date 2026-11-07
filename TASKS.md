@@ -16,6 +16,7 @@ updated: 2026-11-07
 
 ## 已完成
 
+- [x] M33 后续（用户指认）：续改态删 hero 解释段（AI 落地页腔）；删「和 AI 继续改这条行程」按钮 —— 它实际就是 onChat() 开新对话，与「新建行程」同路径还顶着错标签，真「AI 继续改」在规划页抽屉；chat-stream 该动线改走 new-trip-entry，26/26 全绿（2026-11-07）
 - [x] M33 全站减设计：删三步卡/重复隐私句/✨发光条/抽屉品牌行/页脚标语；离线状态 quiet 一行化、抽屉天气默认收起、桌面状态阵合一（day-settings testid）、「继续出行」CTA 归位出行视图；日期芯片自适应、预算 ¥、触屏键盘提示收敛、ScheduleView 文案用户化；m29/m30 改 testid（2026-11-07）
 - [x] 界面大改第二批（宁少勿滥）：Index / SettingsPanel / PlaceForm / HotelForm / Admin / NavigationDialog 控件 token 与弹窗半径对齐工作台；Index 导入失败改内联错误行（ui-fix-plan 欠账闭合）、删两处装饰 eyebrow；mobile-shot 新增 SKIP_FIXTURE 纯量页模式（2026-11-07）
 - [x] M32 规划页全尺寸打通：<1024 统一底部抽屉与互斥（平板带不再双栏互叠）、窄屏观感与对话面板对齐工作台设计语言、mobile-shot 覆盖 5 尺寸（2026-11-07）
@@ -67,6 +68,7 @@ updated: 2026-11-07
 
 ## 工作留痕
 
+- 2026-11-07 · ZCode：M33 后续两元素修正（a4bfbf5，用户截图指认）；chat-stream 26/26、build/tsc/mobile-shot 全绿；resume 态目检以 chat-stream 断言 + 诊断输出兜底（SKIP_FIXTURE 截图只覆盖空态）。
 - 2026-11-07 · ZCode：落地 M33 全站减设计（e04b2d4 offline quiet → 65aa669 Index 单列 → 542a87a 规划页去噪 → 84f5681 盲审修缮）；验证如摘要所述全部通过，独立盲审 8.9/10；真机人工回归未验证。同步 AGENTS.md v1.13（§10 路线图）并新增 docs/M33_UI_DECLUTTER.md。
 - 2026-11-07 · ZCode：落地界面大改第二批（5e046c4 token 统一 → 3da94d8 SKIP_FIXTURE）；验证如摘要所述全部通过；PlaceForm/HotelForm 单独截图与真机回归未验证。
 - 2026-11-07 · ZCode：落地 M32 规划页全尺寸打通（c6b2fbf 导航绿 token → 88f56b5 结构 → bdf3b2b 观感 → 90fefc5 对话 → 8f0f384 脚本）；验证如摘要所述全部通过；真机人工回归未验证。同步 AGENTS.md v1.12（§9 移动端口径、§10 路线图）并新增 docs/M32_PLAN_COMPACT.md。
