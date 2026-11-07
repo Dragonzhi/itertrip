@@ -18,12 +18,12 @@ interface IndexProps {
   updateBlocked?: boolean;
 }
 
-/** 起始页 v2：
- * - empty 态（无 route）：左列 hero + AI 对话主操作 + 粘贴攻略/导入入口；
- *   右列 = 「三步拿到路线」说明卡（**不显示任何行程数据**，避免空态被误读为已规划）
+/** 起始页 v3：
+ * - empty 态（无 route）：单列 hero + AI 对话主操作 + 粘贴攻略/导入入口。
+ *   原右列「三步拿到路线」说明卡删去 —— 它在逐字复述 hero 文案，属于把同一句话
+ *   排版两遍的冗余（宁少勿滥）；隐私口径全页只在页脚出现一次。
  * - resume 态（有 route）：左列「继续你的行程」操作组（主路径仍保留 AI 对话为一等入口）；
- *   右列 = 真实行程预览卡（D1/D2/D3 分组 + 角标 + 状态条）
- * 两态共用 brand-bar / page-foot / 7-5 几何、暖纸底色与墨绿主色（DESIGN §1）。 */
+ *   右列 = 真实行程预览卡（D1/D2/D3 分组 + 角标 + 状态条），两态共用 brand-bar / page-foot。 */
 export default function Index({
   onChat,
   onEnterMap,
@@ -44,20 +44,25 @@ export default function Index({
 
       <main className="flex-1">
         <div className="max-w-[1200px] mx-auto px-6 lg:px-6 sm:px-4 pt-14">
-          <div className="home-grid">
-            {hasRoute ? (
+          {hasRoute ? (
+            <div className="home-grid">
               <ResumeCol onChat={onChat} onEnterMap={onEnterMap} onPickFile={pickFile} />
-            ) : (
+              <RoutePreviewCard route={route} />
+            </div>
+          ) : (
+            <div className="max-w-[620px] mx-auto">
               <EmptyCol onChat={onChat} onOpenSettings={onOpenSettings} hasModel={hasModel} onPickFile={pickFile} />
-            )}
-            {hasRoute ? <RoutePreviewCard route={route} /> : <HowItWorksCard />}
-          </div>
+            </div>
+          )}
           {importError && (
             <p role="alert" data-testid="import-error" className="mt-6 max-w-[560px] text-[13px] leading-relaxed text-danger bg-[#F6E7E7] rounded-md px-3.5 py-2.5">
               ⚠️ 导入失败：{importError}
             </p>
           )}
-          <OfflinePanel blocked={updateBlocked} />
+          {/* 与空态列同宽，避免一行状态文字孤悬在 1200px 的空白里 */}
+          <div className="max-w-[620px] mx-auto">
+            <OfflinePanel quiet blocked={updateBlocked} />
+          </div>
         </div>
       </main>
 
@@ -202,17 +207,13 @@ function EmptyCol({
       </div>
 
       <p className="mt-4 text-[12px] leading-relaxed text-ink-soft">
-        支持粘贴文字或上传攻略截图；行程只存本机浏览器。
+        支持粘贴文字或上传攻略截图。
       </p>
 
       {!hasModel && (
         <div className="mt-6 flex items-center justify-center gap-2 w-full px-3.5 py-2.5 bg-gold-soft text-gold-deep rounded-md text-[12px] leading-relaxed text-center">
-          <span aria-hidden>
-            ✨
-          </span>
           <span>
-            当前使用内置免费供应商（真实 AI 规划，无需配置）。
-            想用你自己的模型，可
+            当前用内置免费 AI，无需配置。想换自己的模型，可
             <button
               onClick={onOpenSettings}
               className="underline font-semibold mx-0.5 rounded hover:text-ink focus-ring"
@@ -303,59 +304,9 @@ function ResumeCol({
       </div>
 
       <p className="mt-4 text-[12px] leading-relaxed text-ink-soft">
-        继续后会回到地图与时间线，所有改动都可以撤销。
+        继续后会回到地图与时间线，所有改动都可以撤销；行程只存本机，换设备先导出。
       </p>
-
-      <div className="mt-6 flex items-center justify-center gap-2 w-full px-3.5 py-2.5 bg-gold-soft text-gold-deep rounded-md text-[12px] leading-relaxed text-center">
-        <span aria-hidden>
-          ✨
-        </span>
-        <span>行程存在本机浏览器，换设备需要先导出。</span>
-      </div>
     </section>
-  );
-}
-
-/* ==================== empty 态 · 右列：三步拿到路线 ==================== */
-
-function HowItWorksCard() {
-  return (
-    <aside className="home-card" data-testid="how-it-works">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="m-0 text-[18px] font-bold leading-snug text-ink">三步拿到路线</h3>
-        <span className="inline-flex items-center justify-center h-6 px-2.5 bg-moss-soft text-[#175740] rounded-full text-xs font-medium leading-none whitespace-nowrap">
-          无需配置
-        </span>
-      </div>
-
-      <ol className="mt-5 flex flex-col gap-5 list-none p-0 m-0">
-        {[
-          { num: "01", name: "说出你想去哪", desc: "一句话描述目的地、天数和节奏" },
-          { num: "02", name: "AI 生成路线", desc: "自动提取地点、排好顺序、补上坐标" },
-          { num: "03", name: "地图上继续改", desc: "对话改、拖拽精修、随时撤销，最后导出带走" },
-        ].map((s, i) => (
-          <li
-            key={s.num}
-            className={`grid grid-cols-[24px_minmax(0,1fr)] gap-3 items-start${i > 0 ? " pt-5 border-t border-line" : ""}`}
-          >
-            <span className="inline-flex items-center justify-center w-6 h-6 shrink-0 rounded-full bg-moss-soft text-[#175740] text-xs font-bold leading-none tabular-nums">
-              {s.num}
-            </span>
-            <span className="flex flex-col gap-2 min-w-0">
-              <span className="text-[15px] font-semibold leading-snug text-ink">{s.name}</span>
-              <span className="text-[12px] leading-relaxed text-ink-soft">{s.desc}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-
-      <div className="mt-5 flex items-center gap-2 px-3 py-2.5 bg-moss-soft rounded-md">
-        <span aria-hidden className="text-[18px] text-moss">
-          🛡
-        </span>
-        <span className="text-[12px] leading-snug text-ink-soft">数据只存本机浏览器，不上传服务器</span>
-      </div>
-    </aside>
   );
 }
 
