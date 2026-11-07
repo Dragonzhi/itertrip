@@ -262,11 +262,12 @@ try {
         Array.isArray(stored) && stored.some((m) => m.role === "assistant" && String(m.content).includes("已为你排好")),
         JSON.stringify((stored || []).map((m) => m.role)));
   check("落库的 AI 消息带坐标摘要", Array.isArray(stored) && stored.some((m) => m.geo && m.geo.total === 5));
-  // 用户实际走的路径：返回首页 → 和 AI 继续改这条行程
+  // 用户实际走的路径：返回首页 → 新建行程再进对话（原「和 AI 继续改这条行程」按钮
+  // 实际就是 onChat() 开新对话，与新建行程同一路径，M33 按用户反馈删除）
   const back = await evalIn("(() => { const b = [...document.querySelectorAll('button')].find((x) => (x.title || '').startsWith('返回首页')); if (!b) return false; b.click(); return true; })()");
   check("规划页能返回首页", !!back);
-  check("首页进入已行程态", !!(await until("!!document.querySelector('[data-testid=chat-resume-entry]')", 6000)));
-  await evalIn("document.querySelector('[data-testid=chat-resume-entry]').click(); true");
+  check("首页进入已行程态", !!(await until("!!document.querySelector('[data-testid=new-trip-entry]')", 6000)));
+  await evalIn("document.querySelector('[data-testid=new-trip-entry]').click(); true");
   check("回到对话页仍能看到 AI 回复", !!(await until(TEXT + ".includes('已为你排好 2 天行程')", 6000)));
   check("回到对话页仍能看到坐标摘要", !!(await until("!!document.querySelector('[data-testid=geo-digest]')", 6000)));
   const digest = await evalIn("(document.querySelector('[data-testid=geo-digest]') || {}).innerText || ''");

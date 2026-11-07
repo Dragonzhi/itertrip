@@ -22,7 +22,7 @@ interface IndexProps {
  * - empty 态（无 route）：单列 hero + AI 对话主操作 + 粘贴攻略/导入入口。
  *   原右列「三步拿到路线」说明卡删去 —— 它在逐字复述 hero 文案，属于把同一句话
  *   排版两遍的冗余（宁少勿滥）；隐私口径全页只在页脚出现一次。
- * - resume 态（有 route）：左列「继续你的行程」操作组（主路径仍保留 AI 对话为一等入口）；
+ * - resume 态（有 route）：左列「继续你的行程」操作组（继续编辑 / 新建 / 导入）；
  *   右列 = 真实行程预览卡（D1/D2/D3 分组 + 角标 + 状态条），两态共用 brand-bar / page-foot。 */
 export default function Index({
   onChat,
@@ -244,13 +244,12 @@ function ResumeCol({
       <h2 className="m-0 text-[44px] sm:text-[28px] font-bold leading-[1.2] tracking-tight text-ink text-balance">
         继续你的行程
       </h2>
-      <p className="mt-4 max-w-[36em] text-[15px] leading-[1.7] text-ink-soft">
-        上次的路线还在，接着改就好。
-        <br />
-        可以让 AI 继续改，也可以拖拽精修，或另起一条新行程。
-      </p>
 
-      <div className="mt-8 flex flex-col w-full min-w-0 gap-3">
+      {/* 原 hero 解释段与「和 AI 继续改这条行程」按钮已删（用户反馈）：
+          解释段是 AI 落地页腔；那个按钮实际就是 onChat() 开新对话（Chat 页是提取模式，
+          带不上当前路线），与新「新建行程」同一路径还顶着错标签 —— 真「AI 继续改」
+          在规划页抽屉里，走「继续编辑行程」。 */}
+      <div className="mt-6 flex flex-col w-full min-w-0 gap-3">
         {/* 主按钮：回到地图继续编辑 */}
         <button
           type="button"
@@ -262,19 +261,6 @@ function ResumeCol({
             📍
           </span>
           <span>继续编辑行程</span>
-        </button>
-
-        {/* 次按钮：白底描边整宽，让 AI 对话在已行程态仍是一等入口 */}
-        <button
-          type="button"
-          onClick={() => onChat()}
-          className="inline-flex items-center justify-center gap-2 w-full h-11 px-[18px] bg-white text-ink border border-line rounded-md font-sans text-[14px] font-medium leading-none hover:border-moss hover:text-moss transition-colors focus-ring"
-          data-testid="chat-resume-entry"
-        >
-          <span aria-hidden>
-            💬
-          </span>
-          <span>和 AI 继续改这条行程</span>
         </button>
 
         <div className="mt-3 flex flex-wrap gap-3 w-full">
