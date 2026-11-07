@@ -155,7 +155,7 @@ function QuestionInput({
           data-testid="clarify-multi-custom-input"
           className="flex-1 min-w-0 border border-line rounded-lg px-2.5 py-1.5 text-[13px] text-ink focus:outline-2 focus:outline-moss-soft focus:border-moss"
         />
-        <button type="button" onClick={() => onAddMultiCustom?.()} data-testid="clarify-multi-custom-add" className="shrink-0 border border-line bg-white rounded-lg px-3 py-1.5 text-xs font-bold text-ink-soft hover:bg-moss-soft hover:text-moss">+ 添加</button>
+        <button type="button" onClick={() => onAddMultiCustom?.()} data-testid="clarify-multi-custom-add" className="shrink-0 border border-line bg-white rounded-md min-h-[36px] px-3 text-[13px] font-bold text-ink-soft hover:bg-moss-soft hover:text-moss focus-ring">+ 添加</button>
       </div>
     </div>
   );
@@ -277,7 +277,7 @@ export function ClarifyCard({
           onClick={submitAnswer}
           disabled={disabled}
           data-testid="clarify-submit"
-          className="bg-moss text-white rounded-lg px-3 py-1.5 text-xs font-bold hover:bg-[#175740] disabled:opacity-40"
+          className="bg-moss text-white rounded-md min-h-[36px] px-3.5 text-[13px] font-bold hover:bg-[#175740] disabled:opacity-40 focus-ring"
         >
           ✓ 开始规划
         </button>
@@ -286,7 +286,7 @@ export function ClarifyCard({
           onClick={() => { markAnswered(); onSend("按合理默认来规划即可。"); }}
           disabled={disabled}
           data-testid="clarify-skip"
-          className="border border-line bg-white text-ink-soft rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft"
+          className="border border-line bg-white text-ink-soft rounded-md min-h-[36px] px-3.5 text-[13px] font-semibold hover:bg-moss-soft focus-ring"
         >
           跳过
         </button>
@@ -350,20 +350,20 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
     <div className="h-full flex flex-col min-h-0">
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3.5 pt-2 pb-3 space-y-3 min-h-0">
         {messages.length === 0 && !loading && (
-          <div className="text-center pt-6 px-2">
-            <div className="text-3xl mb-2">🧭</div>
-            <p className="text-sm font-bold mb-1">把攻略丢进来，变成一张地图</p>
-            <p className="text-xs text-ink-soft leading-relaxed">
+          <div className="text-center pt-10 px-2">
+            <div className="w-14 h-14 mx-auto mb-3 rounded-[16px] bg-moss-soft flex items-center justify-center text-3xl" aria-hidden>🧭</div>
+            <p className="text-[15px] font-bold mb-1.5">把攻略丢进来，变成一张地图</p>
+            <p className="text-xs text-ink-soft leading-relaxed max-w-[420px] mx-auto">
               粘贴小红书 / 公众号攻略文字或截图，或直接说想去哪儿、玩几天。
               <br />
               生成后：对话可改路线，右侧时间线可拖拽精修，随时撤销。
             </p>
-            <div className="mt-4 flex flex-col gap-1.5">
+            <div className="mt-5 flex flex-col gap-2 max-w-[420px] mx-auto">
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex.text}
                   onClick={() => onSend(ex.text)}
-                  className="text-left text-xs border border-line bg-white rounded-xl px-3 py-2 hover:border-moss hover:bg-moss-soft transition-colors"
+                  className="text-left text-xs border border-line bg-white rounded-[10px] px-3.5 py-2.5 hover:border-moss hover:bg-moss-soft transition-colors focus-ring"
                 >
                   {ex.icon} {ex.text}
                 </button>

@@ -126,30 +126,38 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
 
   return (
     <div className="h-[100dvh] bg-cream flex flex-col">
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-line bg-white">
-        <button onClick={onBack} className="text-ink-soft hover:text-ink text-sm font-semibold" title="返回首页">
+      {/* M32：header 对齐 dw-toolbar 语言 —— 品牌块墨绿加粗，动作统一白底描边 36px 钮 */}
+      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-line bg-white">
+        <button
+          onClick={onBack}
+          className="border border-line bg-white text-ink-soft rounded-md min-h-[36px] px-3 text-[13px] font-semibold hover:bg-moss-soft hover:text-moss focus-ring"
+          title="返回首页"
+        >
           ← 返回
         </button>
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🧭</span>
-          <h1 className="text-sm font-bold">IterTrip · 对话规划</h1>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg" aria-hidden>🧭</span>
+          <h1 className="text-[15px] font-bold text-moss whitespace-nowrap">IterTrip</h1>
+          <span className="text-xs text-ink-soft whitespace-nowrap hidden sm:inline">对话规划</span>
         </div>
-        <button
-          onClick={clearHistory}
-          disabled={stream.sending || !messages.length}
-          className="ml-auto border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-[#F6E7E7] hover:text-danger disabled:opacity-35 disabled:cursor-not-allowed"
-          title="清空当前对话记录"
-          data-testid="clear-chat"
-        >
-          🗑 清除记录
-        </button>
-        <button
-          onClick={onOpenSettings}
-          className="border border-line bg-white text-ink-soft rounded-full px-3 py-1.5 text-xs font-semibold hover:bg-moss-soft hover:text-moss"
-          data-testid="settings-btn"
-        >
-          ⚙️ 设置
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={clearHistory}
+            disabled={stream.sending || !messages.length}
+            className="border border-line bg-white text-ink-soft rounded-md min-h-[36px] px-3 text-[13px] font-semibold hover:bg-[#F6E7E7] hover:text-danger disabled:opacity-35 disabled:cursor-not-allowed focus-ring"
+            title="清空当前对话记录"
+            data-testid="clear-chat"
+          >
+            🗑 清除
+          </button>
+          <button
+            onClick={onOpenSettings}
+            className="border border-line bg-white text-ink-soft rounded-md min-h-[36px] px-3 text-[13px] font-semibold hover:bg-moss-soft hover:text-moss focus-ring"
+            data-testid="settings-btn"
+          >
+            ⚙ 设置
+          </button>
+        </div>
       </header>
       <div className="flex-1 min-h-0 max-w-2xl w-full mx-auto">
         <ChatPanel
