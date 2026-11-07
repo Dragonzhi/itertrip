@@ -51,13 +51,7 @@
 .dw-day-heading > div { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .dw-order-toggle { color: var(--dw-green); font-size: 12px !important; white-space: nowrap; padding: 6px 0; }
 .dw-order-toggle[aria-pressed=true] { text-decoration: underline; text-underline-offset: 4px; }
-.dw-weather-link { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #FAF6F0; border: 1px solid var(--dw-line); border-radius: 6px; padding: 12px 14px; text-align: left; margin: 0 0 16px; }
-.dw-weather-link > span:first-child { min-width: 0; }
-.dw-weather-link strong { font-size: 14px; font-weight: 600; }
-.dw-weather-link small { display: block; font-size: 12px; color: var(--dw-muted); margin-top: 4px; }
-.dw-weather-link > span:last-child { font-size: 12px; white-space: nowrap; color: var(--dw-green); }
-.dw-weather-risk { background: #F6EBD8; border-color: #C8903C70; }
-/* 当天摘要单行（M33，取代原四格 + 重复按钮）：与 dw-weather-link 同一视觉语言的一行状态条 */
+/* 当天摘要单行（M33，取代原四格 + 重复按钮）：米底描边的一行状态条 */
 .dw-statusline { width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; background: #FAF6F0; border: 1px solid var(--dw-line); border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; text-align: left; font-size: 12px; color: var(--dw-muted); font-variant-numeric: tabular-nums; }
 .dw-statusline strong { font-size: 13px; font-weight: 600; margin-left: 4px; }
 .dw-statusline strong.dw-danger { color: #9C4038; }

@@ -2,14 +2,13 @@ import {useRef, useState, type DragEvent} from 'react';
 import type {TimelineProps} from '../Timeline';
 import {schedule} from '../../lib/schedule';
 import {transport, type Edge} from '../../lib/transport';
-import {weather} from '../../lib/weather';
 import {Icon} from './Workspace';
 
 export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   const di=p.desktopDay, day=p.route.days[di], drag=useRef<{di:number;pi:number}|null>(null);
   const [ordering,setOrdering]=useState(false);
   if(!day)return <p className="dw-empty">暂无当天行程。</p>;
-  const result=schedule.calculate(p.route,di,p.scheduleActions?.completed), traffic=transport.summary(p.route,di), rain=weather.assess(p.route,di,p.scheduleActions?.completed);
+  const result=schedule.calculate(p.route,di,p.scheduleActions?.completed), traffic=transport.summary(p.route,di);
   const edges=transport.legs(p.route,di);
   const drop=(e:DragEvent,at:number)=>{if(!drag.current)return;e.preventDefault();p.onDropMove?.(drag.current.di,drag.current.pi,di,at);drag.current=null;};
   const leg=(edge:Edge)=>{
@@ -18,9 +17,6 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   };
   return <div className="dw-day">
     <div className="dw-day-heading"><div><p>DAY {String(day.day||di+1).padStart(2,'0')} · {result.date||'日期待确认'}</p><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2></div>{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div>
-    <button className={`dw-weather-link ${rain.items.length?'dw-weather-risk':''}`} data-testid="desktop-weather" onClick={p.onWeatherSelect}>
-      <span><strong>{rain.items.length?`${rain.items.length} 处天气风险${rain.unknown.length?` · ${rain.unknown.length} 项未评估`:''}`:rain.label}</strong>{rain.items.length>0&&<small>受影响安排：{rain.items.slice(0,2).map(item=>`${item.name} ${schedule.fmt(item.start)}–${schedule.fmt(item.end)}`).join(' · ')}{rain.items.length>2?` 等 ${rain.items.length} 处`:''}</small>}</span><span>查看天气与调整 →</span>
-    </button>
     {/* M33：原 dw-summary 四格（默认全是「未知/未评估」）+ 重复的「当天时间与交通设置」按钮
         收成一行 —— 数字仍可一眼扫到，逐项细节走二级的当天安排与交通面板。 */}
     <button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>

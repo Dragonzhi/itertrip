@@ -1,5 +1,4 @@
 import './schedule.ts';
-import '../../../shared/weather.js';
 import '../../../shared/agent.js';
 import type { RouteJSON } from '../types/route';
 import type { Place, Hotel, TransportOption } from '../types/route';
@@ -12,4 +11,4 @@ export type AgentAction =
 export interface AgentProposal {transaction_id:string;base_version:string;actions:AgentAction[]}
 export interface AgentCandidate {route:RouteJSON;changed:boolean;replayed?:boolean;reasons:string[];unknown:string[]}
 export interface AgentEvidence {base_version:string;from_id:string;to_id:string;from_point:Place|Hotel;to_point:Place|Hotel;options:TransportOption[]}
-export const agent=(globalThis as unknown as {IterTripAgent:{prepare(route:RouteJSON,proposal:AgentProposal,version:string,completed?:string[],requireComplete?:boolean,evidence?:AgentEvidence[],requireWeather?:boolean):AgentCandidate}}).IterTripAgent;
+export const agent=(globalThis as unknown as {IterTripAgent:{prepare(route:RouteJSON,proposal:AgentProposal,version:string,completed?:string[],requireComplete?:boolean,evidence?:AgentEvidence[]):AgentCandidate}}).IterTripAgent;

@@ -3,7 +3,6 @@ import MapView from "../components/MapView";
 import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import OfflinePanel from '../components/OfflinePanel';
-import WeatherPanel from '../components/WeatherPanel';
 import AgentPreview from '../components/AgentPreview';
 import {agent, type AgentProposal, type AgentCandidate, type AgentEvidence} from '../lib/agent';
 import { isOnline, useOffline } from '../lib/offline';
@@ -92,7 +91,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const [daySettings,setDaySettings]=useState(false);
   const { route, mutate, undo, redo, canUndo, canRedo, isCurrent } = useTripHistory(initialRoute);
   const [trafficBusy, setTrafficBusy] = useState(false);
-  const [weatherBlocking, setWeatherBlocking] = useState(false);
   const [trafficMessage, setTrafficMessage] = useState('');
   const trafficAbort = useRef<AbortController | null>(null);
   const trafficSeq = useRef(0);
@@ -168,8 +166,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const [scheduleMsg, setScheduleMsg] = useState('');
   const aiVersion = useRef<RouteJSON>();
   const agentVersion = useRef('');
-  const agentWeatherRequired=useRef(false);
-  const [agentPending,setAgentPending]=useState<{proposal:AgentProposal;candidate:AgentCandidate;expected:RouteJSON;messageId:string;completedKey:string;evidence:AgentEvidence[];requireWeather:boolean}|null>(null);
+  const [agentPending,setAgentPending]=useState<{proposal:AgentProposal;candidate:AgentCandidate;expected:RouteJSON;messageId:string;completedKey:string;evidence:AgentEvidence[]}|null>(null);
   const completedIds = visits(route).filter(v => outing.completed.includes(v.id)).map(v => v.point.id!).filter(Boolean);
   const scheduleActions: ScheduleActions = {
     completed: completedIds,
@@ -258,15 +255,15 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     onReply: (r, partial, trace) => {
       if (r.agent_proposal) {
         const id=uid(), stale=!isCurrent(aiVersion.current!) || r.agent_proposal.base_version!==agentVersion.current;
-        const moving=r.agent_proposal.actions.some(a=>a.op==='move_place'),requireWeather=moving&&agentWeatherRequired.current;
-        const candidate=agent.prepare(route,r.agent_proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct||requireWeather),r.agent_evidence,requireWeather);
+        const moving=r.agent_proposal.actions.some(a=>a.op==='move_place');
+        const candidate=agent.prepare(route,r.agent_proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct),r.agent_evidence);
         const diff=diffRoute(route,candidate.route);
         let applied=false, content='修改预览已准备，尚未应用。';
         if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'生成期间路线已变化，请重新发起修改。':candidate.reasons.join('；')||'操作没有实际变化。');
         else if(r.agent_direct) {
           applied=mutate(draft=>Object.assign(draft,candidate.route),aiVersion.current);
           content=applied?'已按要求更新行程。'+(candidate.unknown.length?'其他日程条件仍有未评估项，请在时间安排中查看。':''):'行程未修改：路线已变化，请重试。';
-        } else setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[],requireWeather});
+        } else setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[]});
         const actualTrace=[...trace,{id:'agent-client',kind:'edit' as const,status:applied?'done' as const:'warn' as const,title:applied?'已应用实际变更':content,detail:applied?diff.summary.join('；'):'行程尚未修改'}];
         setChatMsgs(prev=>[...prev,{id,role:'assistant',content,changed:applied,changeSummary:applied?diff.summary:undefined,trace:actualTrace,stats:r.stats}]);
         return;
@@ -378,7 +375,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     setChatInput("");
     aiVersion.current = route;
     agentVersion.current=uid();
-    agentWeatherRequired.current=/雨|天气|降水/.test(t);
     void stream.send({ prompt: t, history, route, agent_version:agentVersion.current, completed_ids:completedIds, agent_schedule:route.days.map((_,di)=>schedule.calculate(route,di,completedIds)) }, settings);
   };
 
@@ -388,7 +384,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     let content='已取消预览，行程未修改。', changed=false, summary:string[]|undefined;
     if(apply) {
       const stale=!isCurrent(pending.expected)||pending.completedKey!==JSON.stringify([...completedIds].sort());
-      const candidate=agent.prepare(route,pending.proposal,pending.proposal.base_version,completedIds,pending.proposal.actions.some(a=>a.op==='move_place'),pending.evidence,pending.requireWeather);
+      const candidate=agent.prepare(route,pending.proposal,pending.proposal.base_version,completedIds,pending.proposal.actions.some(a=>a.op==='move_place'),pending.evidence);
       const diff=diffRoute(route,candidate.route);
       if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'预览期间路线或出行进度已变化，请重新生成。':candidate.reasons.join('；')||'没有实际变化。');
       else {
@@ -1010,7 +1006,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                   <div className="text-xs text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}
                 {m.stats?.protocol&&<p className="text-[11px] text-ink-soft mt-2">工具 {m.stats.tool_calls??0} 次 · HTTP {m.stats.http_calls??'未知'} 次 · 已报告 token {m.stats.total_tokens??'未知'} · 费用未知</p>}
-                {agentPending?.messageId===m.id&&<AgentPreview proposal={agentPending.proposal} candidate={agentPending.candidate} original={agentPending.expected} disabled={stream.sending||!!(form||hotelForm||scheduleTarget||picking||trafficBusy||weatherBlocking)} apply={()=>finishAgentPreview(true)} cancel={()=>finishAgentPreview(false)}/>}
+                {agentPending?.messageId===m.id&&<AgentPreview proposal={agentPending.proposal} candidate={agentPending.candidate} original={agentPending.expected} disabled={stream.sending||!!(form||hotelForm||scheduleTarget||picking||trafficBusy)} apply={()=>finishAgentPreview(true)} cancel={()=>finishAgentPreview(false)}/>}
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
                 <div className="w-full max-w-[90%]">
@@ -1111,11 +1107,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       />
       {desktop&&pickHint&&<div className="dw-pick-hint" role="status">{pickHint}<button className="focus-ring" onClick={()=>setPicking(null)}>取消</button></div>}
       </>);
-  const weatherContent=route.days.length?(          <WeatherPanel day={desktop?visibleDay:undefined} onDayChange={desktop?chooseDay:undefined} route={route} completed={completedIds} isCurrent={isCurrent} apply={(candidate,expected)=>mutate(r=>Object.assign(r,candidate),expected)} edit={scheduleActions.edit} onBlocking={setWeatherBlocking} blocked={!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />):<p>暂无行程可评估天气。</p>;
-  const offlineContent=(          <OfflinePanel quiet blocked={!!agentPending || weatherBlocking || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />);
+  const offlineContent=(          <OfflinePanel quiet blocked={!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />);
   const desktopTimeline=(          <Timeline
             desktopDay={visibleDay}
-            onWeatherSelect={()=>openAux('weather')}
             onDaySettings={()=>{setDaySettings(true);setSelection(null);openAux('place');}}
             onLegSelect={edge=>{setDesktopDay(edge.di);setSelection({kind:'leg',from:edge.from.id!,to:edge.to.id!});setDaySettings(false);setActiveKey(null);openAux('leg');}}
             route={route}
@@ -1155,7 +1149,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     <MotionConfig reducedMotion="user">
     <div className={desktop ? 'dw-plan' : undefined}>
     <div className={`h-[100dvh] overflow-hidden ${desktop?'dw-plan':''}`}>
-      {desktop&&<Workspace visitDetail={!!selectedVisit&&!daySettings} aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} weather={weatherContent} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
+      {desktop&&<Workspace visitDetail={!!selectedVisit&&!daySettings} aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}
@@ -1267,11 +1261,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           {offlineContent}
-          {/* M33 起默认收起：M29 曾让它在规划视图常开，天气解释文案把时间线顶出两屏，
-              而「☂ 查看天气」本身就是一级入口 —— 不需要再替用户展开一次。 */}
-          <details className="my-2"><summary className="min-h-11 flex items-center cursor-pointer focus-ring">☂ 查看天气与局部调整</summary>
-          {weatherContent}
-          </details>
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
           {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); setPanelOpen(false); }} /> :
           <Timeline
@@ -1407,12 +1396,12 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         />
       )}
     </div>
-    {scheduleTarget && scheduledPoint && <ScheduleEditor key={scheduleTarget.id} point={scheduledPoint} iso={schedule.dayDate(route,scheduleTarget.di)} city={route.trip.destination} onClose={() => setScheduleTarget(null)} onSave={(visit, opening, exposure) => {
+    {scheduleTarget && scheduledPoint && <ScheduleEditor key={scheduleTarget.id} point={scheduledPoint} iso={schedule.dayDate(route,scheduleTarget.di)} city={route.trip.destination} onClose={() => setScheduleTarget(null)} onSave={(visit, opening) => {
       if (!isCurrent(scheduleTarget.version)) return false;
       mutate(r => {
         const d = r.days[scheduleTarget.di];
         const p = [...d.places, ...(d.hotel ? [d.hotel] : [])].find(p => p.id === scheduleTarget.id);
-        if (p) { p.visit = visit; p.opening = opening; p.weather_exposure = exposure; }
+        if (p) { p.visit = visit; p.opening = opening; }
       }, scheduleTarget.version);
       return true;
     }} />}

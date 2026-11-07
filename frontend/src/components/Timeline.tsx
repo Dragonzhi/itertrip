@@ -18,7 +18,6 @@ import type {Edge} from '../lib/transport';
 export interface TimelineProps {
   desktopDay?: number;
   onLegSelect?: (edge:Edge) => void;
-  onWeatherSelect?: () => void;
   onDaySettings?: () => void;
   scheduleActions?: ScheduleActions;
   transportActions?: TransportActions;

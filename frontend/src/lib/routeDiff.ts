@@ -143,7 +143,6 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
       const labels = PLACE_FIELDS.filter(([f]) => norm(op[f] as string) !== norm(wp[f] as string)).map(([, l]) => l);
       if (JSON.stringify(op.visit) !== JSON.stringify(wp.visit)) labels.push('停留／预约');
       if (JSON.stringify(op.opening) !== JSON.stringify(wp.opening)) labels.push('开放资料');
-      if (JSON.stringify(op.weather_exposure) !== JSON.stringify(wp.weather_exposure)) labels.push('室内外属性');
       const detail:string[]=[];
       if(op.visit?.duration_min!==wp.visit?.duration_min) detail.push(`停留 ${wp.visit?.duration_min??'未设置'} 分钟`);
       if(!!op.visit?.locked!==!!wp.visit?.locked) detail.push(wp.visit?.locked?'已锁定':'已解锁');
@@ -173,7 +172,6 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
     if (posChanged) labels.push("位置");
     if (JSON.stringify(oh.visit) !== JSON.stringify(nh.visit)) labels.push('停留／预约');
     if (JSON.stringify(oh.opening) !== JSON.stringify(nh.opening)) labels.push('开放资料');
-    if (JSON.stringify(oh.weather_exposure) !== JSON.stringify(nh.weather_exposure)) labels.push('室内外属性');
     const hotelEntry: RouteDiff["hotels"][number] = { di, labels };
     if (pricesKey(oh.prices) !== pricesKey(nh.prices)) {
       labels.push("报价");

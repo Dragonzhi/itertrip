@@ -15,7 +15,6 @@ export interface PriceItem {
 }
 
 export interface Hotel {
-  weather_exposure?: WeatherExposure;
   visit?: VisitPlan;
   opening?: OpeningFact[];
   id?: string;
@@ -37,7 +36,6 @@ export interface Hotel {
 export type PlaceType = "attraction" | "food" | "transport" | "other";
 
 export interface Place {
-  weather_exposure?: WeatherExposure;
   visit?: VisitPlan;
   opening?: OpeningFact[];
   id?: string;
@@ -138,22 +136,8 @@ export interface RouteJSON {
   trip: TripInfo;
   days: DayPlan[];
   summary?: string[];
-  weather?: WeatherForecast[];
-  weather_policy?: { probability: number; precipitation_mm: number };
   /** Applied domain transactions; preserved by undo, persistence and export. */
   agent_receipts?: {id:string;payload:string}[];
-}
-
-export interface WeatherExposure {
-  environment: 'indoor' | 'outdoor' | 'mixed' | 'unknown';
-  rain_sensitive: boolean; source: 'user'; place_name: string; confirmed_at: string;
-}
-export interface WeatherForecast {
-  provider: 'qweather' | 'open_meteo'; source_url: string; attributions: string[];
-  queried_at: string; issued_at: string | null; timezone: string;
-  granularity: 'hourly' | 'daily'; kind: 'forecast' | 'historical';
-  lat: number; lng: number; valid_from: string; valid_to: string; refresh_error?: string;
-  hours: {start: string; end: string; probability: number | null; precipitation_mm: number | null}[];
 }
 
 export interface PlanRequest {

@@ -3,7 +3,7 @@ import type {RouteJSON} from '../../types/route';
 import {schedule} from '../../lib/schedule';
 import './workspace.css';
 
-export type Auxiliary = 'place' | 'leg' | 'ai' | 'weather' | 'map' | 'offline' | null;
+export type Auxiliary = 'place' | 'leg' | 'ai' | 'map' | 'offline' | null;
 export type Selection = {kind:'place'|'hotel'; id:string} | {kind:'leg'; from:string; to:string} | null;
 export function Icon({name}:{name:'undo'|'redo'|'ai'|'export'|'more'|'close'|'plus'|'pin'}) {
   const paths={undo:'M9 5 4 10l5 5 M4 10h10a6 6 0 0 1 0 12',redo:'m15 5 5 5-5 5 M20 10H10a6 6 0 0 0 0 12',ai:'m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z',export:'M12 3v12 m-5-5 5 5 5-5 M4 16v5h16v-5',more:'M5 12h.01 M12 12h.01 M19 12h.01',close:'m6 6 12 12 M18 6 6 18',plus:'M12 5v14 M5 12h14',pin:'M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12Z M12 7v4'};
@@ -36,7 +36,7 @@ function Toolbar({route,date,undo,redo,canUndo,canRedo,open,onHome,onJson,onHtml
 }
 
 export default function Workspace(props:{
-  route:RouteJSON;day:number;setDay(n:number):void;aux:Auxiliary;open(a:Auxiliary):void;map:ReactNode;itinerary:ReactNode;ai:ReactNode;weather:ReactNode;detail:ReactNode;offline:ReactNode;mapSettings:ReactNode;date:ReactNode;messages:ReactNode;onAdd():void;
+  route:RouteJSON;day:number;setDay(n:number):void;aux:Auxiliary;open(a:Auxiliary):void;map:ReactNode;itinerary:ReactNode;ai:ReactNode;detail:ReactNode;offline:ReactNode;mapSettings:ReactNode;date:ReactNode;messages:ReactNode;onAdd():void;
   undo():void;redo():void;canUndo:boolean;canRedo:boolean;onHome():void;onJson():void;onHtml():void;exporting:boolean;recheck():void;rechecking:boolean;
   visitDetail:boolean;aiBusy:boolean;
 }) {
@@ -53,7 +53,7 @@ export default function Workspace(props:{
     props.open(fullPanel&&props.visitDetail?'place':null);
     requestAnimationFrame(()=>{if(target?.isConnected)target.focus();});
   };
-  const titles:Record<Exclude<Auxiliary,null>,string>={place:'地点详情',leg:'交通方式比较',ai:'让 AI 调整',weather:'天气与局部调整',map:'地图设置',offline:'离线管理'};
+  const titles:Record<Exclude<Auxiliary,null>,string>={place:'地点详情',leg:'交通方式比较',ai:'让 AI 调整',map:'地图设置',offline:'离线管理'};
   return <div className="dw-workspace" data-testid="desktop-workspace">
     <Toolbar {...props}/>
     <nav className="dw-days" aria-label="选择行程日期">{props.route.days.map((d,i)=>{
@@ -70,7 +70,6 @@ export default function Workspace(props:{
       <aside className="dw-inspector" hidden={!props.aux} aria-label="行程辅助区" onKeyDown={e=>{if(e.key==='Escape'){close();e.stopPropagation();}}}>
         <header><h2>{props.aux?titles[props.aux]:''}</h2><button ref={closeRef} onClick={close} aria-label="关闭辅助区" title="返回地图"><Icon name="close"/><span>返回地图</span></button></header>
         <div className="dw-ai-slot" hidden={props.aux!=='ai'}>{props.ai}</div>
-        <div className="dw-scroll" hidden={props.aux!=='weather'}>{props.weather}</div>
         <div className="dw-scroll" hidden={props.aux!=='place'&&props.aux!=='leg'}>{props.detail}</div>
         <div className="dw-scroll" hidden={props.aux!=='offline'}>{props.offline}</div>
         <div className="dw-scroll" hidden={props.aux!=='map'}>{props.mapSettings}</div>
