@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MapSettings as MapSettingsType } from "../lib/settings";
-import { isMobile } from "../lib/viewport";
+import { isCompact } from "../lib/viewport";
 
 interface MapSettingsProps {
   embedded?: boolean;
@@ -102,8 +102,8 @@ export default function MapSettings({ value, onChange, panelOpen, embedded = fal
   return (
     <div
       ref={ref}
-      className={embedded ? 'dw-map-settings' : "fixed z-[500] flex flex-col items-end gap-2 max-md:flex-col-reverse max-md:top-[60px] max-md:right-3 max-md:bottom-auto md:bottom-4"}
-      style={embedded ? undefined : { right: isMobile() ? 12 : right }}
+      className={embedded ? 'dw-map-settings' : "fixed z-[500] flex flex-col items-end gap-2 max-lg:flex-col-reverse max-lg:top-[60px] max-lg:right-3 max-lg:bottom-auto lg:bottom-4"}
+      style={embedded ? undefined : { right: isCompact() ? 12 : right }}
     >
       {(open || embedded) && (
         <div

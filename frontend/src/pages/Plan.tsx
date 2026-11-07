@@ -36,7 +36,7 @@ import { describeStreamError } from "../lib/streamWatch";
 import { coordDigest } from "../lib/coordDigest";
 import { distanceKm } from "../lib/coordSource";
 import { exportFilename } from "../lib/exportName";
-import { isMobile } from "../lib/viewport";
+import { isCompact } from "../lib/viewport";
 import { moveTarget } from "../lib/reorder";
 import { animate, motion, MotionConfig, useDragControls, useMotionValue } from "motion/react";
 import type { ChatMessage, TraceStats } from "../types/chat";
@@ -194,7 +194,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     if (outing.day >= route.days.length && route.days.length) setOuting(p => ({ ...p, day: route.days.length - 1 }));
   }, [route.days.length, outing.day]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(() => !isMobile() || loadProgress(tripSession).mode === "outing");
+  /** M32：<1024 一律紧凑交互（底部抽屉+互斥），行程面板开局收起（出行模式除外）；≥1024 由工作台接管，此态不参与渲染 */
+  const [panelOpen, setPanelOpen] = useState(() => !isCompact() || loadProgress(tripSession).mode === "outing");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   /** M20：整条路线坐标重校准（修历史遗留的错坐标） */
@@ -219,7 +220,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①）；M19：对话与决策轨迹持久化 ---------- */
   const fp = useMemo(() => routeFingerprint(initialRoute), [initialRoute]);
   const bootMsgs = useMemo(() => loadPlanChatHistory(fp), [fp]);
-  const [chatOpen, setChatOpen] = useState(() => !isMobile() && bootMsgs.length > 0);
+  const [chatOpen, setChatOpen] = useState(() => !isCompact() && bootMsgs.length > 0);
   const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>(bootMsgs);
   const [chatInput, setChatInput] = useState("");
   /** 优化②：对话流态（sending / 中断 / 心跳）统一由 useChatStream 提供，不再各自复制一份 */
@@ -846,12 +847,13 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   );
 
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
-  /** M23：手机上两个抽屉都是底部 sheet，必须互斥（同时开就互相盖住） */
+  /** M32（原 M23 只对 <768 生效）：<1024 两个抽屉都是底部 sheet，必须互斥（同时开就互相盖住）；
+      768–1023 的平板带此前正是漏网之鱼 —— 双侧栏 380+400px 互叠盖满地图 */
   const toggleChat = () => {
     if(desktop){openAux(aux==='ai'?null:'ai');return;}
     const next = !chatOpen;
     if (next) {
-      if (isMobile()) setPanelOpen(false);
+      setPanelOpen(false);
       setTimeout(() => chatInputRef.current?.focus(), 320);
     } else {
       setFlashKeys([]);
@@ -860,26 +862,26 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   };
   const togglePanel = () => {
     const next = !panelOpen;
-    if (next && isMobile()) setChatOpen(false);
+    if (next) setChatOpen(false);
     setPanelOpen(next);
   };
-  /* M23 P4：抽屉拖拽手柄（只手机；桌面侧栏是左右滑出，纵向拖会撕裂）。
+  /* M32（原 M23 P4 只手机）：<1024 抽屉全部底部 sheet，均可拖拽下滑关闭。
      dragListener=false → 只有手柄起拖，内部滚动列表照常滚。 */
-  const draggable = isMobile();
+  const draggable = !desktop;
   const chatDrag = useDragControls();
   const panelDrag = useDragControls();
   const chatY = useMotionValue(0);
   const panelY = useMotionValue(0);
 
-  /** 手机上点地图收起抽屉（桌面两个侧栏可常驻，不动） */
+  /** <1024 点地图收起抽屉（≥1024 由工作台接管，无此交互） */
   const closeSheets = () => {
-    if (!isMobile()) return;
+    if (desktop) return;
     setChatOpen(false);
     setPanelOpen(false);
   };
   const pickHint = picking ? (picking.purpose === "repick-hotel" ? PICK_HINT_REPICK_HOTEL : picking.purpose === "repick" ? PICK_HINT_REPICK : PICK_HINT_ADD) : null;
 
-  /** M23：这两个元素描述在桌面顶栏与手机抽屉表头各渲染一份，由 CSS（max-md:hidden / md:hidden）决定谁可见。 */
+  /** M32（原 M23 双渲染）：日期卡与元信息只在行程抽屉表头渲染一份（桌面工作台的日期卡单独走 Workspace date 槽）。 */
   const metasJsx = (
     <div className="text-xs text-ink-soft mt-0.5">
       {metas.map((m, k) => (
@@ -941,7 +943,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
   );
 
-  const aiContent=(<>        <div className="sheet-handle md:hidden shrink-0 flex justify-center pt-2 pb-1.5" onPointerDown={(e) => chatDrag.start(e)}>
+  const aiContent=(<>        <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1.5" onPointerDown={(e) => chatDrag.start(e)}>
           <span className="h-1.5 w-10 rounded-full bg-line" />
         </div>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-white">
@@ -1097,7 +1099,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         onHotelFocus={handleHotelFocus}
         flashKeys={flashKeys}
         focus={focus}
-        bottomPadding={isMobile() && (chatOpen || panelOpen) ? Math.round(window.innerHeight * 0.7) : 0}
+        bottomPadding={!desktop && (chatOpen || panelOpen) ? Math.round(window.innerHeight * 0.7) : 0}
         onMapClick={closeSheets}
         view={mapView}
       />
@@ -1152,83 +1154,48 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}
       {!desktop && !panelOpen && !chatOpen && !picking && !form && !hotelForm && (
-        <button data-testid="outing-reentry" className="fixed left-3 right-3 bottom-8 md:left-auto md:w-[300px] z-[410] nav-primary shadow-card" onClick={() => { setOuting(p => ({ ...p, mode: "outing" })); setPanelOpen(true); }}>
+        <button data-testid="outing-reentry" className="fixed left-3 right-3 bottom-8 z-[410] nav-primary shadow-card" onClick={() => { setOuting(p => ({ ...p, mode: "outing" })); setPanelOpen(true); }}>
           继续出行 · 第 {route.days[Math.min(outing.day, route.days.length - 1)]?.day || 1} 天 →
         </button>
       )}
 
       {!desktop && <>
-      {/* AI 抽屉手柄：左侧边缘凸出的半圆按钮，点击带动整个侧边栏拉出 */}
-      <button
-        onClick={toggleChat}
-        className={
-          "max-md:hidden fixed top-1/2 -translate-y-1/2 z-[420] flex items-center justify-center w-[26px] h-[92px] rounded-r-[14px] rounded-l-none bg-moss text-white shadow-card transition-all duration-300 hover:bg-[#175740] hover:w-[30px] " +
-          (chatOpen ? "left-[380px]" : "left-0")
-        }
-        title={chatOpen ? "收起 AI 对话" : "打开 AI 对话（让 AI 改行程）"}
-        data-testid="chat-reentry"
-      >
-        <span className={"text-[15px] transition-transform duration-300 " + (chatOpen ? "rotate-180" : "")}>
-          {chatOpen ? "◂" : "▸"}
-        </span>
-      </button>
-
-      {/* 顶部悬浮标题（优化②：抽屉打开时整体让位，避免遮挡）：
-          左侧让位给 AI 抽屉（left 随 chatOpen 变）。
-          右侧**不**让位：试过让浮条避开行程面板，但 1280 上面板占 400px，浮条宽度掉到 852 后
-          内容装不下，要么折行（加 flex-wrap：浮条从 60px 涨到 128px 甚至 214px 的多行堆），
-          要么标题被压到只剩省略号 —— 都比现在难看。
-          改为**面板自己让出顶部**：见下方「面板顶部让位带」。浮条照旧横铺，面板内容从带下沿开始。 */}
+      {/* M32 紧凑顶栏：原 M23 手机版推广到全 <1024 —— 平板带（768–1023）不再有
+          「桌面浮条 + 双侧栏」形态（380+400px 互叠盖满地图的旧账就此了结）。
+          左缘 AI 手柄随侧栏一起退役，🤖/🗺 圆钮是唯一入口；metas/日期卡/mock 徽标
+          不再双渲染，只出现在行程抽屉表头（同一 JSX 变量）。 */}
       <div
-        className="fixed top-3 right-3 z-[500] flex items-center gap-2 md:gap-3 md:top-3.5 md:right-3.5 pointer-events-none transition-[left] duration-300"
-        style={{ left: isMobile() ? 12 : chatOpen ? 396 : 14 }}
+        className="fixed top-3 right-3 z-[500] flex items-center gap-2 pointer-events-none transition-[left] duration-300"
+        style={{ left: 12 }}
       >
-        <div className="bg-white border border-line rounded-[14px] px-2.5 md:px-3.5 py-2 shadow-card flex items-center gap-2 pointer-events-auto shrink-0">
-          <button onClick={onRestart} className="flex items-center gap-2 text-sm font-bold tracking-wide hover:text-moss" title="返回首页（保留当前行程）">
-            <span className="text-lg">🧭</span>
-            <span className="max-md:hidden">
-              IterTrip
-              <span className="block text-[11px] font-normal text-ink-soft tracking-[1px]">LATIN · ITER · ROAD</span>
-            </span>
-          </button>
+        <button onClick={onRestart} data-testid="back-home" title="返回首页（保留当前行程）"
+          className="bg-white border border-line text-moss rounded-full w-11 h-11 text-[17px] shadow-card hover:bg-moss-soft focus-ring pointer-events-auto shrink-0">
+          🧭
+        </button>
+        <div className="bg-white border border-line rounded-[12px] px-3 py-2 shadow-card min-w-0 flex-1 overflow-hidden pointer-events-auto">
+          <h1 className="text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
         </div>
-        <div className="bg-white border border-line rounded-[14px] px-3 md:px-4 py-2 shadow-card min-w-0 flex-1 md:flex-initial overflow-hidden pointer-events-auto">
-          <h1 className="text-sm md:text-base font-bold whitespace-nowrap overflow-hidden text-ellipsis">{trip.title}</h1>
-          {/* 元信息必须**单行**：顶栏在 AI 抽屉打开时会被挤窄（left 让到 396），
-              这一行一换行，整条浮条就从 60px 涨到 76px，而面板顶部让位带是固定 74px ——
-              2px 缝隙会让综合建议卡露头。改为 nowrap + 省略号：浮条高度恒定，
-              让位带才算得准（顺带修好「抽屉打开时日期卡被挤出屏幕」的老问题）。 */}
-          <div className="max-md:hidden whitespace-nowrap overflow-hidden text-ellipsis">{metasJsx}</div>
-        </div>
-        {/* M22：出发日期（算星期用）+ 闭馆日冲突状态。刻意放在标题卡外侧的同层，
-            避免被标题卡的 overflow-hidden 裁掉日历弹层。
-            M23：手机上这一份隐藏，改在「行程」抽屉表头渲染同款（同一 JSX 变量） */}
-        <div className="max-md:hidden flex shrink-0">{dateCardJsx}</div>
         <div className="ml-auto flex gap-2 pointer-events-auto shrink-0">
           {source === "mock" && (
-            <span className="max-md:hidden bg-gold-soft text-gold-deep text-xs font-semibold rounded-full px-3 py-2 shadow-card" title="后端未配置 LLM key，当前为 mock 草稿">
+            <span className="hidden bg-gold-soft text-gold-deep text-xs font-semibold rounded-full px-3 shadow-card sm:inline-flex items-center" title="后端未配置 LLM key，当前为 mock 草稿">
               mock 草稿
             </span>
           )}
-          {/* M23：手机专用入口（桌面手柄/侧栏按钮在窄屏够不着） */}
           <button onClick={toggleChat} data-testid="chat-toggle" title="AI 改行程"
-            className="md:hidden border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card">
+            className="border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card hover:bg-moss-soft focus-ring">
             🤖
           </button>
           <button onClick={togglePanel} data-testid="panel-toggle" title={panelOpen ? "收起行程" : "展开行程"}
-            className="md:hidden border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card">
+            className="border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card hover:bg-moss-soft focus-ring">
             🗺
-          </button>
-          <button onClick={togglePanel} className="max-md:hidden border border-line bg-white text-moss rounded-full px-3.5 py-2 text-[13px] font-semibold shadow-card hover:bg-moss-soft">
-            {panelOpen ? "▸ 收起" : "☰ 行程"}
           </button>
         </div>
       </div>
 
-      {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈） */}
+      {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈）。M32：<1024 全部底部 sheet */}
       <aside
-        className={`fixed z-[400] transition-transform duration-300 max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] md:top-0 md:left-0 md:bottom-0 md:right-auto md:w-[380px] ${
-          chatOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:-translate-x-[calc(100%+2px)] md:translate-y-0"
+        className={`fixed z-[400] transition-transform duration-300 inset-x-0 top-auto bottom-0 h-[70dvh] ${
+          chatOpen ? "translate-x-0 translate-y-0" : "translate-y-[calc(100%+2px)]"
         }`}
         data-testid="ai-drawer"
         aria-hidden={!chatOpen}
@@ -1246,19 +1213,19 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             if (info.offset.y > 90 || info.velocity.y > 500) setChatOpen(false);
             animate(chatY, 0, { type: "spring", stiffness: 400, damping: 40 });
           }}
-          className="h-full flex flex-col bg-cream overflow-hidden shadow-[10px_0_40px_rgba(43,43,40,0.15)] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:border-r"
+          className="h-full flex flex-col bg-cream overflow-hidden shadow-[0_-10px_40px_rgba(43,43,40,0.15)] rounded-t-[16px] border-t border-line pb-[env(safe-area-inset-bottom)]"
         >
         {aiContent}
         </motion.div>
       </aside>
 
-      {/* 右侧滑出面板 */}
+      {/* 行程面板：M32 起全 <1024 都是底部 sheet（原 md 侧栏形态随紧凑化退役） */}
       <aside
         data-testid="timeline-panel"
         aria-hidden={!panelOpen}
         ref={panelDrawerRef}
-        className={`fixed z-[400] transition-transform duration-300 max-md:inset-x-0 max-md:top-auto max-md:bottom-0 max-md:h-[70dvh] md:top-0 md:right-0 md:bottom-0 md:left-auto md:w-[400px] ${
-          panelOpen ? "translate-x-0 translate-y-0" : "max-md:translate-x-0 max-md:translate-y-[calc(100%+2px)] md:translate-x-[calc(100%+2px)] md:translate-y-0"
+        className={`fixed z-[400] transition-transform duration-300 inset-x-0 top-auto bottom-0 h-[70dvh] ${
+          panelOpen ? "translate-x-0 translate-y-0" : "translate-y-[calc(100%+2px)]"
         }`}
       >
         <motion.div
@@ -1272,16 +1239,11 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
             if (info.offset.y > 90 || info.velocity.y > 500) setPanelOpen(false);
             animate(panelY, 0, { type: "spring", stiffness: 400, damping: 40 });
           }}
-          className="h-full flex flex-col bg-cream overflow-hidden shadow-[-10px_0_40px_rgba(43,43,40,0.15)] max-md:rounded-t-[16px] max-md:border-t max-md:pb-[env(safe-area-inset-bottom)] md:border-l"
+          className="h-full flex flex-col bg-cream overflow-hidden shadow-[0_-10px_40px_rgba(43,43,40,0.15)] rounded-t-[16px] border-t border-line pb-[env(safe-area-inset-bottom)]"
         >
-        {/* 面板顶部让位带（桌面）：浮条= top-3.5(14) + 高 60 = 底边 74，所以留 74。
-            关键是它属于滚动区**之前**的兄弟节点 —— 滚动视口因此从 74px 开始，
-            「🧠 AI 综合建议」「第 1 天」在带下沿被裁掉，而不会钻到日期卡/「收起」的白卡底下
-            （改动前实测：浮条压住综合建议卡顶部 363×60，滚动后第 1 天卡也被压 16px）。 */}
-        <div className="max-md:hidden shrink-0 h-[74px]" data-testid="panel-top-gap" />
 
-        {/* M23：手机抽屉固定表头（日期/元信息；桌面这些在顶栏） */}
-        <div className="md:hidden shrink-0 border-b border-line">
+        {/* 抽屉固定表头（日期/元信息；桌面工作台这些在顶栏） */}
+        <div className="shrink-0 border-b border-line bg-white">
           <div className="sheet-handle shrink-0 flex justify-center pt-2 pb-1" onPointerDown={(e) => panelDrag.start(e)}>
             <span className="h-1.5 w-10 rounded-full bg-line" />
           </div>
@@ -1306,7 +1268,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           {weatherContent}
           </details>
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
-          {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); if (isMobile()) setPanelOpen(false); }} /> :
+          {outing.mode === "outing" ? <OutingView route={route} progress={outing} onChange={setOuting} onNavigate={setNavKey} onFocus={key => { setActiveKey(key); setFocus({ key, seq: Date.now(), mode: "zoom" }); setPanelOpen(false); }} /> :
           <Timeline
             route={route}
             activeKey={activeKey}
@@ -1402,7 +1364,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       </>}
       {/* 选点提示条 */}
       {!desktop && pickHint && (
-        <div className="fixed top-[110px] md:top-[62px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-ink px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
+        <div className="fixed top-[110px] left-1/2 -translate-x-1/2 z-[600] bg-gold text-ink px-[18px] py-2 rounded-full text-[13px] font-semibold shadow-card whitespace-nowrap">
           {pickHint}
         </div>
       )}

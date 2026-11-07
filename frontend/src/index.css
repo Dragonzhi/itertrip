@@ -167,10 +167,13 @@ body.picking .leaflet-marker-icon { pointer-events: none; }
 @media (max-width: 767px) {
   /* iOS Safari 聚焦 <16px 输入框会缩放整页 */
   input, textarea, select { font-size: 16px; }
-  /* 手机靠双指缩放；底部控件本来就被抽屉盖住 */
-  .leaflet-control-zoom { display: none; }
   /* 注：时间线"✎/✕/↑↓"三种触点自 M23 起已统一 28×28（right-36 / right-68 / right-4），
      手机不再需要单独放大 —— 一套几何两端通用。 */
+}
+/* M32：<1024 靠双指/滚轮缩放 —— 紧凑布局下底部控件被 70dvh 抽屉盖住、
+ * 左上角又与顶栏圆钮冲突（768–1023 平板带此前恰好漏在这条规则的覆盖之外） */
+@media (max-width: 1023px) {
+  .leaflet-control-zoom { display: none; }
 }
 /* 去掉双击缩放的 300ms 延迟（地图自身 touch-action 不受影响） */
 button, .place-item { touch-action: manipulation; }
