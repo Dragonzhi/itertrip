@@ -13,10 +13,10 @@ const css=await fs.readFile('dist/'+index.match(/href="\/itertrip\/(assets\/[^" 
 const now=new Date().toISOString(),date=new Date(Date.now()+86400000).toISOString().slice(0,10);
 const names=['武侯祠','锦里','人民公园','宽窄巷子'];
 const route={trip:{title:'成都，慢慢逛 · 桌面验收样例',destination:'成都',start_date:date,date_source:'user',days:3,travelers:'2 人'},days:[
- {day:1,theme:'老城与茶馆',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:names.map((name,i)=>({id:'p'+i,name,lat:30.64+i*.006,lng:104.055+i*.005,source:'user',confidence:'high',note:'合成验收数据，用于检查桌面布局；营业与交通以实际查询为准。',visit:{kind:'visit',duration_min:[90,75,90,120][i],duration_source:'user'},weather_exposure:{environment:'outdoor',rain_sensitive:true,source:'user',place_name:name,confirmed_at:now}})),hotel:{id:'h',name:'春熙路住宿 · 待确认',lat:30.66,lng:104.08,prices:[],note:'验收样例'}},
+ {day:1,theme:'老城与茶馆',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:names.map((name,i)=>({id:'p'+i,name,lat:30.64+i*.006,lng:104.055+i*.005,source:'user',confidence:'high',note:'合成验收数据，用于检查桌面布局；营业与交通以实际查询为准。',visit:{kind:'visit',duration_min:[90,75,90,120][i],duration_source:'user'}})),hotel:{id:'h',name:'春熙路住宿 · 待确认',lat:30.66,lng:104.08,prices:[],note:'验收样例'}},
  {day:2,theme:'熊猫与城市记忆',schedule:{start:'08:30',end:'18:00'},places:[{id:'panda',name:'熊猫基地',lat:30.72,lng:104.14,visit:{duration_min:150,kind:'visit'}},{id:'museum',name:'成都博物馆（长名称与预约冲突的合成验收样例）',lat:30.65,lng:104.06,visit:{duration_min:120,kind:'visit',reservation:{date,start:'09:00',end:'10:00',status:'confirmed',type:'entry'}}}]},
  {day:3,theme:'留给临时起意',places:[]}
-],summary:['验收样例：可以编辑、比较交通、查看天气并撤销。'],weather:[{provider:'open_meteo',source_url:'https://open-meteo.com/',attributions:[],queried_at:now,timezone:'Asia/Shanghai',granularity:'hourly',kind:'forecast',lat:30.65,lng:104.06,valid_from:date+'T08:00:00+08:00',valid_to:date+'T19:00:00+08:00',hours:Array.from({length:11},(_,i)=>({start:date+'T'+String(8+i).padStart(2,'0')+':00:00+08:00',end:date+'T'+String(9+i).padStart(2,'0')+':00:00+08:00',probability:i>=6?85:0,precipitation_mm:i>=6?2:0}))}]};
+],summary:['验收样例：可以编辑、比较交通并撤销。']};
 const T=globalThis.IterTripTransport;T.normalize(route);for(const [i,edge] of T.legs(route,0).entries()){if(i>=2)break;const segment=route.days[0].transport.find(s=>s.from_id===edge.from.id&&s.to_id===edge.to.id);segment.mode=i?'bus':'walk';segment.buffer_min=i?15:7;segment.snapshot={signature:T.sign(edge),options:[{mode:segment.mode,status:'ok',duration_s:(i?28:8)*60,walking_m:i?400:600,queried_at:now,source:'synthetic',source_url:''}]};}
 for(const point of route.days[0].places)point.opening=[{place_name:point.name,open:'08:00',close:'19:00',entry_policy:'none',valid_from:date,valid_to:date,source_kind:'user',source_url:'https://example.org/synthetic-opening',checked_at:now,confirmed:true}];
 const bootstrap=`localStorage.clear();localStorage.setItem('itertrip:route',${JSON.stringify(JSON.stringify(route))});Object.defineProperty(navigator,'onLine',{get:()=>false});window.__calls=[];window.fetch=async(url)=>{window.__calls.push(String(url));throw new Error('离线合成验收，无网络调用')};`;
@@ -57,7 +57,7 @@ try{
     await page.click('[aria-label="撤销"]');
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('itertrip:route')).days[0].places[2].name),'人民公园');
   }
-  await page.click('[data-testid=desktop-weather]');if(width===1440)await page.screenshot({path:path.join(out,'weather-1440.png')});
+  await page.click('[data-testid=day-settings]');if(width===1440)await page.screenshot({path:path.join(out,'aux-1440.png')});
   await page.click('[aria-label="关闭辅助区"]');await page.click('.dw-days button:nth-child(2)');
   await page.click('[data-key="d1-p1"] [data-testid=place-name]');
   await new Promise(resolve=>setTimeout(resolve,350));

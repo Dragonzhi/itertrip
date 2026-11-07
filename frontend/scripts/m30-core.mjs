@@ -15,8 +15,8 @@ fresh(route);
 const proposal=(...actions)=>({transaction_id:version,base_version:version,actions});
 const duration={op:'set_duration',place_id:'a',minutes:45},move={op:'move_place',place_id:'a',to_day:2,before_id:''};
 const records=[];
-function check(name,r,p,expected,completed=[],complete=false,evidence=[],weather=false) {
-  const original=JSON.stringify(r),start=performance.now(),out=A.prepare(r,p,version,completed,complete,evidence,weather);
+function check(name,r,p,expected,completed=[],complete=false,evidence=[]) {
+  const original=JSON.stringify(r),start=performance.now(),out=A.prepare(r,p,version,completed,complete,evidence);
   assert.equal(out.changed,expected,name+': '+out.reasons.join(';'));
   assert.equal(JSON.stringify(r),original,name+' mutated original');
   records.push({scenario:name,expected_change:expected,actual_change:out.changed,passed:true,elapsed_ms:performance.now()-start,reasons:out.reasons});
@@ -66,11 +66,6 @@ check('实际只读新交通依据允许重排候选',route,proposal(move),true,
 check('旧版工具结果不能补新路线',route,proposal(move),false,[],true,[{...evidence[0],base_version:'stale'}]);
 check('工具旧耗时不作为当前依据',route,proposal(move),false,[],true,[{...evidence[0],options:[{...evidence[0].options[0],queried_at:'2000-01-01T00:00:00Z'}]}]);
 check('地点位置变化不能套旧交通依据',route,proposal(move),false,[],true,[{...evidence[0],from_point:{...evidence[0].from_point,lat:39}}]);
-check('要求避雨但缺小时预报不能应用',route,proposal(move),false,[],true,evidence,true);
-const rain=fresh(futureFixture(JSON.parse(fs.readFileSync('test-artifacts/m29/route.json','utf8'))));rain.days[0].schedule.start='12:00';rain.weather[0].queried_at=now;
-const outdoor=rain.days[0].places[0],indoor=rain.days[0].places[1];
-const rainEvidence=[{base_version:version,from_id:indoor.id,to_id:outdoor.id,from_point:indoor,to_point:outdoor,options:[{mode:'car',status:'ok',duration_s:600,walking_m:0,queried_at:now,source:'amap'}]}];
-check('已有完整天气不能重排到更大的降水暴露',rain,proposal({op:'move_place',place_id:outdoor.id,to_day:1,before_id:''}),false,[],true,rainEvidence);
 const venue=clone(route),p=venue.days[0].places[0];p.visit.kind='visit';p.opening=[{place_name:p.name,open:'09:00',close:'10:00',entry_policy:'none',valid_from:route.trip.start_date,valid_to:route.trip.start_date,source_kind:'official',source_url:'https://example.org/synthetic-hours',checked_at:now,confirmed:true}];
 assert.equal(S.calculate(venue,0).status,'estimated');
 check('不能停留到闭馆后',venue,proposal({...duration,minutes:120}),false);

@@ -56,19 +56,12 @@ await click(document.querySelector('[aria-label=撤销]'));assert.equal(JSON.str
 await click(document.querySelector('[data-testid=desktop-leg]'));assert.ok(detail().textContent.includes('比较三种方式'));
 assert.equal(calls.filter(u=>u.endsWith('/api/transport')).length,0,'selecting traffic is read-only');
 await click(document.querySelector('[aria-label=关闭辅助区]'));
-await click(document.querySelector('[data-testid=desktop-weather]'));assert.equal(document.querySelector('[aria-label=天气评估天数]').value,'0');
-let finishWeather;
-globalThis.fetch=async url=>{assert.ok(url.endsWith('/api/route/weather'));return new Promise(resolve=>finishWeather=resolve);};
-await click(textButton('刷新逐小时天气'));
-await click(document.querySelectorAll('.dw-days button')[1]);assert.equal(document.querySelector('[aria-label=天气评估天数]').value,'1','day controlled');
-await act(async()=>finishWeather({ok:true,json:async()=>({results:[{lat:30.657,lng:104.06,queried_at:new Date().toISOString(),provider:'open_meteo'}],error:'',calls:1})}));
-assert.equal(JSON.stringify(saved()),original,'day switch rejects late weather even without a route edit');
 await click(document.querySelector('[data-testid=chat-toggle]'));
 const textarea=document.querySelector('[data-testid=plan-chat-input]');
 assert.equal(document.querySelector('.dw-map').hidden,true,'AI replaces the supporting map');
 assert.equal(document.querySelector('.dw-itinerary').hidden,false,'AI never replaces the itinerary');
 await act(async()=>{Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype,'value').set.call(textarea,'保留我的修改草稿');textarea.dispatchEvent(new w.Event('input',{bubbles:true}));});
-await click(document.querySelector('[data-testid=desktop-weather]'));await click(document.querySelector('[data-testid=chat-toggle]'));
+await click(document.querySelector('[data-testid=day-settings]'));await click(document.querySelector('[data-testid=chat-toggle]'));
 assert.equal(document.querySelector('[data-testid=plan-chat-input]'),textarea,'AI remains single mounted instance');assert.equal(textarea.value,'保留我的修改草稿');
 assert.equal(JSON.stringify(saved()),original,'view transitions do not modify route');
 await click(document.querySelector('[aria-label=关闭辅助区]'));
@@ -77,7 +70,7 @@ assert.equal(document.querySelector('.dw-map .leaflet-container'),mapNode,'map r
 await click(document.querySelectorAll('.dw-days button')[0]);await click(document.querySelector('[data-testid=place-name]'));
 await click(textButton('编辑地点',detail()));assert.ok(document.querySelector('[role=dialog]'));
 await click(textButton('取消',document.querySelector('[role=dialog]')));
-await click(textButton('安排／预约',detail()));assert.ok(document.querySelector('[aria-label=室内外属性]'));await click(document.querySelector('[aria-label=关闭时间安排]'));
+await click(textButton('安排／预约',detail()));assert.ok(document.querySelector('.schedule-editor'));await click(document.querySelector('[aria-label=关闭时间安排]'));
 await click(textButton('去这里',detail()));assert.ok(document.querySelector('dialog[open]'));
 await click(document.querySelector('dialog [aria-label]'));
 await click(textButton('添加地点'));assert.ok(document.querySelector('.dw-pick-hint'));await click(textButton('取消',document.querySelector('.dw-pick-hint')));assert.equal(document.querySelector('.dw-pick-hint'),null);
@@ -88,4 +81,4 @@ await act(async()=>{width=1440;listeners.forEach(cb=>cb());});assert.ok(document
 assert.equal(JSON.stringify(saved()),original);
 assert.equal(document.querySelector('.dw-body').children.length,2);
 await act(async()=>root.unmount());assert.ok(observers.some(o=>o.closed),'map observer cleans up');dom.window.close();
-console.log('M31 React passed: two-column A layout, opt-in ordering, four desktop breakpoint states, stable selection/move/delete/undo/redo, traffic read-only, controlled weather, AI draft and single map retention, detail/edit/booking/navigation, mobile fallback, observer cleanup. Native visual acceptance recorded separately.');
+console.log('M31 React passed: two-column A layout, opt-in ordering, four desktop breakpoint states, stable selection/move/delete/undo/redo, traffic read-only, AI draft and single map retention, detail/edit/booking/navigation, mobile fallback, observer cleanup. Native visual acceptance recorded separately.');

@@ -11,8 +11,6 @@ export function futureFixture(fixture) {
   const route=shift(fixture);
   for(const day of route.days)for(const p of [...day.places,...(day.hotel?[day.hotel]:[])]){
     for(const f of p.opening||[])f.checked_at=now;
-    if(p.weather_exposure)p.weather_exposure.confirmed_at=now;
   }
-  for(const f of route.weather||[]){f.queried_at=now;if(f.issued_at)f.issued_at=now;}
   return route;
 }
