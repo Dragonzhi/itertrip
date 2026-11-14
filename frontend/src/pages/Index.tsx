@@ -21,7 +21,9 @@ interface IndexProps {
 }
 
 /** 起始页 v3：
- * - empty 态（无 route）：单列 hero + AI 对话主操作 + 粘贴攻略/导入入口。
+ * - empty 态（无 route）：单列 hero + AI 对话主操作 + 导入入口。
+ *   （「📋 粘贴攻略」已删 —— 它就是 onChat() 开对话，与「开始对话」完全重复；
+ *   粘贴本来就发生在对话页输入框里。用户反馈按钮多余。）
  *   原右列「三步拿到路线」说明卡删去 —— 它在逐字复述 hero 文案，属于把同一句话
  *   排版两遍的冗余（宁少勿滥）；隐私口径全页只在页脚出现一次。
  * - resume 态（有 route）：左列「继续你的行程」操作组（继续编辑 / 新建 / 导入）；
@@ -181,21 +183,10 @@ function EmptyCol({
       </div>
 
       <p className="mt-5 text-[12px] leading-relaxed text-ink-soft">
-        或者在下方粘贴一篇现成攻略，让 AI 提取成路线
+        也可以粘贴一篇现成攻略（文字或截图），让 AI 提取成路线
       </p>
 
       <div className="mt-3 flex flex-wrap gap-3 w-full">
-        <button
-          type="button"
-          onClick={() => onChat()}
-          className="inline-flex items-center justify-center gap-2 h-10 px-4 bg-white text-ink border border-line rounded-md font-sans text-[14px] font-medium leading-none hover:border-moss hover:text-moss transition-colors focus-ring"
-          data-testid="paste-guide-entry"
-        >
-          <span aria-hidden className="text-[14px]">
-            📋
-          </span>
-          <span>粘贴攻略</span>
-        </button>
         <button
           type="button"
           onClick={onPickFile}
@@ -208,10 +199,6 @@ function EmptyCol({
           <span>导入已有行程</span>
         </button>
       </div>
-
-      <p className="mt-4 text-[12px] leading-relaxed text-ink-soft">
-        支持粘贴文字或上传攻略截图。
-      </p>
 
       {!hasModel && (
         <div className="mt-6 flex items-center justify-center gap-2 w-full px-3.5 py-2.5 bg-gold-soft text-gold-deep rounded-md text-[12px] leading-relaxed text-center">
