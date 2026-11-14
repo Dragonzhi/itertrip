@@ -107,9 +107,10 @@ export default function Chat({ onRoute, onOpenSettings, onBack, prefill, setting
       images, // 仅内存态；saveChatHistory 持久化时剔除（M15 护栏）
     };
     // 从 ref 取（而不是 state）：clarify 提交是「先 markAnswered 再 onSend」，读 state 会拿到落后一拍的数组
-    const history = [...msgsRef.current, userMsg]
+    // 不含当前消息：prompt 会作为当轮 user 消息单独组装，塞进 history 会重复发送（后端无去重）
+    const history = msgsRef.current
       .filter((m) => !m.error)
-      .slice(-12)
+      .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
     commit((prev) => [...prev, userMsg]);
     await stream.send({ prompt: text, history, images }, settings);
