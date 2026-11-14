@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IterTrip · Agent 小队全解（小白版）</title>
+<style>
+  :root {
+    --cream: #FAF6F0; --paper: #FFFDF7; --white: #FFFFFF;
+    --moss: #1F6B54; --moss-deep: #175740; --moss-soft: #E3EFE8;
+    --line: #E8E0D4; --ink: #2B2B28; --muted: #6B6B64;
+    --gold: #C8903C; --gold-deep: #8A5E1E; --gold-soft: #F6EBD8;
+    --danger: #9C4038; --danger-soft: #FCF1EC;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--cream); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 15px; line-height: 1.75;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+
+  /* ===== 头图 ===== */
+  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero .logo {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 56px; height: 56px; border-radius: 14px; background: var(--moss);
+    font-size: 28px; margin-bottom: 18px;
+  }
+  .hero h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+  .hero p.sub { color: var(--muted); margin-top: 14px; max-width: 640px; margin-inline: auto; }
+  .hero .principle {
+    display: inline-block; margin-top: 20px; padding: 10px 22px;
+    background: var(--moss); color: #fff; border-radius: 999px;
+    font-size: 14px; font-weight: 600;
+  }
+  .hero .principle small { display: block; font-weight: 400; opacity: .85; font-size: 12px; margin-top: 2px; }
+
+  /* ===== 导航胶囊 ===== */
+  nav.chips { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--cream) 92%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); padding: 10px 0; }
+  .chips-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chips a {
+    text-decoration: none; color: var(--moss); background: var(--white);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 500;
+    transition: background-color .15s, border-color .15s;
+  }
+  .chips a:hover { background: var(--moss-soft); border-color: var(--moss); }
+
+  /* ===== 分区 ===== */
+  section { padding: 44px 0 8px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .sec-head .no { font-size: 13px; font-weight: 700; color: var(--gold-deep); letter-spacing: .12em; }
+  .sec-head h2 { font-size: 22px; font-weight: 750; }
+  .sec-lead { color: var(--muted); max-width: 720px; margin-bottom: 22px; }
+  .sec-lead strong { color: var(--ink); }
+
+  /* ===== 成员卡 ===== */
+  .team { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--white); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px;
+    box-shadow: 0 2px 10px -6px rgba(43,43,40,.12);
+  }
+  .card .avatar { font-size: 30px; line-height: 1; }
+  .card h3 { font-size: 16.5px; font-weight: 750; margin-top: 10px; }
+  .card .role {
+    display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 999px;
+    background: var(--moss-soft); color: var(--moss); font-size: 12px; font-weight: 600;
+  }
+  .card p.talk { margin-top: 10px; font-size: 13.5px; color: var(--ink); }
+  .card ul.points { list-style: none; margin-top: 10px; }
+  .card ul.points li { font-size: 12.5px; color: var(--muted); padding-left: 1.2em; position: relative; margin-top: 4px; }
+  .card ul.points li::before { content: "✦"; position: absolute; left: 0; color: var(--gold); font-size: 10px; top: 3px; }
+  .card details { margin-top: 12px; border-top: 1px dashed var(--line); padding-top: 10px; }
+  .card summary { cursor: pointer; color: var(--moss); font-size: 12.5px; font-weight: 600; list-style: none; }
+  .card summary::-webkit-details-marker { display: none; }
+  .card summary::before { content: "🔍 "; }
+  .card details p, .card details code { font-size: 12px; color: var(--muted); }
+  .card details p { margin-top: 6px; }
+  code { background: var(--moss-soft); border-radius: 4px; padding: 1px 6px; font-size: 12px; color: var(--moss-deep); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+  /* ===== 故事线：步骤链 ===== */
+  .chain { position: relative; margin: 8px 0 4px; padding-left: 10px; }
+  .step { position: relative; display: flex; gap: 14px; padding: 10px 0 10px 6px; }
+  .step::before {
+    content: ""; position: absolute; left: 24px; top: 0; bottom: 0;
+    border-left: 2px dashed var(--line);
+  }
+  .step:first-child::before { top: 24px; }
+  .step:last-child::before { bottom: auto; height: 24px; }
+  .step .dot {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%;
+    background: var(--white); border: 2px solid var(--moss); color: var(--moss);
+    display: flex; align-items: center; justify-content: center; font-size: 16px; z-index: 1;
+  }
+  .step .body { min-width: 0; padding-top: 5px; }
+  .step .body strong { font-size: 14.5px; font-weight: 700; }
+  .step .body p { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .step .body p em { color: var(--moss-deep); font-style: normal; font-weight: 600; }
+
+  .box {
+    border-radius: 12px; padding: 14px 16px; margin-top: 16px; font-size: 13px;
+  }
+  .box.gold { background: var(--gold-soft); border: 1px solid #C8903C66; color: var(--gold-deep); }
+  .box.red { background: var(--danger-soft); border: 1px solid #9C403855; color: var(--danger); }
+  .box.green { background: var(--moss-soft); border: 1px solid #1F6B5433; color: var(--moss-deep); }
+  .box strong { display: block; margin-bottom: 6px; font-size: 13.5px; }
+  .box p + p { margin-top: 6px; }
+
+  /* ===== 词典 ===== */
+  .dict { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .term { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .term h3 { font-size: 14px; font-weight: 750; color: var(--moss-deep); }
+  .term h3 small { color: var(--muted); font-weight: 400; font-size: 11.5px; margin-left: 6px; }
+  .term p { font-size: 12.5px; color: var(--ink); margin-top: 6px; }
+  .term .where { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
+  .term.warn { border-color: #C8903C88; background: var(--gold-soft); }
+
+  /* ===== 体检表 ===== */
+  .checkup { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .panel { border-radius: 14px; border: 1px solid var(--line); background: var(--white); padding: 18px; }
+  .panel h3 { font-size: 15px; font-weight: 750; margin-bottom: 10px; }
+  .panel.ok h3 { color: var(--moss); }
+  .panel.gap h3 { color: var(--gold-deep); }
+  .panel ul { list-style: none; }
+  .panel li { font-size: 13px; padding: 5px 0 5px 1.5em; position: relative; border-top: 1px dashed var(--line); }
+  .panel li:first-of-type { border-top: 0; }
+  .panel.ok li::before { content: "✅"; position: absolute; left: 0; font-size: 11px; top: 8px; }
+  .panel.gap li::before { content: "⚠️"; position: absolute; left: 0; font-size: 11px; top: 8px; }
+  .panel li small { color: var(--muted); display: block; font-size: 12px; }
+  .panel.gap li small b { color: var(--moss); }
+
+  footer { border-top: 1px solid var(--line); margin-top: 48px; padding: 26px 0 40px; color: var(--muted); font-size: 12.5px; text-align: center; }
+  footer p + p { margin-top: 6px; }
+
+  @media (max-width: 640px) {
+    .hero { padding: 40px 0 28px; }
+    .hero h1 { font-size: 24px; }
+    section { padding-top: 34px; }
+    .sec-head h2 { font-size: 19px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="logo">🧭</span>
+    <h1>IterTrip 里住着一支旅行小队</h1>
+    <p class="sub">它不是一个"无所不能的大 AI"，而是 <strong>10 位各管一摊的员工</strong>。
+    下面把整个系统当成一家小旅行社，带你挨个认识——每个员工都有"说人话版"介绍，
+    想看代码证据的，点每张卡下面的 🔍。</p>
+    <span class="principle">核心原则：AI 是动手的，用户是把关的<small>AI 的每个动作都可见、可撤销、可反悔</small></span>
+  </div>
+</header>
+
+<nav class="chips">
+  <div class="wrap chips-row">
+    <a href="#team">① 认识小队</a>
+    <a href="#story-extract">② 贴攻略之旅</a>
+    <a href="#story-edit">③ 改行程之旅</a>
+    <a href="#story-coord">④ 坐标救火队</a>
+    <a href="#dict">⑤ 小白词典</a>
+    <a href="#checkup">⑥ 现状体检</a>
+  </div>
+</nav>
+
+<!-- ============ ① 小队成员 ============ -->
+<section id="team">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">①</span><h2>认识小队：每位员工管什么</h2></div>
+    <p class="sec-lead">第 10 位员工「谨慎助理」戏份太重，单独在 <a href="#story-edit" style="color:var(--moss)">③ 改行程之旅</a> 里介绍。</p>
+
+    <div class="team">
+      <div class="card">
+        <div class="avatar">🎙️</div>
+        <h3>对话代理</h3>
+        <span class="role">前台客服 · 全站唯一对话入口</span>
+        <p class="talk">你在首页说的每句话都归 ta 接待。贴一篇攻略，ta 一边"打字"给你看、一边把攻略拆成路线数据；信息不够时 ta 会先递上一张澄清卡反问你，绝不瞎猜。</p>
+        <ul class="points">
+          <li>边生成边显示（像微信打字一样流式）</li>
+          <li>提取攻略 / 修改行程 双模式同一个人接待</li>
+          <li>输出没按格式来？自动带错误重试 1 次</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/api/chat.py</code> · 双系统提示词 <code>SYSTEM_EXTRACT / SYSTEM_EDIT</code>；
+          输出走 <code>&lt;&lt;&lt;REPLY&gt;&gt;&gt;</code> + <code>&lt;&lt;&lt;JSON&gt;&gt;&gt;</code> 两段式协议，模型漏标记会全文兜底挖 JSON；
+          解析失败把错误信息回灌给模型重试一次（自我修复环）；历史只带最近 8 轮防上下文爆炸。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🗺️</div>
+        <h3>规划代理</h3>
+        <span class="role">资深规划师 · 表单直出路线</span>
+        <p class="talk">不想打字？填张表单（去哪 / 几天 / 几个人），ta 直接出一条完整路线，然后自动叫醒定位专员把坐标补全。</p>
+        <ul class="points">
+          <li>每天 3–5 个地点的编排</li>
+          <li>报价留白——价格中立，由用户手动提供</li>
+          <li>失败时救场实习生顶上（见下）</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/engine/planner.py</code> · temperature 0.7 / 120 秒；
+          出口统一跑离谱坐标检测 → 补全 → 高德主动核验三阶段流水线（<code>_enrich_coordinates</code>）；
+          数据来源（llm / mock）通过响应头带出，不污染行程数据。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">📍</div>
+        <h3>坐标代理</h3>
+        <span class="role">定位专员 · 六级降级阶梯</span>
+        <p class="talk">AI 报的坐标常常是"大概在那一片"。这位专员把每个点钉到真实位置，定不下来时层层后退：先查你亲手改过的真值 → 问高德（防同名店搞混）→ 问 AI 的记忆 → 搜网页 → 退到城市中心 → 实在不行诚实标"待确认"。</p>
+        <ul class="points">
+          <li>高德候选打分核名，跨省同名店一律拒收</li>
+          <li>单条路线最多 40 次请求，超了立即熔断</li>
+          <li>"宁可不给，也不给错"</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/engine/coordinates.py</code> · 接受线 <code>_AMAP_MIN_SCORE=0.72</code>、强匹配 0.85；
+          地理闸门要求候选落在正确省市（修过「湖南·长沙整条路线被搬去山西」的事故）；
+          高德致命错误（key 无效/配额尽）1 次即熔断，网络类错误连续 2 次熔断。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🔎</div>
+        <h3>探测代理</h3>
+        <span class="role">质检员 · 试你的 key 好不好使</span>
+        <p class="talk">你在设置里填了自己的 AI 服务，ta 负责"试一下"：通不通？模型名对不对？能不能看图（支持截图攻略的关键能力）？试完给你一句明确结论。</p>
+        <ul class="points">
+          <li>max_tokens 从 512 逐档往下试，找到可用档位</li>
+          <li>用 1×1 红色像素图测"视觉能力"</li>
+          <li>防假阳性：返回网页 HTML 但状态码 200 的情况能识破</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/api/llm.py</code> · 严格校验响应必须含 <code>choices</code>；
+          视觉探测 2xx = 支持、4xx 且错误体含 vision 字样 = 明确不支持、其他 = 未知按支持处理（宁可信其有）。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🧠</div>
+        <h3>记忆服务</h3>
+        <span class="role">档案室 · 跨会话长期记忆（默认关闭）</span>
+        <p class="talk">打开开关后，你每次贴的攻略会被切成一张张"地点卡片"存进本机档案库。下次问"上次那家喝盖碗茶的茶馆"，它翻出相关片段给前台客服参考，答案必须标 [1][2] 出处。你亲手拖对过位置的店会被记成"真值"，以后定位直接命中。</p>
+        <ul class="points">
+          <li>按地点切分存档（不是傻乎乎按字数切段）</li>
+          <li>注入给 AI 时最多 6 条 / 1200 字，防撑爆</li>
+          <li>档案按匿名 id 隔离，设置里可一键清空</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/engine/memory_store / memory_embed / memory_ingest.py</code> ·
+          本地 ONNX embedding（bge-small-zh，512 维）+ SQLite 单文件；
+          检索 = SQL 预过滤（档案+城市+类型）后余弦 top-k；
+          用户手改坐标经 <code>/api/memory/feedback</code> 变成 geocode 第 0 级真值，不再问 AI。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🧪</div>
+        <h3>Mock 规划器</h3>
+        <span class="role">救场实习生 · 没配置也能演</span>
+        <p class="talk">服务器一个 key 都没配时，ta 用一套固定样本撑起完整体验（成都 9 个真实地点轮转），保证"无 key 可演示、断网可联调"。ta 从不冒充真 AI——数据里明晃晃写着「mock 占位」。</p>
+        <ul class="points">
+          <li>确定性输出：同样的输入永远同样的结果</li>
+          <li>占位数据显式标注，绝不鱼目混珠</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>planner.plan_mock</code> · 规划代理调用失败或无 key 时的降级终点；
+          对话代理不同：没配置时不静默降级，而是直接报 400 教你怎么配 key（不假装能干活）。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">💰</div>
+        <h3>搜索服务</h3>
+        <span class="role">报价跑腿 · 查得到就报，查不到就认</span>
+        <p class="talk">帮你查酒店价格参考。三级数据源：RollingGo → 网页搜索抽取价格 → 都不行就诚实说"没查到，请手动填"。红线：不抓平台价格、不做预订。</p>
+        <ul class="points">
+          <li>每条报价带来源和时间戳</li>
+          <li>网页摘录永远只是"线索"，不当事实</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/api/search.py</code> · 正则抽取 ¥100–99999 区间；
+          URL 净化防止凭据泄漏进 source_url；M27 起同一服务也供开放时间线索（同样"只给线索不当事实"）。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🗓️</div>
+        <h3>事实检查员</h3>
+        <span class="role">死板会计 · 纯算术，零 AI 零网络</span>
+        <p class="talk">攻略里写"周一闭馆"，而你的出发日恰好是周一？ta 拿小学算术算出星期几，命中就在行程上挂 ⚠️。为什么不问 AI？"不能靠再引入一次幻觉来治幻觉。"日期只有"10月1日"没有年份？按最近未来推断，并明标「推断」、一键可改。</p>
+        <ul class="points">
+          <li>查不出日期就明说"未检查"，绝不假装通过</li>
+          <li>「法定节假日除外」的模糊说法选择不报（宁缺勿错）</li>
+          <li>改了日期，旧结论自动消失（幂等）</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/engine/facts.py</code> · 简繁两套闭馆规则解析；
+          告警写独立 <code>warnings</code> 字段不污染备注；只重写自己写的「闭馆日：」前缀条目。</p>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="avatar">🚗</div>
+        <h3>交通测距员</h3>
+        <span class="role">测距员 · 问高德拿"快照"</span>
+        <p class="talk">相邻两个地点之间步行 / 公交 / 开车要多久？ta 问高德路径服务，拿回来的是带时间戳的快照——15 分钟内复用，绝不重复花钱花时间。坐标不可信的点直接返回"未知"，不编数字。</p>
+        <ul class="points">
+          <li>预算 24 次请求 / 40 秒，超了礼貌拒绝</li>
+          <li>并发去重 + 每分钟限速 + 配额熔断</li>
+          <li>估计值永远标查询时间，不当永久事实</li>
+        </ul>
+        <details><summary>技术细节</summary>
+          <p><code>backend/engine/transport.py</code> · 只服务 <code>user/memory/amap-high</code> 来源的坐标（<code>trusted()</code>）；
+          TTL 缓存 15 分钟（LRU 512 条）；网络错误对用户可读化，不泄漏 URL 和 key。</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ② 贴攻略之旅 ============ -->
+<section id="story-extract">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">②</span><h2>故事线一：你贴了一篇攻略，然后发生了什么？</h2></div>
+    <p class="sec-lead">首页粘贴小红书攻略 → 拿到可编辑地图。整条流水线 <strong>9 步全程可见</strong>——每一步都写在「🧭 决策过程」工作日志里，刷新页面还在。</p>
+
+    <div class="chain">
+      <div class="step"><div class="dot">📋</div><div class="body"><strong>你贴入攻略</strong><p>文字或截图都行（最多 4 张，会自动压缩）。</p></div></div>
+      <div class="step"><div class="dot">🧠</div><div class="body"><strong>档案室先翻资料</strong><p>记忆库开着的话，检索你过往攻略片段注入参考；<em>命中会明说「参考了 N 条记忆」</em>，没开则跳过（零开销）。</p></div></div>
+      <div class="step"><div class="dot">✍️</div><div class="body"><strong>边打字边提取</strong><p>前台客服流式输出，叙述实时可见；思考模型的内心独白用淡色小字单独滚动，不混正文。</p></div></div>
+      <div class="step"><div class="dot">📦</div><div class="body"><strong>拆成路线数据</strong><p>两段式协议解析；<em>解析失败自动把错误喂回去重试一次</em>；发现你"似乎想改行程但没说清"会先递澄清卡。</p></div></div>
+      <div class="step"><div class="dot">📍</div><div class="body"><strong>定位专员进场</strong><p>缺坐标的点逐个补全（六级降级），界面逐点播报「正在核验 3/7：某地点」。</p></div></div>
+      <div class="step"><div class="dot">🛡️</div><div class="body"><strong>主动核验，不只被动等</strong><p>已有坐标也拿高德比对：1.5km 内精修对齐；<em>明显离位（>200km）自主改回目的地</em>；跨省同名店拒收并标「坐标待确认」。</p></div></div>
+      <div class="step"><div class="dot">🗓️</div><div class="body"><strong>会计对闭馆日</strong><p>「周一闭馆」撞上出发日 → 时间线挂 ⚠️；查不出日期诚实标「未检查」。</p></div></div>
+      <div class="step"><div class="dot">🧭</div><div class="body"><strong>全程工作日志</strong><p>用了哪个模型/从哪来、每个坐标的出处、有没有被替换、有没有重试、耗时多少——折叠在「🧭 决策过程」里随消息保存。</p></div></div>
+      <div class="step"><div class="dot">🗺️</div><div class="body"><strong>拿到地图路线</strong><p>可拖拽精修、可对话修改、随时 Ctrl+Z、满意导出带走。</p></div></div>
+    </div>
+
+    <div class="box green"><strong>💡 这一趟的设计哲学</strong><p>AI 负责理解和动手，<b>每一步都有确定性代码把关</b>：坐标有核验链、日期有算术检查、来源有徽标标注（你确认过 / 高德核验 / AI 推测 / 城市中心）。AI 说的不算，落到数据里的才算。</p></div>
+  </div>
+</section>
+
+<!-- ============ ③ 改行程之旅 ============ -->
+<section id="story-edit">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">③</span><h2>故事线二：「把博物馆挪到第一天」——谨慎助理的工作方式</h2></div>
+    <p class="sec-lead">这是全系统<strong>最新也最讲究</strong>的一条流水线（M30）：AI 像一位戴着手铐的助理——<strong>只能查资料，不能直接改数据</strong>。想动行程必须填《修改申请单》，过两道审查才生效。</p>
+
+    <div class="chain">
+      <div class="step"><div class="dot">💬</div><div class="body"><strong>你提出修改要求</strong><p>带完整路线上下文进入助理流程；报价类、坐标纠错类另有专人专办，不走这条线。</p></div></div>
+      <div class="step"><div class="dot">🚪</div><div class="body"><strong>进入「戴手铐」状态</strong><p>90 秒总预算、最多 3 轮对话、工具调用 6 次 / 60 秒封顶——<em>绝不无限自我对话烧你的 token</em>。</p></div></div>
+      <div class="step"><div class="dot">🔍</div><div class="body"><strong>助理查资料（只读）</strong><p>四个只读工具：搜地点、查两段交通耗时、搜开放时间线索、看日程冲突。查到的都是"数据"，且不能当事实通过。</p></div></div>
+      <div class="step"><div class="dot">📝</div><div class="body"><strong>交《修改申请单》</strong><p>想改行程只能提交提案（propose_edits），单子上带<em>本轮编号 + 版本号</em>——防止张冠李戴、防止旧单子重复播放。</p></div></div>
+      <div class="step"><div class="dot">🕵️</div><div class="body"><strong>第一道审查：服务端</strong><p>参数格式、必去/锁定/已完成站点不许动、预约只能记 pending 不代表订成功、防伪造回执、防重放——<em>整组原子生效或整组拒绝，没有"改一半"</em>。</p></div></div>
+      <div class="step"><div class="dot">🖥️</div><div class="body"><strong>第二道审查：你的浏览器</strong><p>浏览器是最终裁判：本地再算一遍日程，<em>新冲突 = 拒收原样退回</em>；交通快照必须签名对得上且够新鲜才采信。</p></div></div>
+      <div class="step"><div class="dot">✅</div><div class="body"><strong>落入撤销栈</strong><p>改动走与手动编辑同一条撤销栈，地图闪烁高亮变化点，随时 Ctrl+Z。</p></div></div>
+    </div>
+
+    <div class="box gold"><strong>🎭 三种失败剧本（都会被当场戳穿）</strong>
+      <p><b>只动嘴不动手</b>：模型回复"已经修改成功"却没交申请单 → 系统改写为「模型只返回了文字，没有有效操作」，绝不把嘴炮当成功。</p>
+      <p><b>参数乱来</b>：编造不存在的地点、超范围数值 → 校验退回「参数校验失败，整组未应用，请修复」，用剩余轮次自愈。</p>
+      <p><b>钱花超了</b>：token 或时间到预算 → 明确回复「行程未修改：已达到本轮查询/重试预算」，绝不悄悄烂尾。</p>
+    </div>
+
+    <div class="box green"><strong>🔐 防伪造回执是什么？</strong>
+      <p>"改成功了"的图章（receipt）<b>只能由浏览器在确认数据真实变化后盖下</b>——模型输出里的任何回执会被系统剥掉。这就是"AI 不能给自己发奖状"。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ④ 坐标救火队 ============ -->
+<section id="story-coord">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">④</span><h2>故事线三：「这家店都标到海里了！」——坐标三重兜底</h2></div>
+    <p class="sec-lead">坐标幻觉是旅行 AI 的高发事故（曾把一条长沙行程的 7 个地点搬到山西/河北/北京）。应对方案是<strong>三重保险 + 一条铁律</strong>。</p>
+
+    <div class="chain">
+      <div class="step"><div class="dot">🗣️</div><div class="body"><strong>你说出坐标问题</strong><p>「位置不对」「在非洲」「在海里」……哪怕模型只口头道歉没真改——</p></div></div>
+      <div class="step"><div class="dot">🥁</div><div class="body"><strong>第一重：关键词强制执行</strong><p>后端识别出坐标类措辞，<em>绕过模型的嘴直接重跑定位链</em>，改完在回复里注明新方位。</p></div></div>
+      <div class="step"><div class="dot">🔭</div><div class="body"><strong>第二重：出路线时就主动扫描</strong><p>生成完立刻体检：偏离行程中心 >100km、或境内行程里落在境外的点 → 强制重定位。<em>不用等你抱怨</em>。</p></div></div>
+      <div class="step"><div class="dot">🕵️</div><div class="body"><strong>第三重：说了没改二次校验</strong><p>模型声称"已修正"但你点名的地点坐标一字未动 → 判定"说了没做"，再查一次。</p></div></div>
+      <div class="step"><div class="dot">🔐</div><div class="body"><strong>铁律：你的点谁也不能动</strong><p>你亲手拖过 / 点过的位置记为「真值」，<em>任何 AI 核验都不覆盖</em>——高德再权威也不行。</p></div></div>
+    </div>
+
+    <div class="box green"><strong>📈 真实战果</strong><p>某真实行程 31 次高德请求、写入 21 处、距目的地 >300km 的错误坐标从 7 处降到 0；而合法的远点（长沙行程里的张家界）因"改回去更近目的地"判据不成立，安然无恙。</p></div>
+  </div>
+</section>
+
+<!-- ============ ⑤ 小白词典 ============ -->
+<section id="dict">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">⑤</span><h2>小白词典：13 个 Agent 工程知识点，本仓怎么落地的</h2></div>
+    <p class="sec-lead">这些词面试常问。每条先说人话，再说 IterTrip 里长什么样（⤷ 后面是代码位置）。</p>
+
+    <div class="dict">
+      <div class="term"><h3>工具调用<small>Tool Calling</small></h3>
+        <p>不让 AI"说"要做什么，而是给它一套有严格参数格式的工具，让它按规矩点名调用。</p>
+        <div class="where">⤷ 4 个只读工具（搜地点/查交通/搜线索/看日程）+ 提案制，<code>agent_tools.py</code></div>
+      </div>
+      <div class="term"><h3>结构化输出<small>Structured Output</small></h3>
+        <p>AI 的回答必须能被程序解析。双保险：模型支持"原生工具调用"就用标准的，不支持就自动切回两段式文本协议。</p>
+        <div class="where">⤷ <code>&lt;&lt;&lt;REPLY&gt;&gt;&gt;/&lt;&lt;&lt;JSON&gt;&gt;&gt;</code> + 能力探测回退，<code>agent_turn.py</code></div>
+      </div>
+      <div class="term"><h3>有界循环<small>Bounded Loop</small></h3>
+        <p>Agent 干活必须有"下班时间"：最多 3 轮对话就收工，防止无限自我对话烧钱。</p>
+        <div class="where">⤷ <code>agent_turn.run()</code> 三轮上限 + 16k token 软停 + 90 秒总预算</div>
+      </div>
+      <div class="term"><h3>校验优先于执行<small>Validate before Apply</small></h3>
+        <p>模型只出"建议"，真正写入由确定性代码完成；服务端和浏览器各审一遍，全过才落账。</p>
+        <div class="where">⤷ <code>agent_ops.validate</code>（服务端）+ <code>shared/agent.js prepare</code>（浏览器）</div>
+      </div>
+      <div class="term"><h3>防伪造回执<small>Anti-forgery Receipts</small></h3>
+        <p>"改成功"的图章只能由浏览器在确认真实变化后盖下；模型从文本里伪造的图章会被系统剥掉。</p>
+        <div class="where">⤷ <code>agent_receipts</code> + <code>strip_generated()</code>，模型不能给自己发奖状</div>
+      </div>
+      <div class="term warn"><h3>提示注入防御<small>Prompt Injection Defense</small></h3>
+        <p>用户贴的文本里可能藏着"忽略以上规则"。共识：把它当数据而不是命令。</p>
+        <div class="where">⤷ 现状：新改行程流程有此防线；<b>老的提取路径还没加 ⚠️（M35 计划中）</b></div>
+      </div>
+      <div class="term"><h3>RAG 记忆<small>检索增强生成</small></h3>
+        <p>回答前先翻档案库找相关片段，答案必须标 [1][2] 出处；注入量有硬上限防撑爆。</p>
+        <div class="where">⤷ 实体级切分 + 本地 embedding + ≤6 条/1200 字，<code>memory_*.py</code></div>
+      </div>
+      <div class="term"><h3>降级链<small>Fallback Chain</small></h3>
+        <p>每个外部依赖都有层层退路：高德挂了用 AI 知识，AI 不行搜网页，再不行退城市表——最差也要诚实承认失败。</p>
+        <div class="where">⤷ 坐标六级链 + 供应商四级链（你的 key→服务器→免费源→mock）</div>
+      </div>
+      <div class="term"><h3>决策可观测<small>Observability</small></h3>
+        <p>每轮 AI 工作写"工作日志"：模型来源、坐标出处、重试、耗时，前端可展开、刷新不丢。静默兜底必须变成可见决策。</p>
+        <div class="where">⤷ SSE trace 协议，≤60 步，<code>chat.py</code> <code>_trace_step</code></div>
+      </div>
+      <div class="term"><h3>确定性服务分工<small>Determinism</small></h3>
+        <p>算术题不问 AI：闭馆日是纯算术，交通耗时问高德拿快照，网页摘录永远只是线索。</p>
+        <div class="where">⤷ "不用再引入一次幻觉来治幻觉"，<code>facts.py</code> / <code>transport.py</code></div>
+      </div>
+      <div class="term"><h3>澄清式交互<small>Clarification</small></h3>
+        <p>信息不足不瞎猜，输出结构化问题卡（文本/单选/多选/日期）让用户补答，答完再继续。</p>
+        <div class="where">⤷ <code>need_more_info</code> + questions[]，前端渲染澄清卡</div>
+      </div>
+      <div class="term"><h3>「说了没做」兜底<small>Anti-claim Guard</small></h3>
+        <p>AI 嘴上说"已完成"但数据没变？三类场景各有硬兜底：改路线只回叙述→语义重试；报价没写→确定性写入；坐标没改→强制重查。</p>
+        <div class="where">⤷ M22 三件套，<code>chat.py</code> / <code>hotel_price.py</code></div>
+      </div>
+      <div class="term"><h3>评估<small>Evals</small></h3>
+        <p>不靠"感觉变好了"：35 个行程约束场景 + 9 个模型交互场景自动回归。诚实声明：合成测试 ≠ 真模型成功率。</p>
+        <div class="where">⤷ <code>backend/_check_m30.py</code> + <code>m30-core.mjs</code>；真模型质量评估在计划中</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ⑥ 现状体检 ============ -->
+<section id="checkup">
+  <div class="wrap">
+    <div class="sec-head"><span class="no">⑥</span><h2>现状体检：已经很强的地方 & 还欠着的账</h2></div>
+    <p class="sec-lead">以 Agent 应用开发的面试标准给全仓做了一次审计。左边是已经能拿出手讲的，右边是计划补的——<strong>这正是 M35 的施工清单</strong>。</p>
+
+    <div class="checkup">
+      <div class="panel ok">
+        <h3>✅ 已就位（可以拿出去讲）</h3>
+        <ul>
+          <li>双协议工具调用<small>原生 tools + 文本协议自动回退，两种格式同一套校验</small></li>
+          <li>有界三轮工具循环 + 十余项分层预算<small>90s / 3 轮 / 6 工具 / 60s / 16k token / 100k 输入…</small></li>
+          <li>提案制变更 + 服务端/浏览器双重校验<small>原子生效、无中间态、全程可撤销</small></li>
+          <li>防伪造回执 + 防重放<small>AI 不能给自己盖章，旧单子不能重复生效</small></li>
+          <li>RAG 长期记忆闭环<small>档案隔离、出处引用、用户纠正→定位真值</small></li>
+          <li>六级坐标降级链<small>打分核名、地理闸门、预算熔断、真值免疫</small></li>
+          <li>决策轨迹全程可见<small>≤60 步工作日志、静默兜底必须可见</small></li>
+          <li>确定性事实检查 / 交通快照<small>零 LLM 治幻觉、快照带时间戳</small></li>
+          <li>澄清卡 / 语义重试 / 三类兜底<small>信息不足先问、嘴炮当场戳穿</small></li>
+          <li>合成评估 35+9 场景<small>约束保持率、协议回归、取消安全</small></li>
+        </ul>
+      </div>
+      <div class="panel gap">
+        <h3>⚠️ 还欠的账（M35 起补）</h3>
+        <ul>
+          <li>提示注入防御只覆盖新流程<small>老提取路径的攻略文本裸奔进 prompt。<b>M35-①：统一层次防御 + 不可信数据包裹 + 注入检查</b></small></li>
+          <li>没有真模型质量评估<small>现在只测"机制对不对"，没测"效果好不好"。<b>M35-②：LLM-as-judge 提取质量评审（golden 集 + rubric）</b></small></li>
+          <li>工具未暴露成 MCP 服务<small>外部 Agent 客户端（如 Claude）用不了 IterTrip 的工具。<b>候选里程碑</b></small></li>
+          <li>无 CI 自动回归<small>全套检查只能手跑。<b>候选里程碑</b></small></li>
+          <li>新旧两条改路线路径并存<small>老路径 ~200 行兜底待收敛成提案制（提案文档已有四 op 方案）。<b>M36</b></small></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>本页由代码审计生成；🔍 折叠块里的 file:line 对应 2026-11 代码快照，函数名为准。</p>
+    <p>看完想动手补强了？回到对话里说「<b>继续 M35</b>」即可。</p>
+  </div>
+</footer>
+
+</body>
+</html>
