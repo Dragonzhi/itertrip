@@ -1,8 +1,8 @@
 # itertrip
 
 status: 进行中
-next: M33 全站减设计已收工（盲审 8.9 通过）；剩余为 M32/M33 真机人工回归与 docs/TODO.md 两条等反馈项，盲审留档的 4 条收尾债等用户反馈再动
-updated: 2026-11-08
+next: M33 全站减设计已收工（盲审 8.9 通过，后续修正三笔）；剩余为 M32/M33 真机人工回归与 docs/TODO.md 两条等反馈项，盲审留档的 4 条收尾债等用户反馈再动
+updated: 2026-11-14
 
 ## 待办
 
@@ -17,6 +17,7 @@ updated: 2026-11-08
 ## 已完成
 
 - [x] M34 天气系统整体退役：后端 /api/route/weather + engine/weather + schema 四模型三字段 + agent query_weather 工具/路由词 + 导出渲染、shared/weather.js + agent 校验块 + protect 回拷、前端 WeatherPanel/lib.weather/☂入口/桌面天气行/安排编辑器室内外属性 + 类型字段、m29 两脚本退役（m30/m31/desktop-a/fixture-time 收缩）；strip_generated（agent_receipts 护栏）迁 agent_tools 保留；旧数据残留键由 pydantic extra=ignore 静默脱落（2026-11-08）
+- [x] M33 后续第三笔（用户指认）：空态删「📋 粘贴攻略」入口 —— 它就是 onChat() 开对话，与「开始对话」完全重复；两条提示文案收敛为一条（原「在下方粘贴」的下方是按钮行，悬空；「支持粘贴文字或上传攻略截图」与 ChatPanel 占位语重复）。a804e94；tsc/build/mobile-shot 5 尺寸/m28-dom 全绿（2026-11-14）
 - [x] M33 后续（用户两轮指认）：续改态删 hero 解释段与错标 AI 按钮（原按钮 = onChat() 开新对话，与「新建行程」同路径还顶着错标签）；「新建行程」逻辑搞对 —— App.startNewTrip 先清 itertrip:chat 再进对话页（真新会话），不再顶着旧对话继续聊；chat-stream [5] 改写为新契约，24/24 全绿；行为代价（首页不再有回看旧对话入口）已记录 docs/M33_UI_DECLUTTER.md §7（2026-11-07）
 - [x] M33 全站减设计：删三步卡/重复隐私句/✨发光条/抽屉品牌行/页脚标语；离线状态 quiet 一行化、抽屉天气默认收起、桌面状态阵合一（day-settings testid）、「继续出行」CTA 归位出行视图；日期芯片自适应、预算 ¥、触屏键盘提示收敛、ScheduleView 文案用户化；m29/m30 改 testid（2026-11-07）
 - [x] 界面大改第二批（宁少勿滥）：Index / SettingsPanel / PlaceForm / HotelForm / Admin / NavigationDialog 控件 token 与弹窗半径对齐工作台；Index 导入失败改内联错误行（ui-fix-plan 欠账闭合）、删两处装饰 eyebrow；mobile-shot 新增 SKIP_FIXTURE 纯量页模式（2026-11-07）
@@ -69,6 +70,7 @@ updated: 2026-11-08
 
 ## 工作留痕
 
+- 2026-11-14 · ZCode：M33 后续第三笔，空态删「📋 粘贴攻略」（a804e94，与「开始对话」同 onClick 纯重复）；验证 tsc/build/mobile-shot 5 尺寸/m28-dom 全绿；真机回归未做。
 - 2026-11-08 · ZCode：M34 天气退役（a2ced36 后端 → 317bc84 shared → 11b7418 前端 → 8fd8750 脚本 → 6fec6c3 文档，AGENTS v1.14）；验证：venv `_check_m25/m26/m27/m28/m30` 全过（m30 收缩后 9 场景）、backend import OK、tsc/build、mobile-shot 5 尺寸、m25–m31 DOM（m29 退役）、desktop-a、chat-stream 24/24、导出 fixture 零天气、全仓 grep 仅剩历史文档与墓碑注；真机回归未做。
 - 2026-11-07 · ZCode：M33 后续修正两笔（a4bfbf5 删解释段与错标按钮 → ba4cbac 新建行程清旧对话）；chat-stream 24/24、build/tsc/mobile-shot 全绿；resume 态目检以 chat-stream 断言 + 诊断输出兜底（SKIP_FIXTURE 截图只覆盖空态）；坐标摘要气泡 DOM 断言随旧路径退役，由 coordDigest.check.ts 兜底。
 - 2026-11-07 · ZCode：落地 M33 全站减设计（e04b2d4 offline quiet → 65aa669 Index 单列 → 542a87a 规划页去噪 → 84f5681 盲审修缮）；验证如摘要所述全部通过，独立盲审 8.9/10；真机人工回归未验证。同步 AGENTS.md v1.13（§10 路线图）并新增 docs/M33_UI_DECLUTTER.md。
