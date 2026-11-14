@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.14 · 2026-11-08 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.15 · 2026-11-15 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -129,8 +129,14 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
    **M24 补充**：坐标来源还有一份**常驻**的摘要，直接长在助手气泡里（折叠轨迹生成完就收起，等于没告诉用户）——
    `coordDigest(reply.route)` 从每个 place/hotel 的 `source`/`confidence` 算出「N 处 · 高德核验 x · AI 推测 y ·
    城市中心 z」与逐条降级点名（`CoordReport`，超 6 条折叠）；闲聊/中断轮没有 route ⇒ 不渲染。
+8. **提示注入层次防御（M35）**：用户贴的攻略文字、截图、记忆参考块都是**数据**不是指令——三处 SYSTEM
+   （提取 / 编辑 / Agent 循环）共用一句规范条款 `agent_turn.DATA_NOT_INSTRUCTION`；当轮 payload 由
+   `chat.build_payload` 统一组装：提取模式攻略原文用成对标记包裹、编辑模式 `current_route` 前缀不可信标注、
+   【记忆参考】头同款声明；最强一层是结构性的——M30 提案制让注入即使骗过模型也只能产出待双重校验的候选。
+   截图像素内的指令无法包裹（诚实边界）；`backend/_check_injection.py` 守护（静态条款 + 包裹断言 +
+   fake-SSE 端到端——覆盖结构性防御，真模型鲁棒性由 M37 评估器验证）。
 
-**调用参数**：`temperature=0.4`，`stream=true`，超时 180s，对话历史仅保留**最近 8 轮**（上下文护栏）。
+**调用参数**：`temperature=0.4`，`stream=true`，超时 180s，对话历史仅保留**最近 8 条**（上下文护栏）。
 
 **流式体验机制**：后端用 `asyncio.Queue` + 生产者任务并发——LLM 首个 token 到达前，按 0.9s 节奏轮播
 前置阶段文案（"正在理解你的需求…/正在提取景点…/正在排行程…"），收到真实 thinking/delta 后立即接管。
@@ -553,7 +559,7 @@ M29 的天气评估与局部调整（`/api/route/weather`、`route.weather[]`、
 | 规划代理 temperature / 超时 | 0.7 / 120s | `planner.plan_with_llm` |
 | 对话代理 temperature / 超时 | 0.4 / 180s | `chat._stream_llm` |
 | 坐标代理 temperature / 超时 | 0.0 / 30s | `coordinates.geocode_by_llm` |
-| 对话历史护栏 | 后端与前端均取最近 8 轮 | `chat._stream_llm` / `Plan.sendAiEdit` |
+| 对话历史护栏 | 前端发最近 8 条，后端再截最近 8 条 | `Chat.tsx handleSend` / `Plan.sendAiEdit` / `chat._stream_llm` |
 | 解析失败重试 | 1 次（带错误回灌） | `chat` 主循环 |
 | 撤销栈深度 | 50 帧 | `useTripHistory` |
 | localStorage 对话留存 | 30 条 | `settings.saveChatHistory` |
@@ -661,9 +667,10 @@ M29 的天气评估与局部调整（`/api/route/weather`、`route.weather[]`、
 | 同名连锁/分店歧义 | 数据源固有歧义：高德同品牌多分店时按「名称分 + 括号分支名 + 离目的地/现有坐标更近」裁决，不保证选中用户心里那一家；界面给来源徽标与「按名称重新定位」兜底 |
 | 坐标来源可信度分级 | `memory`/`user`（用户手点，最高）> `amap`（POI 核验）> `llm`（模型推测、未核验）> `search`/`city`（低置信兜底）；徽标如实展示，**不做「已核验」的过度声明**（弱匹配但接近时不升级来源标注） |
 | 决策可见性 | 每条 AI 回复都可展开「🧭 决策过程」（≤60 步）；静默兜底（坐标转换失败、补全失败、解析重试）一律以 warn/fail 步暴露；轨迹不含 prompt/响应原文与任何 key |
+| 提示注入防御（M35） | 分层纵深：三处 SYSTEM 共用层次条款（`DATA_NOT_INSTRUCTION`）+ payload 不可信包裹（`chat.build_payload`：攻略原文成对标记 / current_route 标注 / 记忆头声明）+ M30 工具结果「不可信数据」标注 + 提案制结构兜底（注入即使骗过模型也只能产出待双重校验候选）；**截图像素内的指令无法包裹**（诚实边界）；`_check_injection` 覆盖结构性防御，真模型鲁棒性待 M37 评估器 |
 | 坐标摘要常驻（M24） | 带 route 的回复在气泡内**常驻**一行坐标来源摘要（`coordDigest` 派生自 route 的 `source`/`confidence`）：「N 处 · 高德核验 x · AI 推测 y · 城市中心 z」+ 逐条降级点名（超 6 条折叠）；**判据是可核验的事实，不是新能力**——不新增任何坐标校验，也不改 `coordBadge` 对未知来源不显示徽标的既有行为；闲聊/澄清/中断轮没有 route ⇒ 整块不渲染；`/api/plan` 表单路径无对话消息 ⇒ 不显示（时间线/地图徽标已覆盖） |
 | 中断语义（优化②） | 「发送」运行时**原位**变「■ 停止」（幂等，Esc 同效）：前端 abort fetch，starlette 1.6 在客户端断开时取消流任务，正在跑的 httpx 流随之关闭；**已排队的后台记忆入库不回滚**（fire-and-forget，不做「取消即回滚一切」的承诺）。中断保留已生成的部分文本并标「已中断」，**不应用任何路线改动**（改动的唯一载体是终帧 route，服务端无状态）。旧后端没有心跳时不自动中断（`sawPing` 门控），只降级提示 |
-| 上下文护栏 | 历史仅 8 轮 + 当前 route 快照；无 route 时历史对提取模式作用有限 |
+| 上下文护栏 | 历史仅最近 8 条 + 当前 route 快照；无 route 时历史对提取模式作用有限 |
 | 长期记忆（M18，默认关闭） | opt-in：`ITERTRIP_MEMORY_ENABLED=1` + 装 `fastembed`（或 provider=api）才生效；按匿名档案隔离、可一键清空；注入 ≤6 条/≤1200 字；检索/入库异常只记日志不影响主线；不跨档案共享（隐私红线） |
 | 「说了没做」的三类兜底 | ① **坐标**：prompt 含坐标类措辞而模型 `changed=false` → 后端强制重跑坐标代理真改（§5.4）；② **改路线**（M22.2）：命中改路线意图词但模型**只回叙述、没给 `<<<JSON>>>`** → 自动带纠错重试一次，仍未产出则明说「行程一个字都没变」并把模型的「已设置」标为不算数；③ **酒店报价**（M22.3）：祈使句命中报价意图时**确定性写入** `hotel.prices`（upsert「手动录入」、保留平台报价），无论模型偷懒/写错键名/压根不动都能落到数据里。三类都不静默、不假装成功 |
 | 坐标真值只由用户写入 | 实体记忆仅接受编辑器手改动点（`user_pin`）；LLM/高德结果不入库，防幻觉坐标被固化成「真值」 |
@@ -743,6 +750,14 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 - [x] **M28 随身行程与离线查看**：manifest／图标、构建白名单 worker、正式应用离线冷加载、同步行程与进度保存、离线编辑、状态／清理／显式更新已落地；生产构建、worker／离线 DOM 与 M25–M27 回归通过，真机安装和浏览器生命周期待人工验收。见 [M28 施工记录](docs/M28_OFFLINE_PWA.md)。
 - [x] **M34 天气系统退役**：M29 的天气服务与评估、M30 `query_weather` 工具、导出天气渲染、`route.weather[]`/`weather_exposure`/`weather_policy` 字段及安排编辑器的室内外属性整体移除；`agent_receipts` 防伪造护栏（`strip_generated` 迁至 agent_tools）与 M27 排程约束全保留，AI 对话改行程照旧。后端 `_check` 与前端全套验收通过。背景见 §6.6。
 - [x] **M29 天气评估与局部调整** → **M34 已整体移除（2026-11-08）**：按用户决策不再主动提供天气系统（预报驱动的自动重排依赖链太长）；用户自己看天 + AI 对话改行程（M30 领域编辑保留）。`query_weather` 工具、导出天气渲染与数据字段同步退役。历史见 [M29 施工记录](docs/M29_WEATHER_ADJUSTMENT.md)（存档）。
+- [x] **M35 Agent 强化·第一轮（知识点地图 + 注入防御统一，2026-11-15）**：`docs/AGENT_KNOWLEDGE_MAP.md`
+      把 13 类 Agent 工程模式逐条映射到代码（面试向：30 秒讲法 / 追问预案 / 诚实边界 / 刻意不做清单）；
+      提示注入层次防御统一——`agent_turn.DATA_NOT_INSTRUCTION` 规范句三处 SYSTEM 共用、
+      `chat.build_payload` 统一组装当轮 payload（攻略原文成对包裹 / current_route 不可信标注）、
+      【记忆参考】头补声明、新增 `backend/_check_injection.py`（静态条款 + 包裹断言 + fake-SSE 端到端）；
+      顺带修复首页对话当前消息重复进历史（2713675）与 §7.3「8 轮→8 条」文档勘误；小白讲解页
+      `frontend/public/agent-guide.html` 随构建发布。后续候选：M36 legacy 收敛（提案四 op）、
+      M37 LLM-as-judge 评估、MCP 工具暴露、GitHub Actions CI。
 - [x] **M30 Agent 工具与评估**：单模型只读工具、严格领域操作、同版本派生日程、原生工具／双段协议能力回退、预算与真实轨迹、组合预览／原子应用／重放保护已落地；35 个约束场景、9 个合成服务模型交互、实际 React DOM 和构建通过。真实模型与途中效果未验收；见 [M30 施工记录](docs/M30_AGENT_TOOLS_EVALUATION.md)。M25–M30 开发范围完成，后续按实际使用反馈确定新阶段。
 - [x] **M33 全站减设计**：删「三步拿到路线」套娃卡、重复隐私口径、✨ 发光条与抽屉品牌行；次要内容收二级 —— 离线状态 quiet 变体（状态并进 summary 一行，M28 契约回归兜底）、行程抽屉天气面板默认收起、桌面 2×2 状态阵合并为单行 `.dw-statusline`（`data-testid=day-settings`）、「继续出行」CTA 归位到出行视图；日期芯片去固定宽、预算加 ¥、触屏键盘提示收敛、ScheduleView 工程腔注释改用户语言。构建、desktop-a 与 m25–m31 全过；独立设计主管盲审 8.9/10 通过（5 条收尾债已清、4 条留档）。见 [M33 施工记录](docs/M33_UI_DECLUTTER.md)。
 - [x] **M32 规划页全尺寸打通**：`isMobile()`/768px 断点语义上移为 `isCompact()`/1024px —— <1024 一律底部抽屉+互斥（平板带不再双栏互叠、开局不再双开），AI 左缘手柄与「☰ 行程」退役、顶栏收敛单行；窄屏观感与 Chat 页/ChatPanel 对齐工作台设计语言（dw 按钮 token、12px 辅助字号、白表头+米纸内容）；mobile-shot 覆盖 5 尺寸并新增结构/互斥断言，修复被 M31/M27 打红的桌面价格断言（点 dw-hotel + fixture 补 M27 可比报价字段）。构建、desktop-a-browser 与 m25–m31 DOM 检查全过；真机人工回归未做。见 [M32 施工记录](docs/M32_PLAN_COMPACT.md)。
