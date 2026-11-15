@@ -210,7 +210,6 @@ main{position:relative;display:flex;height:calc(100dvh - 53px);min-height:420px}
     <div class="map-caption" id="map-cap">D1 · 地点顺序 <span>连线不代表实际道路</span></div>
     <div class="map-legend"><span><i class="pin-d1" style="display:inline-block"></i>D1</span><span><i class="pin-d2" style="display:inline-block"></i>D2</span><span><i class="pin-hotel" style="display:inline-block"></i>酒店</span></div>
   </section>
-  <div class="divider" id="div-panel" role="separator" aria-label="调整工作面板宽度" tabindex="0"></div>
   <aside class="panel" id="panel" aria-label="工作面板">
     <header><h2 id="panel-title">AI 调整行程</h2><button class="panel-x" id="panel-close" aria-label="收起面板" title="收起面板">✕</button></header>
     <div class="panel-body">
@@ -360,7 +359,7 @@ function select(id){
 }
 function openSlot(slot){
   state.slot=slot;
-  $('#panel').hidden=false; $('#div-panel').hidden=false;
+  $('#panel').hidden=false;
   $('#panel-title').textContent=SLOT_TITLE[slot];
   ['ai','detail','leg','sched'].forEach(s=>$('#slot-'+s).hidden=s!==slot);
   $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.slot===slot));
@@ -368,7 +367,7 @@ function openSlot(slot){
   updateChrome();
 }
 function collapse(){
-  state.slot=null; $('#panel').hidden=true; $('#div-panel').hidden=true;
+  state.slot=null; $('#panel').hidden=true;
   $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed','false'));
   $('#ai-btn').setAttribute('aria-pressed','false');
   updateChrome();
@@ -408,13 +407,6 @@ function bindDividers(){
     pct=Math.max(28,Math.min(58,pct));
     document.documentElement.style.setProperty('--doc-w',pct);
     localStorage.setItem('demo:docW',String(pct));
-    updateChrome();
-  });
-  dragDivider($('#div-panel'),ev=>{
-    const main=$('main').getBoundingClientRect();
-    let w=main.right-ev.clientX;
-    w=Math.max(320,Math.min(480,w));
-    document.documentElement.style.setProperty('--panel-w',w+'px');
     updateChrome();
   });
 }
@@ -458,7 +450,7 @@ const docSec=$('.doc'),dcBtn=$('#doc-collapse');
 function updateChrome(){
   const docCollapsed=docSec.classList.contains('collapsed');
   const leftW=rail.getBoundingClientRect().width+(docCollapsed?18:docSec.getBoundingClientRect().width+6);
-  const rightW=$('#panel').hidden?0:$('#panel').getBoundingClientRect().width+6;
+  const rightW=$('#panel').hidden?0:$('#panel').getBoundingClientRect().width;
   document.documentElement.style.setProperty('--left-w',leftW+'px');
   document.documentElement.style.setProperty('--right-w',rightW+'px');
 }
