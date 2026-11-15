@@ -64,13 +64,16 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
 .divider:hover,.divider.on{background:var(--moss-soft);border-right-color:var(--moss)}
 .divider::after{content:"";position:absolute;top:50%;left:1px;width:3px;height:34px;transform:translateY(-50%);border-radius:2px;background:var(--line)}
 .divider:hover::after,.divider.on::after{background:var(--moss)}
-/* 行程列收起（用户方向）：分割线上挂 ‹ 开关，收起后变 28px 竖标 */
-.div-collapse{position:absolute;top:calc(50% - 18px);left:-5px;width:16px;height:36px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--muted);font-size:12px;line-height:1;z-index:6;padding:0}
+/* 行程列收起（用户方向）：分割线底部挂 ‹ 开关（与日期列开关同在底部），收起后变角标竖标 */
+.div-collapse{position:absolute;bottom:14px;left:-5px;width:16px;height:36px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--muted);font-size:12px;line-height:1;z-index:6;padding:0}
 .div-collapse:hover{color:var(--moss);border-color:var(--moss)}
-.doc.collapsed{width:28px;flex:0 0 auto}
+.doc.collapsed{width:36px;flex:0 0 auto}
 .doc.collapsed .doc-scroll,.doc.collapsed>footer{display:none}
-.doc-expand{flex:1;writing-mode:vertical-rl;letter-spacing:5px;border:0;background:transparent;color:var(--moss);font-size:13px;padding:14px 0}
-.doc-expand:hover{background:var(--moss-soft)}
+/* 展开角标（统一收起语言）：36px 竖排墨绿字、顶部起排、点击整条展开 —— 行程列与 AI 面板共用 */
+.edge-strip{flex:0 0 auto;width:36px;writing-mode:vertical-rl;letter-spacing:5px;border:0;background:#fff;color:var(--moss);font-size:13px;padding:14px 0;text-align:start}
+.edge-strip:hover{background:var(--moss-soft)}
+.doc.collapsed .edge-strip{flex:1}
+#panel-strip{border-left:1px solid var(--line)}
 .mapcol{flex:1;min-width:280px;position:relative;overflow:hidden;background:#E8E0D4}
 #map{position:absolute;inset:0}
 .map-caption{position:absolute;z-index:500;top:12px;left:12px;background:#FAF6F0ee;padding:7px 10px;border:1px solid var(--line);border-radius:5px;font-size:12px;pointer-events:none}
@@ -195,7 +198,7 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
   <section class="doc" aria-label="当天行程">
     <div class="doc-scroll" id="doc"></div>
     <footer><button class="add">＋ 添加地点</button></footer>
-    <button class="doc-expand" id="doc-expand" aria-label="展开行程列" hidden>行程</button>
+    <button class="edge-strip" id="doc-expand" aria-label="展开行程列" hidden>行程</button>
   </section>
   <div class="divider" id="div-doc" role="separator" aria-label="调整行程与地图宽度" tabindex="0">
     <button class="div-collapse" id="doc-collapse" aria-expanded="true" aria-label="收起行程列" title="收起行程列">‹</button>
@@ -259,6 +262,7 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
       </div>
     </div>
   </aside>
+  <button class="edge-strip" id="panel-strip" aria-label="展开 AI 调整行程" title="展开 AI 调整行程" hidden>AI</button>
 </main>
 <nav class="demo-nav" aria-label="设计稿状态导航">
   <span style="opacity:.7;padding:5px 4px">设计稿导航：</span>
@@ -355,7 +359,7 @@ function select(id){
 }
 function openSlot(slot){
   state.slot=slot;
-  $('#panel').hidden=false; $('#div-panel').hidden=false;
+  $('#panel').hidden=false; $('#div-panel').hidden=false; $('#panel-strip').hidden=true;
   $('#panel-title').textContent=SLOT_TITLE[slot];
   ['ai','detail','leg','sched'].forEach(s=>$('#slot-'+s).hidden=s!==slot);
   $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.slot===slot));
@@ -364,6 +368,7 @@ function openSlot(slot){
 }
 function collapse(){
   state.slot=null; $('#panel').hidden=true; $('#div-panel').hidden=true;
+  $('#panel-strip').hidden=false;
   $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed','false'));
   $('#ai-btn').setAttribute('aria-pressed','false');
   setTimeout(()=>map&&map.invalidateSize(),60);
@@ -422,6 +427,7 @@ $$('.dayrail button').forEach(b=>b.addEventListener('click',()=>{
   renderDoc(); drawPins(state.day);
 }));
 $('#ai-btn').addEventListener('click',()=>{state.slot==='ai'?collapse():openSlot('ai');});
+$('#panel-strip').addEventListener('click',()=>openSlot('ai'));
 $('#panel-close').addEventListener('click',collapse);
 $('#apply-btn').addEventListener('click',apply);
 $('#undo-btn').addEventListener('click',undo);
