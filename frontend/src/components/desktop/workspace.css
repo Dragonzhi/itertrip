@@ -118,9 +118,17 @@
 .dw-hotel svg { color: var(--dw-green); }
 .dw-hotel strong { font-weight: 600; }
 .dw-hotel small { display: block; color: var(--dw-muted); font-size: 12px; margin-top: 3px; }
-.dw-notes { margin-top: 24px; color: var(--dw-muted); }
-.dw-notes summary { font-size: 12px; min-height: 32px; cursor: pointer; }
-.dw-notes li { font-size: 14px; margin: 8px 0; }
+/* 攻略与 AI 综合建议：安静折叠条 —— 米纸内衬 + 苔绿角标，展开后是同框清单 */
+.dw-notes { margin-top: 24px; color: var(--dw-muted); border: 1px solid var(--dw-line); border-radius: 8px; background: #FAF6F0; }
+.dw-notes summary { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; min-height: 34px; cursor: pointer; list-style: none; transition: background .15s ease; border-radius: 7px; }
+.dw-notes summary::-webkit-details-marker { display: none; }
+.dw-notes summary::before { content: '›'; color: var(--dw-green); font-size: 15px; line-height: 1; transition: transform .18s ease; }
+.dw-notes[open] summary { border-radius: 7px 7px 0 0; }
+.dw-notes[open] summary::before { transform: rotate(90deg); }
+.dw-notes summary:hover { background: #E3EFE8; }
+.dw-notes ul { margin: 0; padding: 2px 14px 10px; border-top: 1px dashed var(--dw-line); list-style: none; }
+.dw-notes li { position: relative; font-size: 14px; margin: 8px 0; color: #4A4A44; padding-left: 16px; }
+.dw-notes li::before { content: ''; position: absolute; left: 2px; top: .55em; width: 5px; height: 5px; border-radius: 50%; background: #A6B9AD; }
 .dw-empty { color: var(--dw-muted); padding: 20px 0; }
 /* 地图角标：跟随可见区域（底图架构下左缘被日期列/行程列占据） */
 .dw-map-caption { position: absolute; z-index: 500; top: 12px; left: var(--dw-left-w); max-width: calc(100% - var(--dw-left-w) - 12px); background: #FAF6F0ee; padding: 7px 10px; border: 1px solid var(--dw-line); border-radius: 5px; font-size: 12px; pointer-events: none; }
