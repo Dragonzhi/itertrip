@@ -66,7 +66,8 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
 .panel[hidden]{display:none}
 .panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);min-height:48px;flex-shrink:0}
 .panel>header h2{font-size:14px;font-weight:600;margin:0}
-.panel>header .btn{border:0;background:transparent;padding:2px;min-height:24px;font-size:12px;color:var(--moss)}
+.panel-x{width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:14px;line-height:1}
+.panel-x:hover{background:var(--bg);color:var(--ink)}
 .panel-body{flex:1;min-height:0;overflow-y:auto;padding:16px 20px}
 /* ── 行程文档（当前已上线口径：未安排保持安静）────────── */
 .day-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
@@ -101,7 +102,7 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
 /* ── 工作面板槽 ─────────────────────────────────────── */
 .slot{display:flex;flex-direction:column;gap:12px;min-height:100%}
 .slot[hidden]{display:none}
-.chat{display:flex;flex-direction:column;gap:12px}
+.chat{display:flex;flex-direction:column;gap:12px;flex:1}
 .msg{max-width:92%;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.7}
 .msg.user{align-self:flex-end;background:var(--moss);color:#fff;border-bottom-right-radius:4px}
 .msg.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line);border-bottom-left-radius:4px}
@@ -187,7 +188,7 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
   </section>
   <div class="divider" id="div-panel" role="separator" aria-label="调整工作面板宽度" tabindex="0"></div>
   <aside class="panel" id="panel" aria-label="工作面板">
-    <header><h2 id="panel-title">让 AI 调整</h2><button class="btn" id="panel-close">收起面板</button></header>
+    <header><h2 id="panel-title">AI 调整行程</h2><button class="panel-x" id="panel-close" aria-label="收起面板" title="收起面板">✕</button></header>
     <div class="panel-body">
       <div class="slot" id="slot-ai">
         <div class="chat">
@@ -242,7 +243,7 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
 </main>
 <nav class="demo-nav" aria-label="设计稿状态导航">
   <span style="opacity:.7;padding:5px 4px">设计稿导航：</span>
-  <button data-slot="ai" aria-pressed="true">AI 对话</button>
+  <button data-slot="ai" aria-pressed="true">AI 调整行程</button>
   <button data-slot="detail">地点详情</button>
   <button data-slot="leg">交通比较</button>
   <button data-slot="sched">当天安排</button>
@@ -268,7 +269,7 @@ const DAYS=[
   hotel:{id:'h1',name:'春熙路/太古里一带连锁酒店（全季、亚朵等）',ll:[30.6590,104.0790]}},
  {theme:'返程与拾遗',date:'01.02',week:'周六',places:[{id:'p8',name:'人民公园 · 鹤鸣茶社',ll:[30.6578,104.0568]}],hotel:null}
 ];
-const SLOT_TITLE={ai:'让 AI 调整',detail:'地点详情',leg:'交通方式比较',sched:'当天安排'};
+const SLOT_TITLE={ai:'AI 调整行程',detail:'地点详情',leg:'交通方式比较',sched:'当天安排'};
 const state={day:0,slot:'ai',sel:'p1',applied:false};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 
@@ -403,7 +404,7 @@ $$('.daybar button').forEach(b=>b.addEventListener('click',()=>{
   state.day=Number(b.dataset.day); state.sel=DAYS[state.day].places[0]?.id||null;
   renderDoc(); drawPins(state.day);
 }));
-$('#ai-btn').addEventListener('click',()=>openSlot('ai'));
+$('#ai-btn').addEventListener('click',()=>{state.slot==='ai'?collapse():openSlot('ai');});
 $('#panel-close').addEventListener('click',collapse);
 $('#apply-btn').addEventListener('click',apply);
 $('#undo-btn').addEventListener('click',undo);
