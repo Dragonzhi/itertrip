@@ -9,6 +9,8 @@ AI 对话/变更预览为固定演示脚本，不调用模型或任何数据接�
 纠正记录（2026-11-15，用户）：「上面这个大脑门我一直不是很喜欢」——行程名+日期的
 104px 横幅（.tripbar，正式版同样存在）取消，行程名/日期芯片/天数并入顶栏一行；
 面包屑「行程规划 / 成都」同删（品牌点击即返回首页，目的地在行程名与地图中）。
+「日期带改左边一竖列」——横带在天数少时右侧大片空白；竖列 76px 恒定占位，
+天数上限 30 也放得下；文档标题里的「DAY 01 · 日期」与竖列去重，只留当天主题。
 -->
 <!doctype html>
 <html lang="zh-CN">
@@ -39,15 +41,15 @@ button:disabled{cursor:default;opacity:.45}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 12px;min-height:36px;white-space:nowrap}
 .btn.primary{background:var(--moss);border-color:var(--moss);color:#fff}
 .btn.primary[aria-pressed=true]{background:#175740}
-/* ── 日期带 ─────────────────────────────────────────── */
-.daybar{display:flex;align-items:stretch;min-height:56px;padding:0 40px;border-block:1px solid var(--line);background:#fff;overflow-x:auto}
-.daybar button{flex:0 0 auto;display:flex;align-items:center;gap:12px;min-width:140px;padding:14px 24px;text-align:left;border-bottom:3px solid transparent;background:0;border:0;color:var(--muted)}
-.daybar strong{font-size:14px;font-weight:500}
-.daybar span{font-size:14px;font-weight:650}
-.daybar small{font-size:12px}
-.daybar button[aria-pressed=true]{border-bottom-color:var(--moss);background:#E3EFE860;color:var(--moss)}
+/* ── 日期竖列（用户方向：横带右侧大片空白，且天数上限 30 竖列更耐放）── */
+.dayrail{width:76px;flex:0 0 auto;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden}
+.dayrail button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:13px 0;border:0;border-left:3px solid transparent;background:transparent;color:var(--muted);text-align:center}
+.dayrail strong{font-size:13px;font-weight:650}
+.dayrail span{font-size:13px;font-weight:650}
+.dayrail small{font-size:12px}
+.dayrail button[aria-pressed=true]{border-left-color:var(--moss);background:#E3EFE860;color:var(--moss)}
 /* ── 三栏主体 ───────────────────────────────────────── */
-main{display:flex;height:calc(100dvh - 111px);min-height:420px}
+main{display:flex;height:calc(100dvh - 53px);min-height:420px}
 .doc{width:calc(var(--doc-w) * 1%);min-width:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line)}
 .doc-scroll{flex:1;min-height:0;overflow-y:auto;padding:24px 40px;scrollbar-gutter:stable}
 .doc>footer{display:flex;align-items:center;padding:12px 40px;border-top:1px solid var(--line);background:#fff}
@@ -149,7 +151,7 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
 .demo-nav button[aria-pressed=true]{background:var(--moss)}
 .toast{position:fixed;z-index:1300;bottom:64px;left:50%;transform:translateX(-50%);background:#2b3542;color:#fff;padding:11px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px #17243b26}
 .toast[hidden]{display:none}
-@media(min-width:1024px) and (max-width:1439px){:root{--panel-w:340px}.topline,.daybar{padding-inline:24px}.doc-scroll{padding-inline:24px}.trip-inline .small{display:none}}
+@media(min-width:1024px) and (max-width:1439px){:root{--panel-w:340px}.topline{padding-inline:24px}.doc-scroll{padding-inline:24px}.trip-inline .small{display:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -170,12 +172,12 @@ main{display:flex;height:calc(100dvh - 111px);min-height:420px}
     </div>
   </div>
 </header>
-<nav class="daybar" aria-label="选择行程日期">
-  <button aria-pressed="true" data-day="0"><strong>D1</strong><span>12.31</span><small>周四</small></button>
-  <button aria-pressed="false" data-day="1"><strong>D2</strong><span>01.01</span><small>周五</small></button>
-  <button aria-pressed="false" data-day="2"><strong>D3</strong><span>01.02</span><small>周六</small></button>
-</nav>
 <main>
+  <nav class="dayrail" aria-label="选择行程日期">
+    <button aria-pressed="true" data-day="0"><strong>D1</strong><span>12.31</span><small>周四</small></button>
+    <button aria-pressed="false" data-day="1"><strong>D2</strong><span>01.01</span><small>周五</small></button>
+    <button aria-pressed="false" data-day="2"><strong>D3</strong><span>01.02</span><small>周六</small></button>
+  </nav>
   <section class="doc" aria-label="当天行程">
     <div class="doc-scroll" id="doc"></div>
     <footer><button class="add">＋ 添加地点</button></footer>
@@ -307,7 +309,7 @@ function drawPins(di,flashId){
 function renderDoc(){
   const di=state.day, day=DAYS[di];
   const rows=day.places.filter(p=>!(p.applied&&state.applied)&&!(p.moved&&!state.applied));
-  const html=`<div class="day-heading"><div><p>DAY 0${di+1} · 2026-${day.date}</p><h2>${day.theme}</h2></div><div><button class="textbtn" data-open="sched">安排与交通</button></div></div>
+  const html=`<div class="day-heading"><h2>${day.theme}</h2><button class="textbtn" data-open="sched">安排与交通</button></div>
   <div class="dw-visits">${rows.map((p,pi)=>`
     ${pi>0?'<button class="leg" data-leg><span class="leg-line"></span><span>步行</span><span class="leg-action">查看与查询 →</span></button>':''}
     <article class="visit ${state.sel===p.id?'selected':''}"><button class="visit-select" data-place="${p.id}">
@@ -380,10 +382,8 @@ function dragDivider(el,onMove){
 function bindDividers(){
   dragDivider($('#div-doc'),ev=>{
     const main=$('main').getBoundingClientRect();
-    const maxPct=58,minPct=28;
-    const avail=main.width-($('#panel').hidden?0:$('#panel').offsetWidth)-12;
-    let pct=(ev.clientX-main.left)/avail*100;
-    pct=Math.max(minPct,Math.min(maxPct,pct));
+    let pct=(ev.clientX-main.left)/main.width*100;
+    pct=Math.max(28,Math.min(58,pct));
     document.documentElement.style.setProperty('--doc-w',pct);
     localStorage.setItem('demo:docW',String(pct));
     setTimeout(()=>map&&map.invalidateSize(),60);
@@ -398,7 +398,7 @@ function bindDividers(){
 }
 
 /* ── 接线 ─────────────────────────────────────────── */
-$$('.daybar button').forEach(b=>b.addEventListener('click',()=>{
+$$('.dayrail button').forEach(b=>b.addEventListener('click',()=>{
   $$('.daybar button').forEach(x=>x.setAttribute('aria-pressed','false'));
   b.setAttribute('aria-pressed','true');
   state.day=Number(b.dataset.day); state.sel=DAYS[state.day].places[0]?.id||null;
