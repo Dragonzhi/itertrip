@@ -18,6 +18,7 @@ updated: 2026-11-15
 
 ## 已完成
 
+- [x] M38 前端好用度冲刺·第二批（用户指认）：未安排的日程默认安静 —— 当天没有任何安排输入（时刻／已查交通／停留时长全空）时不渲染 dw-statusline 待评估状态板，只留标题行一个安静文字入口「安排与交通」；时间列「未知／未知 离开」「停留时间未知」「耗时未知」占位全部改为留白/只留入口（时间只渲染推算出的真实值）；开始安排后状态板才出现（缺口仍如实报告），入口收敛为状态板一处，data-testid=day-settings 两态都在。起因：用户问「为什么这么多地方都是未知」——新提取行程四类排程依据全空，满屏警示板像坏了；用户方向：「未安排不是错误，暂不完善的效果先不拿出来」。DESIGN.md §9 已写入该规则。tsc/build/m25–m31 DOM/desktop-a/mobile-shot 5 尺寸全绿 + CDP 探针前后对比截图（未安排 0 处「未知」→ 设 19:30 后状态板出现）（2026-11-15）
 - [x] M38 前端好用度冲刺·第一批 = 盲审 4 条收尾债全清：①🤖/🗺 aria-label/expanded + 展开态反色 + 一次性提示条（itertrip:plan-hint）；②⚙ 紧凑态归排右下角 + 抽屉打开时隐藏；③地图 D1–D6 循环配色 + 金色酒店左下角图例（顺带修 >6 天 pin 无色小洞）；④桌面状态条措辞人话化（未定/待查/待评估 + 怎么补，诚实口径不变）；附带 Chat 输入带改浮起圆角输入卡（接缝观感）。bee297b + f987a62；tsc/build/mobile-shot 5 尺寸/m25–m31 DOM/desktop-a/chat-stream 24/24 全绿，逐截图目检（2026-11-15）
 - [x] M35 Agent 强化第一轮：两份代码审计（M30 工具循环 + 全仓 Agent 体系）→ 小白讲解页 agent-guide.html（10 成员 + 3 故事线 + 词典 13 条 + 体检表，随构建发布）；docs/AGENT_KNOWLEDGE_MAP.md 13 知识点映射（讲法/追问预案/诚实边界/刻意不做）；提示注入层次防御统一 —— agent_turn.DATA_NOT_INSTRUCTION 三处 SYSTEM 共用、chat.build_payload 统一组装 payload（攻略原文包裹/current_route 标注）、记忆参考头补声明、新增 backend/_check_injection.py（结构性防御，真模型鲁棒性留 M37）；顺带修首页对话当前消息重复进历史（2713675）与 AGENTS「8 轮→8 条」勘误；含走读问答沉淀（RAG/上下文管理/高德数据源）（49a97c3 + 141ef36，2026-11-15）
 - [x] M34 天气系统整体退役：后端 /api/route/weather + engine/weather + schema 四模型三字段 + agent query_weather 工具/路由词 + 导出渲染、shared/weather.js + agent 校验块 + protect 回拷、前端 WeatherPanel/lib.weather/☂入口/桌面天气行/安排编辑器室内外属性 + 类型字段、m29 两脚本退役（m30/m31/desktop-a/fixture-time 收缩）；strip_generated（agent_receipts 护栏）迁 agent_tools 保留；旧数据残留键由 pydantic extra=ignore 静默脱落（2026-11-08）
@@ -91,6 +92,7 @@ updated: 2026-11-15
 
 ## 工作留痕
 
+- 2026-11-15 · ZCode：M38 第二批（用户指认）= 未安排日程默认安静（DayItinerary arranged 条件渲染 + 占位收敛 + m31-dom 加未安排白天回归 + DESIGN.md §9 规则）；验证 tsc/build/m25–m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 前后对比探针；顺带讲解 M27「有据才算」排程机制。用户方向：界面简洁优先，暂不完善的效果先不拿出来。
 - 2026-11-15 · ZCode：M38 第一批 = 盲审 4 条清偿（bee297b 入口语义+图例 → f987a62 输入卡+状态条措辞）；验证 tsc/build/mobile-shot/m25–m31/desktop-a/chat-stream 全绿 + 逐截图目检；M33 doc §8 记录。用户方向：前端好用度优先，M36/M37 挂起。
 - 2026-11-15 · ZCode：M35 第一轮（81fb9d9 讲解页 → 2713675 重复消息修复 → 49a97c3 知识点地图 → 141ef36 注入防御统一 + AGENTS v1.15/TASKS）；验证如摘要；真模型评估与真机回归未做。
 - 2026-11-14 · ZCode：M33 后续第三笔，空态删「📋 粘贴攻略」（a804e94，与「开始对话」同 onClick 纯重复）；验证 tsc/build/mobile-shot 5 尺寸/m28-dom 全绿；真机回归未做。

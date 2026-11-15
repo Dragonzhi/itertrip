@@ -17,7 +17,7 @@ globalThis.IntersectionObserver=globalThis.ResizeObserver=Observer;globalThis.IS
 const bundle=await build({entryPoints:['src/App.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},external:['react','react-dom','react-dom/*'],define:{'import.meta.env':'{}'}});
 const file=path.join(dir,'app-dom.mjs');await fs.writeFile(file,bundle.outputFiles[0].text);
 const React=await import('react'),{act}=React,{createRoot}=await import('react-dom/client'),{default:App}=await import(pathToFileURL(file).href);
-const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}}]}],summary:['保留用户攻略与预约']};
+const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}}]},{day:3,theme:'未安排的一天',places:[{id:'d',name:'春熙路',lat:30.65,lng:104.08,type:'attraction'}]}],summary:['保留用户攻略与预约']};
 const T=globalThis.IterTripTransport;T.normalize(fixture);
 const first=T.legs(fixture,0)[0];fixture.days[0].transport.find(s=>s.from_id===first.from.id&&s.to_id===first.to.id).snapshot={signature:T.sign(first),options:[{mode:'walk',status:'ok',duration_s:600,queried_at:new Date().toISOString(),source:'amap'}]};
 localStorage.setItem('itertrip:route',JSON.stringify(fixture));
@@ -31,7 +31,15 @@ assert.ok(document.querySelector('[data-testid=desktop-workspace]'));assert.equa
 const itinerary=()=>document.querySelector('[data-testid=desktop-itinerary]');
 const mapNode=document.querySelector('.dw-map .leaflet-container');assert.ok(mapNode);
 assert.equal(document.querySelector('.dw-body').children.length,2,'itinerary and one supporting column');
-assert.ok(itinerary().textContent.includes('耗时未知'));assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
+assert.ok(itinerary().textContent.includes('约 10 分钟'));assert.ok(itinerary().textContent.includes('查看与查询'),'M38：未查交通段只留入口，不再说「耗时未知」');assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
+// M38 用户方向：无安排的天不渲染状态板与「未知」占位 —— 只留安静的文字入口，开始安排后才出现状态板
+await click(document.querySelectorAll('.dw-days button')[2]);
+assert.equal(document.querySelector('[data-testid=day-settings]')?.textContent,'安排与交通','未安排的天只留安静入口');
+assert.equal(document.querySelector('.dw-statusline'),null,'未安排的天不渲染待评估状态板');
+assert.equal(itinerary().textContent.includes('停留时间未知'),false,'停留占位不再渲染');
+assert.equal(itinerary().textContent.includes('耗时未知'),false,'耗时占位不再渲染');
+assert.equal(itinerary().textContent.includes('未知'),false,'整行不应再出现「未知」字样');
+await click(document.querySelectorAll('.dw-days button')[0]);
 assert.equal(itinerary().textContent.includes('完整攻略备注'),false,'notes are contextual');
 await click(document.querySelector('[data-testid=place-name]'));
 const detail=()=>document.querySelector('.dw-inspector');
