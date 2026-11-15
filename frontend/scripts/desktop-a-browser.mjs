@@ -35,21 +35,26 @@ try{
   assert.ok(await page.$eval('[data-pin-key="d0-p2"]',e=>e.classList.contains('active')));
   assert.equal(await page.$('.leaflet-popup'),null);
   await new Promise(resolve=>setTimeout(resolve,350));
-  const layout=await page.evaluate(()=>{const r=s=>{const {x,y,width,height}=document.querySelector(s).getBoundingClientRect();return{x,y,width,height}};return{overflow:document.documentElement.scrollWidth>innerWidth,left:r('.dw-itinerary'),right:r('.dw-support'),map:r('.dw-map'),details:r('.dw-inspector')}});
-  assert.equal(layout.overflow,false);assert.ok(layout.map.width>300&&layout.map.height>160);assert.ok(layout.details.y>=layout.map.y+layout.map.height);
-  assert.ok(layout.left.width/width>=.55&&layout.left.width/width<=.59);
+  const layout=await page.evaluate(()=>{const r=s=>{const {x,y,width,height}=document.querySelector(s).getBoundingClientRect();return{x,y,width,height}};return{overflow:document.documentElement.scrollWidth>innerWidth,left:r('.dw-itinerary'),right:r('.dw-inspector'),map:r('.dw-map')}});
+  // M38 底图架构：地图全幅常驻（永不 resize），行程列 40% 浮层，面板右缘锚定；详情在右侧面板而非地图下方
+  assert.equal(layout.overflow,false);
+  assert.ok(layout.map.width===width&&layout.map.height>400,'地图全幅底图');
+  assert.ok(layout.right.x+layout.right.width<=width+1&&layout.right.x>layout.left.x,'面板右缘锚定');
+  assert.ok(layout.left.width/width>=.38&&layout.left.width/width<=.42);
   await page.screenshot({path:path.join(out,`desktop-${width}.png`)});
   await page.click('[data-testid=chat-toggle]');await page.type('[data-testid=plan-chat-input]','下午下雨，保留已预约的安排。');
-  assert.equal(await page.$eval('.dw-map',e=>e.hidden),true);
+  assert.equal(await page.$eval('.dw-map',e=>e.hidden),false); // M38 底图架构：AI 打开时地图仍常驻
   assert.equal(await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width),layout.left.width);
   if(width===1440)await page.screenshot({path:path.join(out,'ai-1440.png')});
-  await page.click('[aria-label="关闭辅助区"]');assert.equal(await page.$eval('.dw-map',e=>e.hidden),false);
+  await page.click('[aria-label="收起面板"]');assert.equal(await page.$eval('.dw-map',e=>e.hidden),false);
   assert.ok(await page.evaluate(()=>window.__mapNode===document.querySelector('.leaflet-container')));
   await page.click('[data-testid=chat-toggle]');assert.equal(await page.$eval('[data-testid=plan-chat-input]',e=>e.value),'下午下雨，保留已预约的安排。');
   await page.keyboard.press('Escape');assert.equal(await page.$eval('.dw-map',e=>e.hidden),false);
   await page.waitForFunction(()=>document.activeElement?.getAttribute('data-testid')==='chat-toggle');
   if(width===1440){
     const clickText=async(scope,text)=>{for(const button of await page.$$(scope+' button'))if(await button.evaluate(e=>e.textContent.trim())===text){await button.click();return;}throw new Error('Missing button '+text)};
+    // M38 新语义：chat-toggle 是完整开关（上面已把面板关到 ai 槽），编辑入口在地点详情槽 —— 重新选中地点打开它
+    await page.click('[data-key="d0-p2"] [data-testid=place-name]');
     await clickText('.dw-inspector','编辑地点');
     const input=await page.$('[placeholder="地点名称（必填）"]');await input.focus();await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');await input.type('人民公园（修改验收）');
     await clickText('[role=dialog]','保存修改');
@@ -58,12 +63,12 @@ try{
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('itertrip:route')).days[0].places[2].name),'人民公园');
   }
   await page.click('[data-testid=day-settings]');if(width===1440)await page.screenshot({path:path.join(out,'aux-1440.png')});
-  await page.click('[aria-label="关闭辅助区"]');await page.click('.dw-days button:nth-child(2)');
+  await page.click('[aria-label="收起面板"]');await page.click('.dw-dayrail button:nth-child(2)');
   await page.click('[data-key="d1-p1"] [data-testid=place-name]');
   await new Promise(resolve=>setTimeout(resolve,350));
   assert.match(await page.$eval('.dw-inspector',e=>e.textContent),/预约|时段/);
   if(width===1440)await page.screenshot({path:path.join(out,'conflict-1440.png')});
-  await page.click('.dw-days button:nth-child(3)');assert.match(await page.$eval('[data-testid=desktop-itinerary]',e=>e.textContent),/没有地点/);
+  await page.click('.dw-dayrail button:nth-child(3)');assert.match(await page.$eval('[data-testid=desktop-itinerary]',e=>e.textContent),/没有地点/);
   const captured=await page.evaluate(()=>window.__calls);assert.deepEqual(captured,[]);assert.deepEqual(errors,[]);
   report.push({width,height,...layout,pageErrors:errors,networkCalls:captured.length});await context.close();
  }

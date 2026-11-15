@@ -1,7 +1,7 @@
 # itertrip
 
 status: 进行中
-next: 桌面三栏方向稿（docs/design/desktop/research-2026-11/）等用户评估；M35 已收工（知识点地图 + 注入防御统一 + 小白讲解页）；下一步候选 M36 legacy 收敛 / M37 LLM-as-judge 评估 / MCP / CI，等用户挑方向；真机回归与盲审 4 条继续挂起
+next: 桌面底图+浮层架构已实装（M38 第三批）；等用户真机试用反馈与文字细排布意见；M36/M37/MCP/CI 继续挂起（知识点地图 + 注入防御统一 + 小白讲解页）；下一步候选 M36 legacy 收敛 / M37 LLM-as-judge 评估 / MCP / CI，等用户挑方向；真机回归与盲审 4 条继续挂起
 updated: 2026-11-15
 
 ## 待办
@@ -19,6 +19,7 @@ updated: 2026-11-15
 
 ## 已完成
 
+- [x] M38 前端好用度冲刺·第三批 = 桌面工作台重构实装（方向稿四轮迭代定稿后一次落地）：①地图升全幅底图（`isolation:isolate` 防瓦片越层），调整/收起侧栏不再 resize 地图；②日期带改左竖列 76↔36 角标（`itertrip:desktop-view` 持久化）；③行程列可拖 28–58%、收起只留贴边中段半圆；④顶栏一行化（行程名/日期芯片/天数并入，删 104px 大脑门与面包屑）；⑤AI 面板右缘锚定固定 380/340、无宽度拖拽（用户指认游离拖拽条后按删除测试移除）、顶栏按钮完整开关、**默认停在 AI**（Q2）；⑥「关闭辅助区」→「收起面板」；⑦行程文档标题与日期列去重；图例/标题 chip 跟随可见区（`--dw-left-w`）。验证：tsc/build、m25–m31 DOM（「AI 盖地图」断言翻转）、desktop-a 四尺寸（几何断言改底图架构）、mobile-shot 5 尺寸、CDP 四状态目检；紧凑态 <1024 未动。AGENTS v1.16（§6.3 desktop-view + §10 条目）、DESIGN.md §4/§5 同步（2026-11-15）
 - [x] M38 前端好用度冲刺·第二批（用户指认）：未安排的日程默认安静 —— 当天没有任何安排输入（时刻／已查交通／停留时长全空）时不渲染 dw-statusline 待评估状态板，只留标题行一个安静文字入口「安排与交通」；时间列「未知／未知 离开」「停留时间未知」「耗时未知」占位全部改为留白/只留入口（时间只渲染推算出的真实值）；开始安排后状态板才出现（缺口仍如实报告），入口收敛为状态板一处，data-testid=day-settings 两态都在。起因：用户问「为什么这么多地方都是未知」——新提取行程四类排程依据全空，满屏警示板像坏了；用户方向：「未安排不是错误，暂不完善的效果先不拿出来」。DESIGN.md §9 已写入该规则。tsc/build/m25–m31 DOM/desktop-a/mobile-shot 5 尺寸全绿 + CDP 探针前后对比截图（未安排 0 处「未知」→ 设 19:30 后状态板出现）（2026-11-15）
 - [x] M38 前端好用度冲刺·第一批 = 盲审 4 条收尾债全清：①🤖/🗺 aria-label/expanded + 展开态反色 + 一次性提示条（itertrip:plan-hint）；②⚙ 紧凑态归排右下角 + 抽屉打开时隐藏；③地图 D1–D6 循环配色 + 金色酒店左下角图例（顺带修 >6 天 pin 无色小洞）；④桌面状态条措辞人话化（未定/待查/待评估 + 怎么补，诚实口径不变）；附带 Chat 输入带改浮起圆角输入卡（接缝观感）。bee297b + f987a62；tsc/build/mobile-shot 5 尺寸/m25–m31 DOM/desktop-a/chat-stream 24/24 全绿，逐截图目检（2026-11-15）
 - [x] M35 Agent 强化第一轮：两份代码审计（M30 工具循环 + 全仓 Agent 体系）→ 小白讲解页 agent-guide.html（10 成员 + 3 故事线 + 词典 13 条 + 体检表，随构建发布）；docs/AGENT_KNOWLEDGE_MAP.md 13 知识点映射（讲法/追问预案/诚实边界/刻意不做）；提示注入层次防御统一 —— agent_turn.DATA_NOT_INSTRUCTION 三处 SYSTEM 共用、chat.build_payload 统一组装 payload（攻略原文包裹/current_route 标注）、记忆参考头补声明、新增 backend/_check_injection.py（结构性防御，真模型鲁棒性留 M37）；顺带修首页对话当前消息重复进历史（2713675）与 AGENTS「8 轮→8 条」勘误；含走读问答沉淀（RAG/上下文管理/高德数据源）（49a97c3 + 141ef36，2026-11-15）
@@ -93,6 +94,7 @@ updated: 2026-11-15
 
 ## 工作留痕
 
+- 2026-11-15 · ZCode：M38 第三批实装 = Workspace.tsx/workspace.css 重写（底图+三浮层+收起体系+顶栏一行化）、Plan.tsx 去 visitDetail + aux 默认 'ai'、DayItinerary 标题去重、MapView 图例跟随 --dw-left-w；脚本 m31-dom/desktop-a 断言按新架构翻转（关闭辅助区→收起面板 全仓更名）；期间踩坑：重写丢 desktop-workspace testid、Leaflet 瓦片 pane 越层需 isolation、margin 锚定后游离拖拽条（用户指认后删除）。验证全绿（tsc/build/m25–m31/desktop-a/mobile-shot/CDP 目检）。
 - 2026-11-15 · ZCode：桌面布局诊断（右侧 42% 交换槽 = 三条别扭的共同根因）→ 用户选「设计稿先行」→ 产出三栏方向稿 three-column-workspace.html（真实瓦片+GCJ-02 坐标、两条可拖分割线、四槽切换、AI 应用变更演示）+ three-column-direction.md；CDP 自验 1440/1024（修掉 --panel-w 裸数字导致 width 无效的 bug、首行 leg/酒店边框/缩放位保真）；待用户回答评估问题后实施。
 - 2026-11-15 · ZCode：M38 第二批（用户指认）= 未安排日程默认安静（DayItinerary arranged 条件渲染 + 占位收敛 + m31-dom 加未安排白天回归 + DESIGN.md §9 规则）；验证 tsc/build/m25–m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 前后对比探针；顺带讲解 M27「有据才算」排程机制。用户方向：界面简洁优先，暂不完善的效果先不拿出来。
 - 2026-11-15 · ZCode：M38 第一批 = 盲审 4 条清偿（bee297b 入口语义+图例 → f987a62 输入卡+状态条措辞）；验证 tsc/build/mobile-shot/m25–m31/desktop-a/chat-stream 全绿 + 逐截图目检；M33 doc §8 记录。用户方向：前端好用度优先，M36/M37 挂起。

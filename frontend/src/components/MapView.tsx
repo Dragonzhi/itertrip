@@ -421,7 +421,7 @@ export default function MapView({
   const hasHotel = !!route?.days.some((d) => d.hotel && d.hotel.name);
   return <><div ref={containerRef} className={`${embedded?'absolute':'fixed'} inset-0 z-0 bg-[#dfe6dd]`} />
     {legendDays > 0 && (
-      <div className={`${embedded?'absolute':'fixed'} bottom-2 left-2 z-[399] flex flex-wrap items-center gap-x-2 gap-y-0.5 max-w-[calc(100%-16px)] pointer-events-none bg-white/95 border border-line rounded-full px-2.5 py-1 text-[11px] leading-none text-ink-soft shadow-sm`}>
+      <div className={`${embedded?'absolute':'fixed'} bottom-2 z-[399] flex flex-wrap items-center gap-x-2 gap-y-0.5 max-w-[calc(100%-16px)] pointer-events-none bg-white/95 border border-line rounded-full px-2.5 py-1 text-[11px] leading-none text-ink-soft shadow-sm`} style={embedded?{left:'var(--dw-left-w,8px)'}:undefined}>
         {Array.from({ length: legendDays }, (_, i) => (
           <span key={i} className="inline-flex items-center gap-1">
             <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shrink-0" style={{ backgroundColor: PIN_DAY_COLORS[i] }} aria-hidden />

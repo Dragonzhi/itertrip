@@ -20,7 +20,7 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
     return <button key={`${edge.from.id}-${edge.to.id}`} className="dw-leg" data-testid="desktop-leg" onClick={()=>p.onLegSelect?.(edge)}><span className="dw-leg-line"/><span>{s.known?`${transport.labels[s.mode]} · 约 ${Math.ceil(s.option!.duration_s!/60)} 分钟`:transport.labels[s.mode]}{s.stale?' · 历史快照':''}</span><span className="dw-leg-action">{s.known?'比较交通':'查看与查询'} →</span></button>;
   };
   return <div className="dw-day">
-    <div className="dw-day-heading"><div><p>DAY {String(day.day||di+1).padStart(2,'0')} · {result.date||'日期待确认'}</p><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2></div>{!arranged&&<button className="dw-order-toggle" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>安排与交通</button>}{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div>
+    <div className="dw-day-heading"><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2><div>{!arranged&&<button className="dw-order-toggle" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>安排与交通</button>}{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div></div>
     {/* M33：原 dw-summary 四格（默认全是「未知/未评估」）+ 重复的「当天时间与交通设置」按钮
         收成一行 —— 数字仍可一眼扫到，逐项细节走二级的当天安排与交通面板。
         M38 措辞人话化：不再说「未知」，改为说明缺什么、怎么补（诚实口径不变）。

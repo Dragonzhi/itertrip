@@ -86,7 +86,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const [desktop,setDesktop]=useState(()=>window.matchMedia('(min-width: 1024px)').matches);
   useEffect(()=>{const media=window.matchMedia('(min-width: 1024px)');const change=()=>setDesktop(media.matches);media.addEventListener('change',change);return()=>media.removeEventListener('change',change);},[]);
   const [desktopDay,setDesktopDay]=useState(0);
-  const [aux,setAux]=useState<Auxiliary>(null);
+    // M38 Q2 定稿：桌面默认停在 AI（Agent 常驻可见）；紧凑态抽屉仍由 chatOpen/panelOpen 独立控制
+  const [aux,setAux]=useState<Auxiliary>('ai');
   const [selection,setSelection]=useState<Selection>(null);
   const [daySettings,setDaySettings]=useState(false);
   const { route, mutate, undo, redo, canUndo, canRedo, isCurrent } = useTripHistory(initialRoute);
@@ -1160,7 +1161,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     <MotionConfig reducedMotion="user">
     <div className={desktop ? 'dw-plan' : undefined}>
     <div className={`h-[100dvh] overflow-hidden ${desktop?'dw-plan':''}`}>
-      {desktop&&<Workspace visitDetail={!!selectedVisit&&!daySettings} aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
+      {desktop&&<Workspace aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}

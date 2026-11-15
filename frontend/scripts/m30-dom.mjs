@@ -78,7 +78,7 @@ await click(byText('↩ 撤销'));assert.equal(JSON.stringify(saved()),original)
 let resolve,req;
 globalThis.fetch=async(url,options)=>{req=JSON.parse(options.body);return new Promise(r=>resolve=r);};
 await send('把春熙路休息点停留改成 45 分钟');
-if(desktop){await click(document.querySelector('[aria-label=关闭辅助区]'));assert.ok(document.querySelector('[data-testid=ai-streaming]'),'closing inspector does not stop stream');await click(document.querySelector('[data-testid=chat-toggle]'));}
+if(desktop){await click(document.querySelector('[aria-label=收起面板]'));assert.ok(document.querySelector('[data-testid=ai-streaming]'),'closing inspector does not stop stream');await click(document.querySelector('[data-testid=chat-toggle]'));}
 await click(document.querySelector('[data-testid="stop-btn"]'));
 await act(async()=>resolve(sse({agent_proposal:{transaction_id:req.agent_version,base_version:req.agent_version,actions:[{op:'set_duration',place_id:'a',minutes:45}]},agent_direct:true})));
 assert.equal(JSON.stringify(saved()),original,'stop prevents late successful reply from writing');assert.ok(document.querySelector('[data-testid="msg-interrupted"]'));
