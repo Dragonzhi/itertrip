@@ -53,6 +53,10 @@
 .dw-dayrail span { font-size: 13px; font-weight: 650; }
 .dw-dayrail small { font-size: 12px; }
 .dw-dayrail button[aria-pressed="true"] { border-left-color: var(--dw-green); background: #E3EFE860; color: var(--dw-green); }
+/* 收起态只留天数数字（「第N天/日期/周几」都藏起），展开态反之；数字对读屏隐藏，可访问名仍是完整标签 */
+.dw-dayrail .dw-rail-num { display: none; }
+.dw-workspace.dw-rail-collapsed .dw-dayrail strong, .dw-workspace.dw-rail-collapsed .dw-rail-date, .dw-workspace.dw-rail-collapsed .dw-dayrail small { display: none; }
+.dw-workspace.dw-rail-collapsed .dw-dayrail .dw-rail-num { display: block; }
 .dw-rail-toggle { margin-top: auto; display: grid; place-items: center; padding: 9px 0; border: 0; border-top: 1px solid var(--dw-line); background: transparent; color: var(--dw-muted); font-size: 14px; }
 .dw-rail-toggle:hover { color: var(--dw-green); }
 /* 行程列：浮层，宽度可拖可收（收起后由贴边中段的半圆接管） */

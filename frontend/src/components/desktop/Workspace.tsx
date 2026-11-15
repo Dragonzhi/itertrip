@@ -92,7 +92,12 @@ export default function Workspace(props:{
       <nav className="dw-dayrail" aria-label="选择行程日期">
         {props.route.days.map((d,i)=>{
           const date=schedule.dayDate(props.route,i);
-          return <button key={i} aria-pressed={i===props.day} onClick={()=>{props.setDay(i);props.open(null);}}><strong>D{d.day||i+1}</strong>{date&&<span className="dw-rail-date">{date.slice(5).replace('-','.')}</span>}<small>{date?['周日','周一','周二','周三','周四','周五','周六'][schedule.date(date)!.getDay()]:''}</small></button>;
+          return <button key={i} aria-pressed={i===props.day} onClick={()=>{props.setDay(i);props.open(null);}}>
+            <strong className="dw-rail-day">第{d.day||i+1}天</strong>
+            <span className="dw-rail-num" aria-hidden="true">{d.day||i+1}</span>
+            {date&&<span className="dw-rail-date">{date.slice(5).replace('-','.')}</span>}
+            <small>{date?['周日','周一','周二','周三','周四','周五','周六'][schedule.date(date)!.getDay()]:''}</small>
+          </button>;
         })}
         <button className="dw-rail-toggle" aria-expanded={!railCollapsed} aria-label={railCollapsed?'展开日期列':'收起日期列'} title={railCollapsed?'展开日期列':'收起日期列'} onClick={()=>patchView({railCollapsed:!railCollapsed})}>{railCollapsed?'›':'‹'}</button>
       </nav>
@@ -108,7 +113,7 @@ export default function Workspace(props:{
         }}>
         <button className="dw-div-collapse" aria-expanded={!docCollapsed} aria-label={docCollapsed?'展开行程列':'收起行程列'} title={docCollapsed?'展开行程列':'收起行程列'} onClick={()=>patchView({docCollapsed:!docCollapsed})}>‹</button>
       </div>
-      <section className="dw-map" aria-label="行程地图">{props.map}<div className="dw-map-caption">D{props.route.days[props.day]?.day||props.day+1} · 地点顺序 <span>连线不代表实际道路</span></div></section>
+      <section className="dw-map" aria-label="行程地图">{props.map}<div className="dw-map-caption">第{props.route.days[props.day]?.day||props.day+1}天 · 地点顺序 <span>连线不代表实际道路</span></div></section>
       <aside className="dw-inspector" hidden={!props.aux} aria-label="行程辅助区" onKeyDown={e=>{if(e.key==='Escape'){close();e.stopPropagation();}}}>
         <header><h2>{props.aux?titles[props.aux]:''}</h2><button ref={closeRef} onClick={close} aria-label="收起面板" title="收起面板"><Icon name="close"/></button></header>
         <div className="dw-ai-slot" hidden={props.aux!=='ai'}>{props.ai}</div>

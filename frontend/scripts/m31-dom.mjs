@@ -55,7 +55,7 @@ await click(document.querySelector('[aria-label=撤销]'));assert.equal(JSON.str
 await act(async()=>{const select=document.querySelector('[aria-label=移动人民公园到其他天]');select.value='1';select.dispatchEvent(new w.Event('change',{bubbles:true}));});
 assert.equal(saved().days[1].places.at(-1).id,'a','move across boundary');
 assert.ok(detail().textContent.includes('人民公园'),'selection follows stable ID');
-assert.equal(document.querySelector('.dw-dayrail [aria-pressed=true]').textContent.startsWith('D2'),true);
+assert.equal(document.querySelector('.dw-dayrail [aria-pressed=true]').textContent.startsWith('第2天'),true);
 await click(document.querySelector('[aria-label=撤销]'));assert.equal(JSON.stringify(saved()),original,'one undo restores move');
 await click(document.querySelector('[aria-label=重做]'));assert.equal(saved().days[1].places.at(-1).id,'a');
 await click(document.querySelector('[aria-label=撤销]'));

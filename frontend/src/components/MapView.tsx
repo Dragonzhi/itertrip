@@ -425,7 +425,7 @@ export default function MapView({
         {Array.from({ length: legendDays }, (_, i) => (
           <span key={i} className="inline-flex items-center gap-1">
             <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shrink-0" style={{ backgroundColor: PIN_DAY_COLORS[i] }} aria-hidden />
-            D{i + 1}
+            {i + 1}
           </span>
         ))}
         {(route?.days.length || 0) > 6 && <span>… 循环</span>}
