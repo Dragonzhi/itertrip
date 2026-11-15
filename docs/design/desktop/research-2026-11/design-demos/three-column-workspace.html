@@ -41,13 +41,19 @@ button:disabled{cursor:default;opacity:.45}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 12px;min-height:36px;white-space:nowrap}
 .btn.primary{background:var(--moss);border-color:var(--moss);color:#fff}
 .btn.primary[aria-pressed=true]{background:#175740}
-/* ── 日期竖列（用户方向：横带右侧大片空白，且天数上限 30 竖列更耐放）── */
+/* ── 日期竖列（用户方向：横带右侧大片空白，且天数上限 30 竖列更耐放；
+      可收到只剩角标 —— 76px 展开 / 36px 角标，底部开关，省宽补给行程列）── */
 .dayrail{width:76px;flex:0 0 auto;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden}
-.dayrail button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:13px 0;border:0;border-left:3px solid transparent;background:transparent;color:var(--muted);text-align:center}
+.dayrail.collapsed{width:36px}
+.dayrail.collapsed span,.dayrail.collapsed small{display:none}
+.dayrail.collapsed button[data-day]{padding:11px 0}
+.dayrail button[data-day]{display:flex;flex-direction:column;align-items:center;gap:3px;padding:13px 0;border:0;border-left:3px solid transparent;background:transparent;color:var(--muted);text-align:center}
 .dayrail strong{font-size:13px;font-weight:650}
 .dayrail span{font-size:13px;font-weight:650}
 .dayrail small{font-size:12px}
-.dayrail button[aria-pressed=true]{border-left-color:var(--moss);background:#E3EFE860;color:var(--moss)}
+.dayrail button[data-day][aria-pressed=true]{border-left-color:var(--moss);background:#E3EFE860;color:var(--moss)}
+.rail-toggle{margin-top:auto;display:grid;place-items:center;padding:9px 0;border:0;border-top:1px solid var(--line);background:transparent;color:var(--muted);font-size:14px}
+.rail-toggle:hover{color:var(--moss)}
 /* ── 三栏主体 ───────────────────────────────────────── */
 main{display:flex;height:calc(100dvh - 53px);min-height:420px}
 .doc{width:calc(var(--doc-w) * 1%);min-width:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line)}
@@ -173,10 +179,11 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
   </div>
 </header>
 <main>
-  <nav class="dayrail" aria-label="选择行程日期">
+  <nav class="dayrail" id="dayrail" aria-label="选择行程日期">
     <button aria-pressed="true" data-day="0"><strong>D1</strong><span>12.31</span><small>周四</small></button>
     <button aria-pressed="false" data-day="1"><strong>D2</strong><span>01.01</span><small>周五</small></button>
     <button aria-pressed="false" data-day="2"><strong>D3</strong><span>01.02</span><small>周六</small></button>
+    <button class="rail-toggle" id="rail-toggle" aria-expanded="true" aria-label="收起日期列" title="收起日期列">‹</button>
   </nav>
   <section class="doc" aria-label="当天行程">
     <div class="doc-scroll" id="doc"></div>
@@ -410,6 +417,26 @@ $('#apply-btn').addEventListener('click',apply);
 $('#undo-btn').addEventListener('click',undo);
 $$('.demo-nav [data-slot]').forEach(b=>b.addEventListener('click',()=>openSlot(b.dataset.slot)));
 $('#collapse-btn').addEventListener('click',collapse);
+/* 日期列收起：76px ↔ 36px 角标态，省出的宽度补给行程列（用户方向） */
+const rail=$('#dayrail'),rt=$('#rail-toggle');
+rt.addEventListener('click',()=>{
+  const collapsed=rail.classList.toggle('collapsed');
+  const main=$('main').getBoundingClientRect();
+  const delta=(collapsed?40:-40)/main.width*100;
+  rt.textContent=collapsed?'›':'‹';
+  rt.setAttribute('aria-expanded',String(!collapsed));
+  rt.setAttribute('aria-label',collapsed?'展开日期列':'收起日期列');
+  let w=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--doc-w'))||40;
+  w=Math.max(28,Math.min(58,w+delta));
+  document.documentElement.style.setProperty('--doc-w',w);
+  localStorage.setItem('demo:docW',String(w));
+  localStorage.setItem('demo:rail',collapsed?'c':'e');
+  setTimeout(()=>map&&map.invalidateSize(),60);
+});
+if(localStorage.getItem('demo:rail')==='c'){
+  rail.classList.add('collapsed');rt.textContent='›';
+  rt.setAttribute('aria-expanded','false');rt.setAttribute('aria-label','展开日期列');
+}
 $('#reset-btn').addEventListener('click',()=>{localStorage.removeItem('demo:docW');document.documentElement.style.setProperty('--doc-w',40);openSlot('ai');});
 const savedW=parseFloat(localStorage.getItem('demo:docW'));
 if(savedW>=28&&savedW<=58)document.documentElement.style.setProperty('--doc-w',savedW);
