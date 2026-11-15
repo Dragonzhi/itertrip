@@ -850,8 +850,18 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const dayOptions = route.days.map((d, i) => ({ index: i, label: "D" + (d.day || i + 1) + (d.theme ? " · " + d.theme : "") }));
   /** M32（原 M23 只对 <768 生效）：<1024 两个抽屉都是底部 sheet，必须互斥（同时开就互相盖住）；
       768–1023 的平板带此前正是漏网之鱼 —— 双侧栏 380+400px 互叠盖满地图 */
+  /** M38 首次使用提示：🤖/🗺 是纯图标圆钮（触屏看不到 title），一次性说明；
+      点任一入口或 ✕ 后写 itertrip:plan-hint，之后不再出现。 */
+  const [entryHint, setEntryHint] = useState(() => {
+    try { return !localStorage.getItem("itertrip:plan-hint"); } catch { return false; }
+  });
+  const dismissEntryHint = () => {
+    setEntryHint(false);
+    try { localStorage.setItem("itertrip:plan-hint", "1"); } catch { /* 无痕模式照常隐藏 */ }
+  };
   const toggleChat = () => {
     if(desktop){openAux(aux==='ai'?null:'ai');return;}
+    dismissEntryHint();
     const next = !chatOpen;
     if (next) {
       setPanelOpen(false);
@@ -862,6 +872,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     setChatOpen(next);
   };
   const togglePanel = () => {
+    dismissEntryHint();
     const next = !panelOpen;
     if (next) setChatOpen(false);
     setPanelOpen(next);
@@ -1179,15 +1190,25 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         </div>
         <div className="ml-auto flex gap-2 pointer-events-auto shrink-0">
           <button onClick={toggleChat} data-testid="chat-toggle" title="AI 改行程"
-            className="border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card hover:bg-moss-soft focus-ring">
+            aria-label="和 AI 改行程" aria-expanded={chatOpen}
+            className={`border rounded-full w-11 h-11 text-[15px] font-semibold shadow-card focus-ring ${chatOpen ? 'bg-moss-soft border-moss text-ink' : 'bg-white border-line text-moss hover:bg-moss-soft'}`}>
             🤖
           </button>
           <button onClick={togglePanel} data-testid="panel-toggle" title={panelOpen ? "收起行程" : "展开行程"}
-            className="border border-line bg-white text-moss rounded-full w-11 h-11 text-[15px] font-semibold shadow-card hover:bg-moss-soft focus-ring">
+            aria-label={panelOpen ? "收起行程面板" : "展开行程面板"} aria-expanded={panelOpen}
+            className={`border rounded-full w-11 h-11 text-[15px] font-semibold shadow-card focus-ring ${panelOpen ? 'bg-moss-soft border-moss text-ink' : 'bg-white border-line text-moss hover:bg-moss-soft'}`}>
             🗺
           </button>
         </div>
       </div>
+
+      {/* M38 首次使用提示：一次性说明两个圆钮的语义（触屏看不到 title）；点任一入口或 ✕ 即永久消失 */}
+      {entryHint && (
+        <div className="fixed top-[68px] right-3 z-[500] flex items-center gap-2 bg-white border border-line rounded-full pl-3 pr-2 py-1.5 shadow-card text-[11px] text-ink-soft pointer-events-auto">
+          <span>🤖 和 AI 改行程 · 🗺 行程面板</span>
+          <button onClick={dismissEntryHint} aria-label="知道了" className="text-ink-soft hover:text-ink leading-none px-1">✕</button>
+        </div>
+      )}
 
       {/* M14：AI 对话改行程抽屉（地图常驻，改动走同一撤销栈）。M32：<1024 全部底部 sheet */}
       <aside
@@ -1351,8 +1372,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         </motion.div>
       </aside>
 
-      {/* M16：右下角地图显示设置 */}
-      <MapSettings value={mapView} onChange={(patch) => setMapView((v) => ({ ...v, ...patch }))} panelOpen={panelOpen} />
+      {/* M16：右下角地图显示设置。M38 归排：紧凑态移到右下角（不再顶栏下悬空像第四颗神秘圆钮），
+          且抽屉打开时隐藏（z-500 高于抽屉，浮在上面像残影）。 */}
+      <MapSettings value={mapView} onChange={(patch) => setMapView((v) => ({ ...v, ...patch }))} panelOpen={panelOpen} hidden={chatOpen || panelOpen} />
 
       </>}
       {/* 选点提示条 */}

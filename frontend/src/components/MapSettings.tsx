@@ -8,6 +8,8 @@ interface MapSettingsProps {
   onChange: (patch: Partial<MapSettingsType>) => void;
   /** 右侧时间线面板展开时，让位以贴地图可见区右下角 */
   panelOpen: boolean;
+  /** M38 归排：紧凑态有抽屉盖住地图时隐藏齿轮（z-500 高于抽屉，浮在抽屉上会像坏掉的残影） */
+  hidden?: boolean;
 }
 
 /** 小开关（toggle），数据驱动。 */
@@ -82,7 +84,7 @@ function GroupTitle({ children }: { children: ReactNode }) {
 }
 
 /** 地图显示设置面板（M16）：右下角齿轮按钮 → 弹出，纯前端视图态。 */
-export default function MapSettings({ value, onChange, panelOpen, embedded = false }: MapSettingsProps) {
+export default function MapSettings({ value, onChange, panelOpen, embedded = false, hidden = false }: MapSettingsProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -102,8 +104,8 @@ export default function MapSettings({ value, onChange, panelOpen, embedded = fal
   return (
     <div
       ref={ref}
-      className={embedded ? 'dw-map-settings' : "fixed z-[500] flex flex-col items-end gap-2 max-lg:flex-col-reverse max-lg:top-[60px] max-lg:right-3 max-lg:bottom-auto lg:bottom-4"}
-      style={embedded ? undefined : { right: isCompact() ? 12 : right }}
+      className={embedded ? 'dw-map-settings' : "fixed z-[500] flex flex-col items-end gap-2 max-lg:flex-col-reverse max-lg:top-auto max-lg:right-3 max-lg:bottom-4 lg:bottom-4"}
+      style={embedded ? undefined : { right: isCompact() ? 12 : right, visibility: hidden ? 'hidden' : undefined }}
     >
       {(open || embedded) && (
         <div

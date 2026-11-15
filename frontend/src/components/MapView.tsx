@@ -8,6 +8,10 @@ import type { MapSettings } from "../lib/settings";
 import { navigation } from "../lib/navigation";
 import { isOnline, useOffline } from '../lib/offline';
 
+/** 图例色值 = index.css .iter-pin.day-N / .iter-pin.hotel 的同源色（勿另引色值）。 */
+const PIN_DAY_COLORS = ['#e07a5f', '#e9b44c', '#3d8b8a', '#6d5b9e', '#b85c5c', '#4c7a3e'];
+const PIN_HOTEL_COLOR = '#c8903c';
+
 interface MapViewProps {
   embedded?: boolean;
   fitDay?: boolean;
@@ -180,7 +184,7 @@ export default function MapView({
         const m = L.marker([p.lat, p.lng], {
           icon: L.divIcon({
             className: "",
-            html: `<div class="iter-pin day-${di + 1}" data-pin-key="d${di}-p${pi}"><span class="e">${emoji}</span></div>`,
+            html: `<div class="iter-pin day-${(di % 6) + 1}" data-pin-key="d${di}-p${pi}"><span class="e">${emoji}</span></div>`,
             iconSize: [30, 30],
             iconAnchor: [15, 27],
             popupAnchor: [0, -24],
@@ -411,7 +415,28 @@ export default function MapView({
     };
   }, [picking, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // M38 图例：圆点颜色 = 所属天（D1–D6 循环，与 index.css 的 .iter-pin.day-N 同源色值）；
+  // 金色 = 酒店。紧凑态 z-[399] 落在抽屉之下（开抽屉时被盖住，是地图家具不是全局控件）。
+  const legendDays = Math.min(route?.days.length || 0, 6);
+  const hasHotel = !!route?.days.some((d) => d.hotel && d.hotel.name);
   return <><div ref={containerRef} className={`${embedded?'absolute':'fixed'} inset-0 z-0 bg-[#dfe6dd]`} />
+    {legendDays > 0 && (
+      <div className={`${embedded?'absolute':'fixed'} bottom-2 left-2 z-[399] flex flex-wrap items-center gap-x-2 gap-y-0.5 max-w-[calc(100%-16px)] pointer-events-none bg-white/95 border border-line rounded-full px-2.5 py-1 text-[11px] leading-none text-ink-soft shadow-sm`}>
+        {Array.from({ length: legendDays }, (_, i) => (
+          <span key={i} className="inline-flex items-center gap-1">
+            <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shrink-0" style={{ backgroundColor: PIN_DAY_COLORS[i] }} aria-hidden />
+            D{i + 1}
+          </span>
+        ))}
+        {(route?.days.length || 0) > 6 && <span>… 循环</span>}
+        {hasHotel && (
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/80 shrink-0" style={{ backgroundColor: PIN_HOTEL_COLOR }} aria-hidden />
+            酒店
+          </span>
+        )}
+      </div>
+    )}
     {(!online || tileFailed) && <div role="status" className={`${embedded?'absolute top-1/2 -translate-y-1/2':'fixed top-[25vh]'} left-1/2 -translate-x-1/2 z-[405] max-w-[240px] rounded-xl bg-cream/95 border border-line px-3 py-2 text-xs text-ink-soft pointer-events-none text-center`}>{!online ? '离线模式 · 地图底图不可用' : '地图底图加载失败'}<br />{embedded?'左侧可继续查看和编辑日程':'打开行程面板可查看地点与日程'}</div>}
   </>;
 }
