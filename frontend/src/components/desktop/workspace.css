@@ -30,6 +30,9 @@
 .dw-workspace button.dw-primary { background: var(--dw-green); color: white; border: 1px solid var(--dw-green); }
 .dw-workspace button.dw-primary:hover { background: #175740; }
 .dw-menu-wrap { position: relative; }
+/* M38 用户反馈：展开中的下拉（更多工具）要盖过后渲染的 tripbar 按钮（导出）——
+   两个 wrap 都是 positioned + z-auto，按 DOM 序晚者居上，故给含展开菜单的 wrap 提层级。 */
+.dw-menu-wrap:has(> .dw-menu) { z-index: 40; }
 .dw-menu { position: absolute; right: 0; top: calc(100% + 8px); padding: 6px; width: 170px; border: 1px solid var(--dw-line); border-radius: 8px; background: white; box-shadow: 0 8px 24px #2b2b281c; }
 .dw-toolbar .dw-menu button { display: flex; width: 100%; border: 0; justify-content: flex-start; }
 .dw-toolbar .dw-menu button:hover { background: #E3EFE8; }
