@@ -64,6 +64,13 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
 .divider:hover,.divider.on{background:var(--moss-soft);border-right-color:var(--moss)}
 .divider::after{content:"";position:absolute;top:50%;left:1px;width:3px;height:34px;transform:translateY(-50%);border-radius:2px;background:var(--line)}
 .divider:hover::after,.divider.on::after{background:var(--moss)}
+/* 行程列收起（用户方向）：分割线上挂 ‹ 开关，收起后变 28px 竖标 */
+.div-collapse{position:absolute;top:calc(50% - 18px);left:-5px;width:16px;height:36px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--muted);font-size:12px;line-height:1;z-index:6;padding:0}
+.div-collapse:hover{color:var(--moss);border-color:var(--moss)}
+.doc.collapsed{width:28px;flex:0 0 auto}
+.doc.collapsed .doc-scroll,.doc.collapsed>footer{display:none}
+.doc-expand{flex:1;writing-mode:vertical-rl;letter-spacing:5px;border:0;background:transparent;color:var(--moss);font-size:13px;padding:14px 0}
+.doc-expand:hover{background:var(--moss-soft)}
 .mapcol{flex:1;min-width:280px;position:relative;overflow:hidden;background:#E8E0D4}
 #map{position:absolute;inset:0}
 .map-caption{position:absolute;z-index:500;top:12px;left:12px;background:#FAF6F0ee;padding:7px 10px;border:1px solid var(--line);border-radius:5px;font-size:12px;pointer-events:none}
@@ -188,8 +195,11 @@ main{display:flex;height:calc(100dvh - 53px);min-height:420px}
   <section class="doc" aria-label="当天行程">
     <div class="doc-scroll" id="doc"></div>
     <footer><button class="add">＋ 添加地点</button></footer>
+    <button class="doc-expand" id="doc-expand" aria-label="展开行程列" hidden>行程</button>
   </section>
-  <div class="divider" id="div-doc" role="separator" aria-label="调整行程与地图宽度" tabindex="0"></div>
+  <div class="divider" id="div-doc" role="separator" aria-label="调整行程与地图宽度" tabindex="0">
+    <button class="div-collapse" id="doc-collapse" aria-expanded="true" aria-label="收起行程列" title="收起行程列">‹</button>
+  </div>
   <section class="mapcol" aria-label="行程地图">
     <div id="map"></div>
     <div class="map-caption" id="map-cap">D1 · 地点顺序 <span>连线不代表实际道路</span></div>
@@ -377,7 +387,7 @@ function showToast(t){const el=$('#toast');el.textContent=t;el.hidden=false;clea
 /* ── 分割线拖拽（行程↔地图、地图↔面板）─────────────── */
 function dragDivider(el,onMove){
   let lastX=0;
-  const start=e=>{e.preventDefault();el.classList.add('on');lastX=e.clientX;
+  const start=e=>{if(e.target.closest('button'))return;e.preventDefault();el.classList.add('on');lastX=e.clientX;
     const move=ev=>{lastX=ev.clientX;onMove(ev);};
     const up=()=>{el.classList.remove('on');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
     window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);};
@@ -437,6 +447,21 @@ if(localStorage.getItem('demo:rail')==='c'){
   rail.classList.add('collapsed');rt.textContent='›';
   rt.setAttribute('aria-expanded','false');rt.setAttribute('aria-label','展开日期列');
 }
+/* 行程列收起：分割线上的 ‹ 开关；收起后 28px 竖标「行程」，点它展开（用户方向） */
+const docSec=$('.doc'),dcBtn=$('#doc-collapse');
+function setDoc(collapsed){
+  docSec.classList.toggle('collapsed',collapsed);
+  $('#doc-expand').hidden=!collapsed;
+  dcBtn.hidden=collapsed; $('#div-doc').hidden=collapsed;
+  dcBtn.setAttribute('aria-expanded',String(!collapsed));
+  dcBtn.setAttribute('aria-label',collapsed?'展开行程列':'收起行程列');
+  $('#doc-expand').setAttribute('aria-label',collapsed?'展开行程列':'收起行程列');
+  localStorage.setItem('demo:docCol',collapsed?'c':'e');
+  setTimeout(()=>map&&map.invalidateSize(),60);
+}
+dcBtn.addEventListener('click',()=>setDoc(true));
+$('#doc-expand').addEventListener('click',()=>setDoc(false));
+if(localStorage.getItem('demo:docCol')==='c')setDoc(true);
 $('#reset-btn').addEventListener('click',()=>{localStorage.removeItem('demo:docW');document.documentElement.style.setProperty('--doc-w',40);openSlot('ai');});
 const savedW=parseFloat(localStorage.getItem('demo:docW'));
 if(savedW>=28&&savedW<=58)document.documentElement.style.setProperty('--doc-w',savedW);
