@@ -52,6 +52,26 @@ try{
   await page.keyboard.press('Escape');assert.equal(await page.$eval('.dw-map',e=>e.hidden),false);
   await page.waitForFunction(()=>document.activeElement?.getAttribute('data-testid')==='chat-toggle');
   if(width===1440){
+    // M38 回归：分割线拖拽必须真实跟手（曾连环踩两坑：docW 没绑 CSS 变量、dw-dragging 挂错元素导致过渡杀不掉）
+    const before=await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width);
+    let b=await (await page.$('.dw-divider')).boundingBox();
+    const y=b.y+300; // 避开垂直居中的收起按钮
+    await page.mouse.move(b.x+b.width/2,y);
+    await page.mouse.down();
+    await page.mouse.move(b.x+b.width/2+90,y,{steps:6});
+    const mid=await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width);
+    assert.ok(mid>before+50,'拖拽中列宽实时跟手（不过渡延迟）');
+    await page.mouse.up();
+    assert.ok(JSON.parse(await page.evaluate(()=>localStorage.getItem('itertrip:desktop-view'))).docW>40,'拖拽结果持久化');
+    b=await (await page.$('.dw-divider')).boundingBox(); // 拖完分割线已移动，重取位置
+    await page.mouse.move(b.x+b.width/2,y);
+    await page.mouse.down();
+    await page.mouse.move(b.x+b.width/2-90,y,{steps:6});
+    await page.mouse.up();
+    const restored=await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width);
+    assert.ok(Math.abs(restored-before)<12,'拖回原宽');
+  }
+  if(width===1440){
     const clickText=async(scope,text)=>{for(const button of await page.$$(scope+' button'))if(await button.evaluate(e=>e.textContent.trim())===text){await button.click();return;}throw new Error('Missing button '+text)};
     // M38 新语义：chat-toggle 是完整开关（上面已把面板关到 ai 槽），编辑入口在地点详情槽 —— 重新选中地点打开它
     await page.click('[data-key="d0-p2"] [data-testid=place-name]');

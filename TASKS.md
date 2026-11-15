@@ -94,6 +94,7 @@ updated: 2026-11-15
 
 ## 工作留痕
 
+- 2026-11-15 · ZCode：M38 修复拖拽失效（用户指认「调整行程列宽度无法拖动」）——连环两坑：①docW 状态从未绑定 CSS 变量（拖拽/方向键只改 state 不改 DOM），补 workspace 根内联 --dw-doc-w（收起时不写内联以免覆盖类规则）；②dw-dragging 挂在 .dw-body 上而 CSS 选择器要 .dw-workspace.dw-dragging，过渡杀不掉导致不跟手；顺带把 pct 原点从 body 左缘改到行程列左缘（分割线 1:1 跟手）；desktop-a 新增真实拖拽回归（拖拽中读宽防过渡延迟 + 持久化 + 拖回原宽）。验证 tsc/build/m31-dom/desktop-a 四尺寸全绿。
 - 2026-11-15 · ZCode：M38 第三批实装 = Workspace.tsx/workspace.css 重写（底图+三浮层+收起体系+顶栏一行化）、Plan.tsx 去 visitDetail + aux 默认 'ai'、DayItinerary 标题去重、MapView 图例跟随 --dw-left-w；脚本 m31-dom/desktop-a 断言按新架构翻转（关闭辅助区→收起面板 全仓更名）；期间踩坑：重写丢 desktop-workspace testid、Leaflet 瓦片 pane 越层需 isolation、margin 锚定后游离拖拽条（用户指认后删除）。验证全绿（tsc/build/m25–m31/desktop-a/mobile-shot/CDP 目检）。
 - 2026-11-15 · ZCode：桌面布局诊断（右侧 42% 交换槽 = 三条别扭的共同根因）→ 用户选「设计稿先行」→ 产出三栏方向稿 three-column-workspace.html（真实瓦片+GCJ-02 坐标、两条可拖分割线、四槽切换、AI 应用变更演示）+ three-column-direction.md；CDP 自验 1440/1024（修掉 --panel-w 裸数字导致 width 无效的 bug、首行 leg/酒店边框/缩放位保真）；待用户回答评估问题后实施。
 - 2026-11-15 · ZCode：M38 第二批（用户指认）= 未安排日程默认安静（DayItinerary arranged 条件渲染 + 占位收敛 + m31-dom 加未安排白天回归 + DESIGN.md §9 规则）；验证 tsc/build/m25–m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 前后对比探针；顺带讲解 M27「有据才算」排程机制。用户方向：界面简洁优先，暂不完善的效果先不拿出来。

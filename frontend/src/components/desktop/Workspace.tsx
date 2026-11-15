@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react';
 import type {RouteJSON} from '../../types/route';
 import {schedule} from '../../lib/schedule';
 import './workspace.css';
@@ -69,17 +69,24 @@ export default function Workspace(props:{
     if((e.target as HTMLElement).closest('button'))return;
     e.preventDefault();
     const el=bodyRef.current; if(!el)return;
-    el.classList.add('dw-dragging');
+    // .dw-dragging 必须挂在 workspace 根上（CSS 选择器是 .dw-workspace.dw-dragging）——挂 body 上过渡杀不掉，拖拽不跟手
+    const ws=el.closest('.dw-workspace');
+    ws?.classList.add('dw-dragging');
     const move=(ev:MouseEvent)=>{
       const rect=el.getBoundingClientRect();
-      let pct=(ev.clientX-rect.left)/rect.width*100;
+      // 以行程列左缘为原点（含日期列收起态），分割线才能 1:1 跟手；以 body 左缘算会带着日期列宽度跑偏
+      const it=el.querySelector('.dw-itinerary');
+      const left=it?it.getBoundingClientRect().left:rect.left;
+      let pct=(ev.clientX-left)/rect.width*100;
       pct=Math.max(28,Math.min(58,pct));
       patchView({docW:Math.round(pct*10)/10});
     };
-    const up=()=>{el.classList.remove('dw-dragging');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    const up=()=>{ws?.classList.remove('dw-dragging');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
     window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
   };
-  return <div className={`dw-workspace${railCollapsed?' dw-rail-collapsed':''}${docCollapsed?' dw-doc-collapsed':''}`} data-testid="desktop-workspace">
+  // docW 绑定到 CSS 变量（拖拽/方向键才有真实效果）；收起时不写内联值，让 .dw-doc-collapsed 的类规则接管（内联会覆盖类）
+  return <div className={`dw-workspace${railCollapsed?' dw-rail-collapsed':''}${docCollapsed?' dw-doc-collapsed':''}`} data-testid="desktop-workspace"
+    style={docCollapsed?undefined:({'--dw-doc-w':String(docW)} as CSSProperties)}>
     <Toolbar {...props}/>
     <div className="dw-body" ref={bodyRef}>
       <nav className="dw-dayrail" aria-label="选择行程日期">
