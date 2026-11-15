@@ -1,0 +1,418 @@
+<!--
+三栏方向稿 · 行程｜地图｜工作面板（2026-11，回应用户三指认：①58/42 固定劈开不可调；
+②AI/详情盖地图；③整体别扭——根因：右侧 42% 是五种内容的交换槽，地图没有自己的座位）。
+假设：用户已提取攻略，在桌面（>=1024px）核对与修改行程；AI 常驻右栏、地图独立成列永不隐藏。
+参照：M31 草图 a-cream-workspace.html 的约定与本仓 workspace.css 令牌；仅迁移布局原则。
+边界：地图瓦片与正式产品同源（高德公开瓦片，无 key），坐标为真实 GCJ-02 近似值；
+AI 对话/变更预览为固定演示脚本，不调用模型或任何数据接口；<1024 紧凑态不在本稿范围；
+不改正式前端。刷新恢复初稿（分割线比例存 localStorage 仅用于手感测试）。
+-->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>三栏工作台方向稿 · IterTrip</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--ink:#2B2B28;--muted:#6B6B64;--line:#E8E0D4;--moss:#1F6B54;--moss-soft:#E3EFE8;--gold:#C8903C;--gold-dark:#8A5E1E;--gold-light:#F6EBD8;--danger:#9C4038;--bg:#FAF6F0;
+  --doc-w:40;--panel-w:380px}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font-family:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:14px;background:var(--bg)}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--moss);outline-offset:3px}
+button:disabled{cursor:default;opacity:.45}
+.mono{font-variant-numeric:tabular-nums}
+.small{font-size:12px;color:var(--muted)}
+/* ── 顶栏（沿用正式版结构）────────────────────────────── */
+.topbar{background:var(--bg);border-bottom:1px solid var(--line)}
+.topline{min-height:48px;display:flex;align-items:center;gap:28px;padding:0 40px}
+.brand{display:flex;align-items:center;gap:8px;color:var(--moss);font-size:20px;font-weight:750;background:transparent;border:0;padding:0}
+.brand svg{width:24px;height:24px}
+.crumb{color:var(--muted);font-size:12px}
+.crumb span{padding:0 12px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.demo-pill{font-size:12px;color:var(--muted);border:1px dashed var(--line);padding:4px 9px;border-radius:4px;margin-right:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 12px;min-height:36px;white-space:nowrap}
+.btn.primary{background:var(--moss);border-color:var(--moss);color:#fff}
+.btn.primary[aria-pressed=true]{background:#175740}
+.tripbar{min-height:104px;display:flex;align-items:center;gap:24px;padding:18px 40px}
+.trip-title{flex:1;min-width:0}
+.trip-title h1{font-size:28px;font-weight:700;line-height:1.3;margin:0 0 8px}
+.trip-meta{display:flex;align-items:center;gap:16px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+/* ── 日期带 ─────────────────────────────────────────── */
+.daybar{display:flex;align-items:stretch;min-height:56px;padding:0 40px;border-block:1px solid var(--line);background:#fff;overflow-x:auto}
+.daybar button{flex:0 0 auto;display:flex;align-items:center;gap:12px;min-width:140px;padding:14px 24px;text-align:left;border-bottom:3px solid transparent;background:0;border:0;color:var(--muted)}
+.daybar strong{font-size:14px;font-weight:500}
+.daybar span{font-size:14px;font-weight:650}
+.daybar small{font-size:12px}
+.daybar button[aria-pressed=true]{border-bottom-color:var(--moss);background:#E3EFE860;color:var(--moss)}
+/* ── 三栏主体 ───────────────────────────────────────── */
+main{display:flex;height:calc(100dvh - 219px);min-height:420px}
+.doc{width:calc(var(--doc-w) * 1%);min-width:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line)}
+.doc-scroll{flex:1;min-height:0;overflow-y:auto;padding:24px 40px;scrollbar-gutter:stable}
+.doc>footer{display:flex;align-items:center;padding:12px 40px;border-top:1px solid var(--line);background:#fff}
+.add{display:flex;gap:6px;align-items:center;padding:6px 0;background:transparent;border:0;color:var(--moss)}
+.divider{flex:0 0 6px;cursor:col-resize;background:transparent;border-right:1px solid var(--line);position:relative;z-index:5}
+.divider:hover,.divider.on{background:var(--moss-soft);border-right-color:var(--moss)}
+.divider::after{content:"";position:absolute;top:50%;left:1px;width:3px;height:34px;transform:translateY(-50%);border-radius:2px;background:var(--line)}
+.divider:hover::after,.divider.on::after{background:var(--moss)}
+.mapcol{flex:1;min-width:280px;position:relative;overflow:hidden;background:#E8E0D4}
+#map{position:absolute;inset:0}
+.map-caption{position:absolute;z-index:500;top:12px;left:12px;background:#FAF6F0ee;padding:7px 10px;border:1px solid var(--line);border-radius:5px;font-size:12px;pointer-events:none}
+.map-caption span{color:var(--muted);margin-left:8px}
+.map-legend{position:absolute;z-index:500;bottom:12px;left:12px;display:flex;gap:14px;background:#FAF6F0ee;border:1px solid var(--line);border-radius:5px;padding:6px 10px;font-size:12px;color:var(--ink)}
+.map-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.panel{width:var(--panel-w);flex:0 0 auto;min-width:0;display:flex;flex-direction:column;background:#fff;border-left:1px solid var(--line)}
+.panel[hidden]{display:none}
+.panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);min-height:48px;flex-shrink:0}
+.panel>header h2{font-size:14px;font-weight:600;margin:0}
+.panel>header .btn{border:0;background:transparent;padding:2px;min-height:24px;font-size:12px;color:var(--moss)}
+.panel-body{flex:1;min-height:0;overflow-y:auto;padding:16px 20px}
+/* ── 行程文档（当前已上线口径：未安排保持安静）────────── */
+.day-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
+.day-heading p{font-size:12px;color:var(--moss);margin:0 0 4px;font-variant-numeric:tabular-nums}
+.day-heading h2{font-size:20px;font-weight:700;margin:0}
+.day-heading>div:last-child{display:flex;align-items:baseline;gap:16px}
+.textbtn{color:var(--moss);font-size:12px;white-space:nowrap;padding:6px 0;background:0;border:0}
+.visit{position:relative;padding:12px 10px 12px 0;margin:2px 0;border-radius:6px}
+.visit:hover{background:#FAF6F080}
+.visit.selected{background:var(--moss-soft)}
+.visit-select{display:grid;grid-template-columns:72px 28px minmax(0,1fr) 16px;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:transparent;padding:0}
+.time{text-align:right;font-variant-numeric:tabular-nums}
+.time time{display:block;font-size:16px;font-weight:650}
+.time small{display:block;font-size:12px;color:var(--muted);margin-top:4px;white-space:nowrap}
+.number{display:flex;align-items:center;justify-content:center;height:26px;width:26px;border-radius:50%;border:1px solid #A6B9AD;color:var(--moss);background:#fff;font-size:12px}
+.visit.selected .number{background:var(--moss);color:#fff;border-color:var(--moss)}
+.visit-main{min-width:0}
+.visit-main strong{display:block;font-size:16px;font-weight:650;overflow-wrap:anywhere}
+.visit-main small{display:block;color:var(--muted);font-size:12px;margin-top:4px}
+.chev{color:var(--muted);font-size:20px}
+.leg{position:relative;display:flex;gap:12px;align-items:center;text-align:left;background:transparent;margin-left:85px;padding:10px 0 10px 27px;font-size:12px;color:var(--muted);border:0}
+.leg:hover{color:var(--moss)}
+.leg-line{position:absolute;left:0;top:-8px;bottom:-8px;border-left:1px dashed #A6B9AD}
+.leg-action{color:var(--moss);white-space:nowrap}
+.hotel{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:16px 4px;border:0;border-top:1px solid var(--line);margin-top:12px;background:transparent}
+.hotel strong{font-weight:600}
+.hotel small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.warnings{margin:8px 0 0 124px;font-size:12px;color:var(--danger)}
+.notes{margin-top:24px;color:var(--muted)}
+.notes summary{font-size:12px;min-height:32px;cursor:pointer}
+.notes li{font-size:14px;margin:8px 0}
+/* ── 工作面板槽 ─────────────────────────────────────── */
+.slot{display:flex;flex-direction:column;gap:12px;min-height:100%}
+.slot[hidden]{display:none}
+.chat{display:flex;flex-direction:column;gap:12px}
+.msg{max-width:92%;padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.7}
+.msg.user{align-self:flex-end;background:var(--moss);color:#fff;border-bottom-right-radius:4px}
+.msg.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line);border-bottom-left-radius:4px}
+.trace{font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.trace li{margin:4px 0}
+.proposal{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff}
+.proposal h3{margin:0 0 8px;font-size:13px;color:var(--moss)}
+.proposal ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}
+.proposal-actions{display:flex;gap:8px;margin-top:10px}
+.proposal .btn{min-height:32px;font-size:12px;padding:6px 10px}
+.applied{font-size:12px;color:var(--moss);background:var(--moss-soft);border-radius:6px;padding:8px 10px}
+.chat-input{display:flex;gap:8px;margin-top:auto;padding-top:12px}
+.chat-input textarea{flex:1;font:inherit;font-size:13px;padding:9px;border:1px solid var(--line);border-radius:8px;resize:none;min-height:58px;background:#fff}
+.detail h3{font-size:18px;font-weight:700;margin:0 0 6px}
+.badge{display:inline-block;font-size:12px;border-radius:4px;padding:2px 7px;margin:2px 6px 8px 0;background:var(--moss-soft);color:var(--moss)}
+.badge.gold{background:var(--gold-light);color:var(--gold-dark)}
+.detail dl{margin:12px 0}
+.detail dt{font-size:12px;color:var(--muted);margin-top:12px}
+.detail dd{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.detail .btn{min-height:34px;font-size:12px;padding:6px 10px}
+.compare{display:flex;flex-direction:column;gap:10px}
+.mode{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:8px;padding:12px;background:#fff;text-align:left}
+.mode.selected{border-color:var(--moss);background:var(--moss-soft)}
+.mode strong{font-size:14px}
+.mode .mono{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+.sched label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px}
+.sched input[type=time]{font:inherit;padding:7px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.sched-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:8px 0;border-bottom:1px dashed var(--line)}
+.kv b{font-weight:600}
+/* ── 地图 pin（与 index.css 同源配色）────────────────── */
+.iter-pin{display:grid;place-items:center;width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);color:#fff;font-size:12px;font-weight:700;box-shadow:0 2px 6px #2b2b2840;border:2px solid #fff}
+.iter-pin b{transform:rotate(45deg)}
+.pin-d1{background:#e07a5f}.pin-d2{background:#e9b44c}.pin-d3{background:#3d8b8a}
+.pin-hotel{background:#c8903c}
+@keyframes pin-flash{0%{box-shadow:0 0 0 0 #1F6B5480}70%{box-shadow:0 0 0 16px #1F6B5400}100%{box-shadow:0 0 0 0 #1F6B5400}}
+.iter-pin.flash{animation:pin-flash 1.2s ease-out 2}
+.leaflet-container{font:inherit}
+/* ── 设计稿导航（演示用，非产品 UI）──────────────────── */
+.demo-nav{position:fixed;z-index:1200;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;background:#2B2B28e8;color:#fff;padding:7px 9px;border-radius:10px;font-size:12px;box-shadow:0 8px 24px #2b2b2840}
+.demo-nav button{background:transparent;border:0;color:#fff;padding:5px 9px;border-radius:6px}
+.demo-nav button:hover{background:#ffffff26}
+.demo-nav button[aria-pressed=true]{background:var(--moss)}
+.toast{position:fixed;z-index:1300;bottom:64px;left:50%;transform:translateX(-50%);background:#2b3542;color:#fff;padding:11px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px #17243b26}
+.toast[hidden]{display:none}
+@media(min-width:1024px) and (max-width:1439px){:root{--panel-w:340px}.topline,.tripbar,.daybar{padding-inline:24px}.doc-scroll{padding-inline:24px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topline">
+    <button class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12Z M12 7v4"/></svg>IterTrip</button>
+    <span class="crumb">行程规划 <span>/</span> 成都</span>
+    <div class="top-right">
+      <span class="demo-pill">方向稿 · 三栏工作台（非产品 UI）</span>
+      <button class="btn" id="undo-btn" disabled>↶ 撤销</button>
+      <button class="btn primary" id="ai-btn" aria-pressed="true">✦ AI 调整行程</button>
+      <button class="btn">导出</button>
+    </div>
+  </div>
+  <div class="tripbar">
+    <div class="trip-title"><h1>成都跨年 3 日</h1><div class="trip-meta"><span>2026 年 12 月 31 日 – 2027 年 1 月 2 日</span><span>· 1 天 2 夜演示（3 天行程）</span></div></div>
+  </div>
+</header>
+<nav class="daybar" aria-label="选择行程日期">
+  <button aria-pressed="true" data-day="0"><strong>D1</strong><span>12.31</span><small>周四</small></button>
+  <button aria-pressed="false" data-day="1"><strong>D2</strong><span>01.01</span><small>周五</small></button>
+  <button aria-pressed="false" data-day="2"><strong>D3</strong><span>01.02</span><small>周六</small></button>
+</nav>
+<main>
+  <section class="doc" aria-label="当天行程">
+    <div class="doc-scroll" id="doc"></div>
+    <footer><button class="add">＋ 添加地点</button></footer>
+  </section>
+  <div class="divider" id="div-doc" role="separator" aria-label="调整行程与地图宽度" tabindex="0"></div>
+  <section class="mapcol" aria-label="行程地图">
+    <div id="map"></div>
+    <div class="map-caption" id="map-cap">D1 · 地点顺序 <span>连线不代表实际道路</span></div>
+    <div class="map-legend"><span><i class="pin-d1" style="display:inline-block"></i>D1</span><span><i class="pin-d2" style="display:inline-block"></i>D2</span><span><i class="pin-hotel" style="display:inline-block"></i>酒店</span></div>
+  </section>
+  <div class="divider" id="div-panel" role="separator" aria-label="调整工作面板宽度" tabindex="0"></div>
+  <aside class="panel" id="panel" aria-label="工作面板">
+    <header><h2 id="panel-title">让 AI 调整</h2><button class="btn" id="panel-close">收起面板</button></header>
+    <div class="panel-body">
+      <div class="slot" id="slot-ai">
+        <div class="chat">
+          <div class="msg user">第一天太赶了，把跨年倒计时挪到第二天吧，跨完年好好休息。</div>
+          <div class="msg ai">看了一遍第一天的安排：倒计时活动在 23:30 之后，挪到 D2 会更从容。改了 1 处，请先看预览：</div>
+          <div class="trace"><b>决策过程</b><li>读取当前行程（D1 · 4 处 + 酒店）</li><li>校验排程约束：无固定预约，可移动</li><li>生成候选 1 条，待你确认</li></div>
+          <div class="proposal" id="proposal">
+            <h3>变更预览 · 1 条</h3>
+            <ul><li>「春熙路跨年倒计时」D1 → D2（当天新增，顺序可再拖）</li></ul>
+            <div class="proposal-actions"><button class="btn primary" id="apply-btn">应用到行程</button><button class="btn">放弃</button></div>
+          </div>
+          <div class="applied" id="applied" hidden>已应用到行程 · 可撤销。地图已更新。</div>
+          <div class="chat-input"><textarea aria-label="继续对话">再帮我看看第二天的节奏。</textarea><button class="btn">发送</button></div>
+        </div>
+      </div>
+      <div class="slot" id="slot-detail" hidden>
+        <div class="detail">
+          <h3 id="detail-name">春熙路 &amp; IFS国际金融中心</h3>
+          <span class="badge">高德核验 · high</span><span class="badge gold">attraction</span>
+          <dl>
+            <dt>攻略备注</dt><dd id="detail-note">逛街与打卡熊猫雕塑，楼顶可远眺；跨年夜人流极大，注意随身物品。</dd>
+            <dt>门票 / 时间</dt><dd id="detail-ticket">免费 · 全天开放（跨年活动时段以现场为准）</dd>
+            <dt>坐标</dt><dd class="mono" id="detail-coord">30.6574, 104.0817</dd>
+          </dl>
+          <div class="detail-actions"><button class="btn">🔍 按名称重新定位</button><button class="btn">🗺 更改位置</button><button class="btn">✎ 编辑地点</button></div>
+        </div>
+      </div>
+      <div class="slot" id="slot-leg" hidden>
+        <div class="compare">
+          <p class="small">春熙路 &amp; IFS国际金融中心 → 成都远洋太古里 &amp; 大慈寺 · 查询于演示数据</p>
+          <button class="mode selected"><strong>🚶 步行</strong><span class="mono">约 6 分钟 · 0.5 km</span></button>
+          <button class="mode"><strong>🚌 公交</strong><span class="mono">约 9 分钟 · 含等待</span></button>
+          <button class="mode"><strong>🚗 驾车</strong><span class="mono">约 5 分钟 · 停车不便</span></button>
+          <p class="small">切换方式会重算当天时间推算；额外缓冲可在「当天安排」里设。</p>
+        </div>
+      </div>
+      <div class="slot" id="slot-sched" hidden>
+        <div class="sched">
+          <p class="small">🕘 当天时间 · 2026-12-31 · 待评估（13 项信息不全）</p>
+          <div class="sched-grid">
+            <div><label for="t-start">首站开始</label><input id="t-start" type="time"></div>
+            <div><label for="t-end">当天结束</label><input id="t-end" type="time"></div>
+          </div>
+          <p class="small">时间均为目的地当地时间。开始 = 到达首站的时刻，不含前往首站的交通。</p>
+          <div class="kv"><span>交通</span><b>待查 · 共 4 段</b></div>
+          <div class="kv"><span>额外缓冲</span><b>0 分钟</b></div>
+          <p class="small">交通耗时为查询时估算，未来时段可能变化。查询由你主动触发。</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+</main>
+<nav class="demo-nav" aria-label="设计稿状态导航">
+  <span style="opacity:.7;padding:5px 4px">设计稿导航：</span>
+  <button data-slot="ai" aria-pressed="true">AI 对话</button>
+  <button data-slot="detail">地点详情</button>
+  <button data-slot="leg">交通比较</button>
+  <button data-slot="sched">当天安排</button>
+  <button id="collapse-btn">收起面板</button>
+  <button id="reset-btn">重置布局</button>
+</nav>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ── 演示数据（真实 GCJ-02 近似坐标；与用户当前行程同源）── */
+const DAYS=[
+ {theme:'抵达成都 · 春熙路商圈跨年夜',date:'12.31',week:'周四',places:[
+   {id:'p1',name:'春熙路 & IFS国际金融中心',ll:[30.6574,104.0817],note:'逛街与打卡熊猫雕塑，楼顶可远眺；跨年夜人流极大，注意随身物品。',ticket:'免费 · 全天开放（跨年活动时段以现场为准）'},
+   {id:'p2',name:'成都远洋太古里 & 大慈寺',ll:[30.6548,104.0826]},
+   {id:'p3',name:'太古里周边火锅晚餐',ll:[30.6539,104.0831]},
+   {id:'applied-out',name:'春熙路跨年倒计时',ll:[30.6563,104.0812],applied:true}],
+  hotel:{id:'h1',name:'春熙路/太古里一带连锁酒店（全季、亚朵等）',ll:[30.6590,104.0790]}},
+ {theme:'熊猫与老成都',date:'01.01',week:'周五',places:[
+   {id:'p5',name:'大熊猫繁育研究基地',ll:[30.7390,104.1450]},
+   {id:'p6',name:'文殊院',ll:[30.6768,104.0747]},
+   {id:'p7',name:'宽窄巷子',ll:[30.6633,104.0535]},
+   {id:'p4',name:'春熙路跨年倒计时',ll:[30.6563,104.0812],moved:true}],
+  hotel:{id:'h1',name:'春熙路/太古里一带连锁酒店（全季、亚朵等）',ll:[30.6590,104.0790]}},
+ {theme:'返程与拾遗',date:'01.02',week:'周六',places:[{id:'p8',name:'人民公园 · 鹤鸣茶社',ll:[30.6578,104.0568]}],hotel:null}
+];
+const SLOT_TITLE={ai:'让 AI 调整',detail:'地点详情',leg:'交通方式比较',sched:'当天安排'};
+const state={day:0,slot:'ai',sel:'p1',applied:false};
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+
+/* ── 地图（正式版同源公开瓦片；失败时保留底色不阻塞布局评估）── */
+let map,layers=[],mapInited=false;
+function initMap(){
+  if(mapInited||!window.L)return;
+  mapInited=true;
+  map=L.map('map',{zoomControl:false,attributionControl:false}).setView([30.6578,104.0793],15);
+  L.control.zoom({position:'topright'}).addTo(map);
+  L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',{subdomains:'1234',maxZoom:18}).addTo(map);
+  DAYS.forEach((_,di)=>{const g=L.layerGroup();layers.push(g);});
+  drawPins(0);
+}
+function pinHtml(kind,text,extra){return `<div class="iter-pin pin-${kind} ${extra||''}"><b>${text}</b></div>`;}
+function drawPins(di,flashId){
+  if(!map)return;
+  layers.forEach(g=>{ if(map.hasLayer(g)) map.removeLayer(g); });
+  const day=DAYS[di], g=layers[di];
+  const shown=day.places.filter(p=>!(p.moved&&!state.applied));
+  shown.forEach((p,pi)=>{
+    const m=L.marker(p.ll,{icon:L.divIcon({html:pinHtml('d'+(di+1),pi+1,p.id===flashId?'flash':''),className:'',iconSize:[26,26],iconAnchor:[13,26]}),keyboard:false}).addTo(g);
+    m.on('click',()=>{select(p.id);});
+    m.bindTooltip(p.name,{direction:'top',offset:[0,-24]});
+  });
+  if(day.hotel) L.marker(day.hotel.ll,{icon:L.divIcon({html:pinHtml('hotel','宿',''),className:'',iconSize:[26,26],iconAnchor:[13,26]}),keyboard:false}).addTo(g).bindTooltip(day.hotel.name,{direction:'top'});
+  g.addTo(map);
+  const pts=[...shown.map(p=>p.ll),...(day.hotel?[day.hotel.ll]:[])];
+  if(pts.length>1) L.polyline(pts,{color:di?'#e9b44c':'#e07a5f',weight:2,dashArray:'5 6',opacity:.75}).addTo(g);
+  map.fitBounds(L.latLngBounds(pts).pad(0.25));
+  $('#map-cap').innerHTML=`D${di+1} · 地点顺序 <span>连线不代表实际道路</span>`;
+}
+
+/* ── 行程文档（沿用已上线的安静口径）────────────────── */
+function renderDoc(){
+  const di=state.day, day=DAYS[di];
+  const rows=day.places.filter(p=>!(p.applied&&state.applied)&&!(p.moved&&!state.applied));
+  const html=`<div class="day-heading"><div><p>DAY 0${di+1} · 2026-${day.date}</p><h2>${day.theme}</h2></div><div><button class="textbtn" data-open="sched">安排与交通</button></div></div>
+  <div class="dw-visits">${rows.map((p,pi)=>`
+    ${pi>0?'<button class="leg" data-leg><span class="leg-line"></span><span>步行</span><span class="leg-action">查看与查询 →</span></button>':''}
+    <article class="visit ${state.sel===p.id?'selected':''}"><button class="visit-select" data-place="${p.id}">
+      <span class="dw-time">${p.moved&&state.applied?`<time>10:00</time><small>11:30 离开</small>`:''}</span>
+      <span class="number">${pi+1}</span>
+      <span class="visit-main"><strong>${p.name}</strong>${p.moved&&state.applied?`<small>从 D1 移入 · AI 应用</small>`:''}</span>
+      <span class="chev">›</span></button></article>`).join('')}
+    ${day.hotel?`<button class="hotel" data-place="${day.hotel.id}"><span class="visit-main" style="flex:1"><strong>${day.hotel.name}</strong><small>当天住宿 · 查看酒店与报价</small></span></button>`:''}
+  </div>
+  ${di===0?'<details class="notes"><summary>攻略与 AI 综合建议</summary><ul><li>跨年夜春熙路/太古里一带极度拥挤，地铁末班后打车困难，建议住宿步行可达。</li><li>火锅晚餐建议 17:30 前到店取号。</li></ul></details>':''}`;
+  $('#doc').innerHTML=html;
+  $$('#doc [data-place]').forEach(b=>b.addEventListener('click',()=>{select(b.dataset.place);}));
+  $$('#doc [data-leg]').forEach(b=>b.addEventListener('click',()=>openSlot('leg')));
+  $$('#doc [data-open]').forEach(b=>b.addEventListener('click',()=>openSlot('sched')));
+}
+function select(id){
+  state.sel=id;
+  const di=state.day, all=[...DAYS[di].places,...(DAYS[di].hotel?[DAYS[di].hotel]:[])];
+  const p=all.find(x=>x.id===id); if(!p) return;
+  const meta=p.ticket||'（演示数据）门票/时间字段将显示在这里。';
+  $('#detail-name').textContent=p.name;
+  $('#detail-note').textContent=p.note||'（演示数据）攻略备注将显示在这里。';
+  $('#detail-ticket').textContent=meta;
+  $('#detail-coord').textContent=p.ll[0].toFixed(4)+', '+p.ll[1].toFixed(4);
+  renderDoc(); openSlot('detail');
+}
+function openSlot(slot){
+  state.slot=slot;
+  $('#panel').hidden=false; $('#div-panel').hidden=false;
+  $('#panel-title').textContent=SLOT_TITLE[slot];
+  ['ai','detail','leg','sched'].forEach(s=>$('#slot-'+s).hidden=s!==slot);
+  $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.slot===slot));
+  $('#ai-btn').setAttribute('aria-pressed',slot==='ai');
+  setTimeout(()=>map&&map.invalidateSize(),60);
+}
+function collapse(){
+  state.slot=null; $('#panel').hidden=true; $('#div-panel').hidden=true;
+  $$('.demo-nav [data-slot]').forEach(b=>b.setAttribute('aria-pressed','false'));
+  $('#ai-btn').setAttribute('aria-pressed','false');
+  setTimeout(()=>map&&map.invalidateSize(),60);
+}
+
+/* ── AI 应用演示：改行程 → 行程与地图同时可见 ────────── */
+function apply(){
+  state.applied=true; $('#proposal').hidden=true; $('#applied').hidden=false;
+  $('#undo-btn').disabled=false;
+  renderDoc(); drawPins(1,'p4');
+  showToast('已应用到行程 · 可撤销 · 地图已切到 D2');
+}
+function undo(){
+  state.applied=false; $('#proposal').hidden=false; $('#applied').hidden=true;
+  $('#undo-btn').disabled=true; renderDoc(); drawPins(state.day);
+  showToast('已撤销');
+}
+let toastTimer=null;
+function showToast(t){const el=$('#toast');el.textContent=t;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,2600);}
+
+/* ── 分割线拖拽（行程↔地图、地图↔面板）─────────────── */
+function dragDivider(el,onMove){
+  let lastX=0;
+  const start=e=>{e.preventDefault();el.classList.add('on');lastX=e.clientX;
+    const move=ev=>{lastX=ev.clientX;onMove(ev);};
+    const up=()=>{el.classList.remove('on');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);};
+  el.addEventListener('mousedown',start);
+  el.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();onMove({clientX:lastX+(e.key==='ArrowRight'?24:-24)});}
+  });
+}
+function bindDividers(){
+  dragDivider($('#div-doc'),ev=>{
+    const main=$('main').getBoundingClientRect();
+    const maxPct=58,minPct=28;
+    const avail=main.width-($('#panel').hidden?0:$('#panel').offsetWidth)-12;
+    let pct=(ev.clientX-main.left)/avail*100;
+    pct=Math.max(minPct,Math.min(maxPct,pct));
+    document.documentElement.style.setProperty('--doc-w',pct);
+    localStorage.setItem('demo:docW',String(pct));
+    setTimeout(()=>map&&map.invalidateSize(),60);
+  });
+  dragDivider($('#div-panel'),ev=>{
+    const main=$('main').getBoundingClientRect();
+    let w=main.right-ev.clientX;
+    w=Math.max(320,Math.min(480,w));
+    document.documentElement.style.setProperty('--panel-w',w+'px');
+    setTimeout(()=>map&&map.invalidateSize(),60);
+  });
+}
+
+/* ── 接线 ─────────────────────────────────────────── */
+$$('.daybar button').forEach(b=>b.addEventListener('click',()=>{
+  $$('.daybar button').forEach(x=>x.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  state.day=Number(b.dataset.day); state.sel=DAYS[state.day].places[0]?.id||null;
+  renderDoc(); drawPins(state.day);
+}));
+$('#ai-btn').addEventListener('click',()=>openSlot('ai'));
+$('#panel-close').addEventListener('click',collapse);
+$('#apply-btn').addEventListener('click',apply);
+$('#undo-btn').addEventListener('click',undo);
+$$('.demo-nav [data-slot]').forEach(b=>b.addEventListener('click',()=>openSlot(b.dataset.slot)));
+$('#collapse-btn').addEventListener('click',collapse);
+$('#reset-btn').addEventListener('click',()=>{localStorage.removeItem('demo:docW');document.documentElement.style.setProperty('--doc-w',40);openSlot('ai');});
+const savedW=parseFloat(localStorage.getItem('demo:docW'));
+if(savedW>=28&&savedW<=58)document.documentElement.style.setProperty('--doc-w',savedW);
+renderDoc(); bindDividers(); initMap();
+window.addEventListener('load',()=>initMap());
+</script>
+</body>
+</html>

@@ -1,11 +1,12 @@
 # itertrip
 
 status: 进行中
-next: M35 Agent 强化第一轮已收工（知识点地图 + 注入防御统一 + 小白讲解页）；下一步候选 M36 legacy 收敛 / M37 LLM-as-judge 评估 / MCP / CI，等用户挑方向；真机回归与盲审 4 条继续挂起
+next: 桌面三栏方向稿（docs/design/desktop/research-2026-11/）等用户评估；M35 已收工（知识点地图 + 注入防御统一 + 小白讲解页）；下一步候选 M36 legacy 收敛 / M37 LLM-as-judge 评估 / MCP / CI，等用户挑方向；真机回归与盲审 4 条继续挂起
 updated: 2026-11-15
 
 ## 待办
 
+- [ ] 桌面三栏改版（行程｜地图｜工作面板，用户指认布局别扭）：方向稿与 5 条评估问题已出（docs/design/desktop/research-2026-11/three-column-direction.md），确认后实施；断言翻转清单见方向稿 §5
 - [ ] M36：legacy 改路线收敛到 propose_edits（+4 op：set_price/set_hotel/update_note/fix_coord，下线 M22 兜底 ~200 行，方案见 docs/AGENT_CODEX_CLAUDE_PROPOSAL.md ①）
 - [ ] M37 候选（等用户挑）：LLM-as-judge 提取质量评估（golden 集 + rubric，opt-in 用真 key）／MCP 工具暴露（手写最小 stdio 子集，零新依赖）／GitHub Actions CI（确定性检查 + tsc/build）
 - [ ] M32/M33 真机人工回归（iOS Safari / 实体 iPad），补记到 docs/M32_PLAN_COMPACT.md §5 与 docs/M33_UI_DECLUTTER.md §5
@@ -92,6 +93,7 @@ updated: 2026-11-15
 
 ## 工作留痕
 
+- 2026-11-15 · ZCode：桌面布局诊断（右侧 42% 交换槽 = 三条别扭的共同根因）→ 用户选「设计稿先行」→ 产出三栏方向稿 three-column-workspace.html（真实瓦片+GCJ-02 坐标、两条可拖分割线、四槽切换、AI 应用变更演示）+ three-column-direction.md；CDP 自验 1440/1024（修掉 --panel-w 裸数字导致 width 无效的 bug、首行 leg/酒店边框/缩放位保真）；待用户回答评估问题后实施。
 - 2026-11-15 · ZCode：M38 第二批（用户指认）= 未安排日程默认安静（DayItinerary arranged 条件渲染 + 占位收敛 + m31-dom 加未安排白天回归 + DESIGN.md §9 规则）；验证 tsc/build/m25–m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 前后对比探针；顺带讲解 M27「有据才算」排程机制。用户方向：界面简洁优先，暂不完善的效果先不拿出来。
 - 2026-11-15 · ZCode：M38 第一批 = 盲审 4 条清偿（bee297b 入口语义+图例 → f987a62 输入卡+状态条措辞）；验证 tsc/build/mobile-shot/m25–m31/desktop-a/chat-stream 全绿 + 逐截图目检；M33 doc §8 记录。用户方向：前端好用度优先，M36/M37 挂起。
 - 2026-11-15 · ZCode：M35 第一轮（81fb9d9 讲解页 → 2713675 重复消息修复 → 49a97c3 知识点地图 → 141ef36 注入防御统一 + AGENTS v1.15/TASKS）；验证如摘要；真模型评估与真机回归未做。
