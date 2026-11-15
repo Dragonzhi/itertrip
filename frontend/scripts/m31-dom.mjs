@@ -31,7 +31,7 @@ assert.ok(document.querySelector('[data-testid=desktop-workspace]'));assert.equa
 const itinerary=()=>document.querySelector('[data-testid=desktop-itinerary]');
 const mapNode=document.querySelector('.dw-map .leaflet-container');assert.ok(mapNode);
 assert.equal(document.querySelector('.dw-body').children.length,2,'itinerary and one supporting column');
-assert.ok(itinerary().textContent.includes('耗时未知'));assert.ok(itinerary().textContent.includes('项冲突'));
+assert.ok(itinerary().textContent.includes('耗时未知'));assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
 assert.equal(itinerary().textContent.includes('完整攻略备注'),false,'notes are contextual');
 await click(document.querySelector('[data-testid=place-name]'));
 const detail=()=>document.querySelector('.dw-inspector');

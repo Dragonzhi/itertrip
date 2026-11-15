@@ -18,11 +18,12 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   return <div className="dw-day">
     <div className="dw-day-heading"><div><p>DAY {String(day.day||di+1).padStart(2,'0')} · {result.date||'日期待确认'}</p><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2></div>{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div>
     {/* M33：原 dw-summary 四格（默认全是「未知/未评估」）+ 重复的「当天时间与交通设置」按钮
-        收成一行 —— 数字仍可一眼扫到，逐项细节走二级的当天安排与交通面板。 */}
+        收成一行 —— 数字仍可一眼扫到，逐项细节走二级的当天安排与交通面板。
+        M38 措辞人话化：不再说「未知」，改为说明缺什么、怎么补（诚实口径不变）。 */}
     <button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>
-      <span>预计 <strong>{day.schedule?.start||'开始未知'}–{schedule.fmt(result.end)}</strong></span>
-      <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'未知'}</strong><small>{traffic.known}/{traffic.total} 段 · 缓冲 {traffic.buffer} 分钟</small></span>
-      <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 项冲突`:result.label}</strong>{result.unknown.length>0&&!result.label.includes('未评估')&&<small> · {result.unknown.length} 项未评估</small>}</span>
+      <span>时间 <strong>{day.schedule?.start?(result.end?`${day.schedule.start}–${schedule.fmt(result.end)}`:`${day.schedule.start} 起`):'未定'}</strong>{!day.schedule?.start&&<small> · 补开始时刻后自动推算</small>}</span>
+      <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'待查'}</strong><small>{traffic.known?`${traffic.known}/${traffic.total} 段 · 缓冲 ${traffic.buffer} 分钟`:`共 ${traffic.total} 段`}</small></span>
+      <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 处时间冲突`:result.unknown.length?'待评估':'预计可行'}</strong><small>{result.issues.length?'':result.unknown.length?` · ${result.unknown.length} 项信息不全`:' · 交通为查询时估算'}</small></span>
       <span className="dw-statusline-action">安排与交通 →</span>
     </button>
     <div className="dw-visits" onDragOver={e=>{if(drag.current)e.preventDefault();}} onDrop={e=>drop(e,day.places.length)}>

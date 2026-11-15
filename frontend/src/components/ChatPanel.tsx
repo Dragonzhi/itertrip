@@ -457,7 +457,9 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
           </div>
         )}
       </div>
-      <form onSubmit={submit} className="border-t border-line bg-white p-2.5">
+      {/* M38：输入带从「全出血白条 + border-t 硬接缝」改为浮起的圆角卡片——
+          首页米底上不再是生硬的分界线，规划页抽屉内也构成独立的输入卡。 */}
+      <form onSubmit={submit} className="m-2.5 mt-1.5 rounded-[14px] border border-line bg-white p-2.5 shadow-sm">
         {(pendingImages.length > 0 || imgError) && (
           <div className="flex items-center gap-2 flex-wrap mb-2" data-testid="pending-images">
             {pendingImages.map((src, i) => (
