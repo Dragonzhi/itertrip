@@ -6,7 +6,7 @@ updated: 2026-11-15
 
 ## 待办
 
-- [ ] 桌面三栏改版（行程｜地图｜工作面板，用户指认布局别扭）：方向稿与 5 条评估问题已出（docs/design/desktop/research-2026-11/three-column-direction.md），确认后实施；断言翻转清单见方向稿 §5
+- [ ] 桌面三栏改版（行程｜地图｜工作面板，用户指认布局别扭）：方向稿已出且用户初评「确实更好」；「大脑门」纠正已定（顶栏一行化，DESIGN.md §9 已写入）；余 4 条评估问题见方向稿 §4，确认后与顶栏收敛一起实施
 - [ ] M36：legacy 改路线收敛到 propose_edits（+4 op：set_price/set_hotel/update_note/fix_coord，下线 M22 兜底 ~200 行，方案见 docs/AGENT_CODEX_CLAUDE_PROPOSAL.md ①）
 - [ ] M37 候选（等用户挑）：LLM-as-judge 提取质量评估（golden 集 + rubric，opt-in 用真 key）／MCP 工具暴露（手写最小 stdio 子集，零新依赖）／GitHub Actions CI（确定性检查 + tsc/build）
 - [ ] M32/M33 真机人工回归（iOS Safari / 实体 iPad），补记到 docs/M32_PLAN_COMPACT.md §5 与 docs/M33_UI_DECLUTTER.md §5

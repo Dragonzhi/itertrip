@@ -6,6 +6,9 @@
 边界：地图瓦片与正式产品同源（高德公开瓦片，无 key），坐标为真实 GCJ-02 近似值；
 AI 对话/变更预览为固定演示脚本，不调用模型或任何数据接口；<1024 紧凑态不在本稿范围；
 不改正式前端。刷新恢复初稿（分割线比例存 localStorage 仅用于手感测试）。
+纠正记录（2026-11-15，用户）：「上面这个大脑门我一直不是很喜欢」——行程名+日期的
+104px 横幅（.tripbar，正式版同样存在）取消，行程名/日期芯片/天数并入顶栏一行；
+面包屑「行程规划 / 成都」同删（品牌点击即返回首页，目的地在行程名与地图中）。
 -->
 <!doctype html>
 <html lang="zh-CN">
@@ -23,22 +26,19 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus
 button:disabled{cursor:default;opacity:.45}
 .mono{font-variant-numeric:tabular-nums}
 .small{font-size:12px;color:var(--muted)}
-/* ── 顶栏（沿用正式版结构）────────────────────────────── */
+/* ── 顶栏（用户纠正「大脑门」：行程名与元信息并入顶栏一行，不做大标题横幅）── */
 .topbar{background:var(--bg);border-bottom:1px solid var(--line)}
-.topline{min-height:48px;display:flex;align-items:center;gap:28px;padding:0 40px}
+.topline{min-height:52px;display:flex;align-items:center;gap:20px;padding:0 40px}
 .brand{display:flex;align-items:center;gap:8px;color:var(--moss);font-size:20px;font-weight:750;background:transparent;border:0;padding:0}
 .brand svg{width:24px;height:24px}
-.crumb{color:var(--muted);font-size:12px}
-.crumb span{padding:0 12px}
+.trip-inline{display:flex;align-items:center;gap:12px;min-width:0}
+.trip-inline h1{font-size:16px;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.date-chip{border:1px solid var(--line);border-radius:6px;padding:3px 9px;font-size:12px;background:#fff;white-space:nowrap}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
 .demo-pill{font-size:12px;color:var(--muted);border:1px dashed var(--line);padding:4px 9px;border-radius:4px;margin-right:10px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:8px 12px;min-height:36px;white-space:nowrap}
 .btn.primary{background:var(--moss);border-color:var(--moss);color:#fff}
 .btn.primary[aria-pressed=true]{background:#175740}
-.tripbar{min-height:104px;display:flex;align-items:center;gap:24px;padding:18px 40px}
-.trip-title{flex:1;min-width:0}
-.trip-title h1{font-size:28px;font-weight:700;line-height:1.3;margin:0 0 8px}
-.trip-meta{display:flex;align-items:center;gap:16px;color:var(--muted);font-size:12px;flex-wrap:wrap}
 /* ── 日期带 ─────────────────────────────────────────── */
 .daybar{display:flex;align-items:stretch;min-height:56px;padding:0 40px;border-block:1px solid var(--line);background:#fff;overflow-x:auto}
 .daybar button{flex:0 0 auto;display:flex;align-items:center;gap:12px;min-width:140px;padding:14px 24px;text-align:left;border-bottom:3px solid transparent;background:0;border:0;color:var(--muted)}
@@ -47,7 +47,7 @@ button:disabled{cursor:default;opacity:.45}
 .daybar small{font-size:12px}
 .daybar button[aria-pressed=true]{border-bottom-color:var(--moss);background:#E3EFE860;color:var(--moss)}
 /* ── 三栏主体 ───────────────────────────────────────── */
-main{display:flex;height:calc(100dvh - 219px);min-height:420px}
+main{display:flex;height:calc(100dvh - 111px);min-height:420px}
 .doc{width:calc(var(--doc-w) * 1%);min-width:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line)}
 .doc-scroll{flex:1;min-height:0;overflow-y:auto;padding:24px 40px;scrollbar-gutter:stable}
 .doc>footer{display:flex;align-items:center;padding:12px 40px;border-top:1px solid var(--line);background:#fff}
@@ -148,7 +148,7 @@ main{display:flex;height:calc(100dvh - 219px);min-height:420px}
 .demo-nav button[aria-pressed=true]{background:var(--moss)}
 .toast{position:fixed;z-index:1300;bottom:64px;left:50%;transform:translateX(-50%);background:#2b3542;color:#fff;padding:11px 18px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px #17243b26}
 .toast[hidden]{display:none}
-@media(min-width:1024px) and (max-width:1439px){:root{--panel-w:340px}.topline,.tripbar,.daybar{padding-inline:24px}.doc-scroll{padding-inline:24px}}
+@media(min-width:1024px) and (max-width:1439px){:root{--panel-w:340px}.topline,.daybar{padding-inline:24px}.doc-scroll{padding-inline:24px}.trip-inline .small{display:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -156,16 +156,17 @@ main{display:flex;height:calc(100dvh - 219px);min-height:420px}
 <header class="topbar">
   <div class="topline">
     <button class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12Z M12 7v4"/></svg>IterTrip</button>
-    <span class="crumb">行程规划 <span>/</span> 成都</span>
+    <div class="trip-inline">
+      <h1>成都跨年 3 日</h1>
+      <span class="date-chip mono">2026.12.31 – 2027.01.02</span>
+      <span class="small">3 天 · 2 人</span>
+    </div>
     <div class="top-right">
       <span class="demo-pill">方向稿 · 三栏工作台（非产品 UI）</span>
       <button class="btn" id="undo-btn" disabled>↶ 撤销</button>
       <button class="btn primary" id="ai-btn" aria-pressed="true">✦ AI 调整行程</button>
       <button class="btn">导出</button>
     </div>
-  </div>
-  <div class="tripbar">
-    <div class="trip-title"><h1>成都跨年 3 日</h1><div class="trip-meta"><span>2026 年 12 月 31 日 – 2027 年 1 月 2 日</span><span>· 1 天 2 夜演示（3 天行程）</span></div></div>
   </div>
 </header>
 <nav class="daybar" aria-label="选择行程日期">
