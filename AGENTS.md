@@ -480,6 +480,7 @@ M22 文本闭馆警告本地幂等重算；时间结果是派生值，不写成 
 | `itertrip:map` | 地图显示设置（M16，纯视图态） | 不写入 route/后端 |
 | `itertrip:tid` | 匿名档案 id（M18 记忆库 namespace） | `crypto.randomUUID()` 随机生成，不含身份信息；随 `X-Traveler-Id` 头发送 |
 | `itertrip:planchat` | 规划页 AI 抽屉对话（M19，含决策轨迹/变更清单/澄清问答状态） | 存 `{fp, msgs}`，`fp=标题\|目的地\|天数`：刷新恢复、换行程自动开新会话；剔除 route 快照，最近 30 条 |
+| `itertrip:plan-hint` | 🤖/🗺 圆钮一次性使用提示的已读标记（M38） | 置 1 后首访提示条不再显示；点任一入口或 ✕ 时写入 |
 
 ### 6.4 REST 端点一览
 

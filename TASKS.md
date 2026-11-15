@@ -10,7 +10,7 @@ updated: 2026-11-15
 - [ ] M37 候选（等用户挑）：LLM-as-judge 提取质量评估（golden 集 + rubric，opt-in 用真 key）／MCP 工具暴露（手写最小 stdio 子集，零新依赖）／GitHub Actions CI（确定性检查 + tsc/build）
 - [ ] M32/M33 真机人工回归（iOS Safari / 实体 iPad），补记到 docs/M32_PLAN_COMPACT.md §5 与 docs/M33_UI_DECLUTTER.md §5
 - [ ] docs/TODO.md 两条等反馈项：tid 可携带性、PING_ABORT_MS 自动中断策略
-- [ ] 盲审留档 4 条（等反馈）：桌面状态条措辞人话化、🤖/🗺 入口语义 + ⚙ 归排、双色地图标记图例、Chat 输入带接缝
+- [ ] M38 前端好用度冲刺·后续批次：用户真实使用一轮（配模型 → 贴攻略 → 改行程 → PWA → 导出），问题驱动修复；盲审 4 条已清（见已完成）
 
 ## 进行中
 
@@ -18,6 +18,7 @@ updated: 2026-11-15
 
 ## 已完成
 
+- [x] M38 前端好用度冲刺·第一批 = 盲审 4 条收尾债全清：①🤖/🗺 aria-label/expanded + 展开态反色 + 一次性提示条（itertrip:plan-hint）；②⚙ 紧凑态归排右下角 + 抽屉打开时隐藏；③地图 D1–D6 循环配色 + 金色酒店左下角图例（顺带修 >6 天 pin 无色小洞）；④桌面状态条措辞人话化（未定/待查/待评估 + 怎么补，诚实口径不变）；附带 Chat 输入带改浮起圆角输入卡（接缝观感）。bee297b + f987a62；tsc/build/mobile-shot 5 尺寸/m25–m31 DOM/desktop-a/chat-stream 24/24 全绿，逐截图目检（2026-11-15）
 - [x] M35 Agent 强化第一轮：两份代码审计（M30 工具循环 + 全仓 Agent 体系）→ 小白讲解页 agent-guide.html（10 成员 + 3 故事线 + 词典 13 条 + 体检表，随构建发布）；docs/AGENT_KNOWLEDGE_MAP.md 13 知识点映射（讲法/追问预案/诚实边界/刻意不做）；提示注入层次防御统一 —— agent_turn.DATA_NOT_INSTRUCTION 三处 SYSTEM 共用、chat.build_payload 统一组装 payload（攻略原文包裹/current_route 标注）、记忆参考头补声明、新增 backend/_check_injection.py（结构性防御，真模型鲁棒性留 M37）；顺带修首页对话当前消息重复进历史（2713675）与 AGENTS「8 轮→8 条」勘误；含走读问答沉淀（RAG/上下文管理/高德数据源）（49a97c3 + 141ef36，2026-11-15）
 - [x] M34 天气系统整体退役：后端 /api/route/weather + engine/weather + schema 四模型三字段 + agent query_weather 工具/路由词 + 导出渲染、shared/weather.js + agent 校验块 + protect 回拷、前端 WeatherPanel/lib.weather/☂入口/桌面天气行/安排编辑器室内外属性 + 类型字段、m29 两脚本退役（m30/m31/desktop-a/fixture-time 收缩）；strip_generated（agent_receipts 护栏）迁 agent_tools 保留；旧数据残留键由 pydantic extra=ignore 静默脱落（2026-11-08）
 - [x] M33 后续第三笔（用户指认）：空态删「📋 粘贴攻略」入口 —— 它就是 onChat() 开对话，与「开始对话」完全重复；两条提示文案收敛为一条（原「在下方粘贴」的下方是按钮行，悬空；「支持粘贴文字或上传攻略截图」与 ChatPanel 占位语重复）。a804e94；tsc/build/mobile-shot 5 尺寸/m28-dom 全绿（2026-11-14）
@@ -90,6 +91,7 @@ updated: 2026-11-15
 
 ## 工作留痕
 
+- 2026-11-15 · ZCode：M38 第一批 = 盲审 4 条清偿（bee297b 入口语义+图例 → f987a62 输入卡+状态条措辞）；验证 tsc/build/mobile-shot/m25–m31/desktop-a/chat-stream 全绿 + 逐截图目检；M33 doc §8 记录。用户方向：前端好用度优先，M36/M37 挂起。
 - 2026-11-15 · ZCode：M35 第一轮（81fb9d9 讲解页 → 2713675 重复消息修复 → 49a97c3 知识点地图 → 141ef36 注入防御统一 + AGENTS v1.15/TASKS）；验证如摘要；真模型评估与真机回归未做。
 - 2026-11-14 · ZCode：M33 后续第三笔，空态删「📋 粘贴攻略」（a804e94，与「开始对话」同 onClick 纯重复）；验证 tsc/build/mobile-shot 5 尺寸/m28-dom 全绿；真机回归未做。
 - 2026-11-08 · ZCode：M34 天气退役（a2ced36 后端 → 317bc84 shared → 11b7418 前端 → 8fd8750 脚本 → 6fec6c3 文档，AGENTS v1.14）；验证：venv `_check_m25/m26/m27/m28/m30` 全过（m30 收缩后 9 场景）、backend import OK、tsc/build、mobile-shot 5 尺寸、m25–m31 DOM（m29 退役）、desktop-a、chat-stream 24/24、导出 fixture 零天气、全仓 grep 仅剩历史文档与墓碑注；真机回归未做。
