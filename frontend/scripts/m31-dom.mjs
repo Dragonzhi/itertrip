@@ -42,6 +42,10 @@ assert.equal(document.querySelector('.dw-statusline'),null,'未安排的天不�
 assert.equal(itinerary().textContent.includes('停留时间未知'),false,'停留占位不再渲染');
 assert.equal(itinerary().textContent.includes('耗时未知'),false,'耗时占位不再渲染');
 assert.equal(itinerary().textContent.includes('未知'),false,'整行不应再出现「未知」字样');
+// 未安排的地点详情只留操作入口，不再摊开「未知 → 未知 / 未评估」清单
+await click(document.querySelector('[data-testid=place-name]'));
+assert.equal(document.querySelector('.dw-inspector').querySelector('[data-testid=schedule-visit]'),null,'未安排地点不渲染未评估清单');
+assert.equal(document.querySelector('.dw-inspector').textContent.includes('未知 → 未知'),false);
 await click(document.querySelectorAll('.dw-dayrail button')[0]);
 assert.equal(itinerary().textContent.includes('完整攻略备注'),false,'notes are contextual');
 await click(document.querySelector('[data-testid=place-name]'));

@@ -27,13 +27,30 @@ export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number;
 export function ScheduleVisit({point, row, onEdit}: {point: Place | Hotel; row?: ScheduleRow; onEdit?: () => void}) {
   if (!row) return null;
   const r = point.visit?.reservation;
+  // M38 口径：未安排不是错误 —— 没有停留时长／预约／开放资料／真实冲突时，不把「未知/未评估」清单摊给用户；
+  // 顶部的「安排／预约」就是入口。只有开始安排或出现真实冲突后才渲染摘要。
+  const arranged = !!(
+    point.visit?.duration_min != null || r || row.fixed || row.fact?.known ||
+    row.issues.length || row.suggestions.length || row.wait > 0 ||
+    point.visit?.required || point.visit?.locked || point.visit?.completed
+  );
+  if (!arranged) return null;
+  const time = row.start != null && row.departure != null ? `${schedule.fmt(row.start)} → ${schedule.fmt(row.departure)}`
+    : row.start != null ? `${schedule.fmt(row.start)} 起` : '';
+  const facts = [
+    row.arrival != null ? `预计 ${schedule.fmt(row.arrival)} 到达` : '',
+    row.wait > 0 ? `等待 ${row.wait} 分钟` : '',
+    point.visit?.duration_min != null ? `停留 ${point.visit.duration_min} 分钟（${point.visit.duration_source === 'user' ? '用户设置' : '估计'}）` : '',
+    row.fixed ? '🔒 固定／已完成' : '',
+    point.visit?.required ? '必去' : '',
+  ].filter(Boolean);
   return <section className="schedule-visit" data-testid="schedule-visit" onClick={e => e.stopPropagation()}>
-    <div className="flex justify-between items-center gap-2"><strong>{schedule.fmt(row.start)} → {schedule.fmt(row.departure)}</strong>{onEdit && <button className="nav-secondary" onClick={onEdit}>安排／预约</button>}</div>
-    <p>到达 {schedule.fmt(row.arrival)}{row.wait > 0 ? ` · 等待 ${row.wait} 分钟` : ''} · {point.visit?.duration_min == null ? row.hotel ? '酒店到达边界' : '停留未知' : `停留 ${point.visit.duration_min} 分钟（${point.visit.duration_source === 'user' ? '用户设置' : '估计'}）`}{row.fixed ? ' · 🔒 固定／已完成' : ''}{point.visit?.required ? ' · 必去' : ''}</p>
+    <div className="flex justify-between items-center gap-2"><strong>{time || '时间待定'}</strong>{onEdit && <button className="nav-secondary" onClick={onEdit}>安排／预约</button>}</div>
+    {facts.length > 0 && <p>{facts.join(' · ')}</p>}
     {r && <p>预约：{r.date || '日期未知'} {r.start}–{r.end} · {{needed: '待办理', pending: '待确认', confirmed: '用户记录已确认', cancelled: '已取消'}[r.status]}{schedule.url(r.url) && <a href={schedule.url(r.url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">打开提供的入口 ↗</a>}</p>}
     {row.fact?.known && row.fact.value && <p>开放资料：{row.fact.value.closed ? '当天关闭' : `${row.fact.value.open}–${row.fact.value.close}${row.fact.value.last_entry ? `，最后入场 ${row.fact.value.last_entry}` : ''}`} · 用户查阅后记录（{{official:'官方',map:'地图',user:'用户提供'}[row.fact.value.source_kind]}）<a href={schedule.url(row.fact.value.source_url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">来源 ↗</a><br/>查验 {row.fact.value.checked_at} · 有效 {row.fact.value.valid_from}–{row.fact.value.valid_to}</p>}
     {row.issues.map((text, i) => <p key={'i' + i} className="text-danger">⚠ {text}</p>)}
-    {row.unknown.map((text, i) => <p key={'u' + i} className="text-ink-soft">未评估：{text}</p>)}
+    {row.unknown.length > 0 && <p className="text-ink-soft">未评估：{row.unknown.join('；')}</p>}
     {row.suggestions.map((text, i) => <p key={'s' + i}>{text}</p>)}
   </section>;
 }
