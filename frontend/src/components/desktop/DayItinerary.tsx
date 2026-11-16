@@ -39,7 +39,7 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
     {arranged&&<button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>
       <span>时间 <strong>{day.schedule?.start?(result.end?`${day.schedule.start}–${schedule.fmt(result.end)}`:`${day.schedule.start} 起`):'未定'}</strong>{!day.schedule?.start&&<small> · 补开始时刻后自动推算</small>}</span>
       <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'待查'}</strong><small>{traffic.known?`${traffic.known}/${traffic.total} 段 · 缓冲 ${traffic.buffer} 分钟${traffic.approx?` · ${traffic.approx} 段估算`:''}`:`共 ${traffic.total} 段`}</small></span>
-      <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 处时间冲突`:result.unknown.length?'待评估':'预计可行'}</strong><small>{result.issues.length?'':result.unknown.length?` · ${result.unknown.length} 项信息不全`:' · 交通为查询时估算'}</small></span>
+      <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 处时间冲突`:result.unknown.length?'待评估':result.notes.length?'按到达估算':'预计可行'}</strong><small>{result.issues.length?'':result.unknown.length?` · ${result.unknown.length} 项信息不全`:result.notes.length?' · 开放资料未核对':' · 交通为查询时估算'}</small></span>
       <span className="dw-statusline-action">安排与交通 →</span>
     </button>}
     <div className="dw-visits" onDragOver={e=>{if(drag.current)e.preventDefault();}} onDrop={e=>drop(e,day.places.length)}>
