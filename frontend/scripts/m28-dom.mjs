@@ -69,7 +69,7 @@ const click = async el => { el.dispatchEvent(new w.MouseEvent('click', { bubbles
 const input = async (el, value) => { Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set.call(el, value); el.dispatchEvent(new w.Event('input', { bubbles: true })); await pause(); };
 assert.ok(text().includes('当前离线') && text().includes('应用文件已准备'));
 assert.ok(text().includes('预约') && text().includes('到北门集合'));
-assert.ok(text().includes('离线快照') && text().includes('不用于当前排程'));
+assert.ok(text().includes('离线快照') && text().includes('历史快照') && text().includes('出发前可刷新'));
 assert.equal(apiCalls.length, 0);
 await input(d.querySelector('[aria-label="第1天开始时间"]'), '09:00');
 assert.equal(saved().days[0].schedule.start, '09:00');

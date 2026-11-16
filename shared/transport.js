@@ -74,20 +74,21 @@
     const match = snapshot?.signature === sign(edge);
     const option = match && Array.isArray(snapshot.options) ? snapshot.options.find(o => o?.mode === mode) : null;
     const stale = !!option && (!!snapshot.refresh_error || !Number.isFinite(Date.parse(option.queried_at)) || Date.parse(option.queried_at) > Date.now() + 60_000 || Date.now() - Date.parse(option.queried_at) > 15 * 60 * 1000);
-    const known = usable(edge.from) && usable(edge.to) && !stale && option?.status === 'ok' && Number.isFinite(option.duration_s) && option.duration_s >= 0;
-    return { segment, mode, option, stale, known, approx: known && !!option?.approx };
+    // 历史快照仍是可用的计划估算：超过 15 分钟只做标注，不再阻止排程；刷新失败也保留上一次可用记录
+    const known = usable(edge.from) && usable(edge.to) && option?.status === 'ok' && Number.isFinite(option.duration_s) && option.duration_s >= 0;
+    return { segment, mode, option, stale, known, approx: known && !!option?.approx, historical: known && stale };
   }
   function summary(route, di) {
     const edges = legs(route, di);
-    let seconds = 0, walking = 0, fees = 0, known = 0, feeKnown = 0, walkKnown = 0, buffer = 0, approx = 0;
+    let seconds = 0, walking = 0, fees = 0, known = 0, feeKnown = 0, walkKnown = 0, buffer = 0, approx = 0, historical = 0;
     edges.forEach(e => {
       const s = selected(route.days[di], e); buffer += s.segment?.buffer_min || 0;
       if (!s.known) return;
-      known++; if (s.approx) approx++; seconds += s.option.duration_s;
+      known++; if (s.approx) approx++; if (s.historical) historical++; seconds += s.option.duration_s;
       if (Number.isFinite(s.option.walking_m) && s.option.walking_m >= 0) { walking += s.option.walking_m; walkKnown++; }
       if (Number.isFinite(s.option.fee_yuan) && s.option.fee_yuan >= 0) { fees += s.option.fee_yuan; feeKnown++; }
     });
-    return { total: edges.length, known, seconds, walking, walkKnown, fees, feeKnown, buffer, approx };
+    return { total: edges.length, known, seconds, walking, walkKnown, fees, feeKnown, buffer, approx, historical };
   }
   root.IterTripTransport = { normalize, legs, sign, selected, usable, summary, labels };
 })(globalThis);

@@ -18,15 +18,15 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   const leg=(edge:Edge)=>{
     const s=transport.selected(day,edge);
     const minutes=s.known?Math.ceil(s.option!.duration_s!/60):null;
-    const approx=s.known&&s.approx, label=transport.labels[s.mode];
+    const approx=s.known&&s.approx, historical=s.known&&s.historical, label=transport.labels[s.mode];
     // 默认方式耗时由规划页自动补全；未查到的段也只留一行安静文字，整行可点开比较（不再每段挂「查看与查询」）
     return <button key={`${edge.from.id}-${edge.to.id}`} className="dw-leg" data-testid="desktop-leg" title="查看与比较交通方式"
-      aria-label={`${label}${minutes!=null?`，约 ${minutes} 分钟`:'，交通待查'}${approx?'，按未核验坐标估算':''}${s.stale?'，历史快照':''}，查看与比较交通方式`}
+      aria-label={`${label}${minutes!=null?`，约 ${minutes} 分钟`:'，交通待查'}${approx?'，按未核验坐标估算':''}${historical?'，历史快照':''}，查看与比较交通方式`}
       onClick={()=>p.onLegSelect?.(edge)}>
       <span className="dw-leg-line"/>
       <span className="dw-leg-mode">{label}</span>
       <span className="dw-leg-sep" aria-hidden="true">·</span>
-      <span className={minutes!=null?'dw-leg-time':'dw-leg-time dw-leg-pending'}>{minutes!=null?`约 ${minutes} 分钟`:'待查'}{approx&&<small className="dw-leg-approx"> · 估算</small>}{s.stale?' · 历史快照':''}</span>
+      <span className={minutes!=null?'dw-leg-time':'dw-leg-time dw-leg-pending'}>{minutes!=null?`约 ${minutes} 分钟`:'待查'}{approx&&<small className="dw-leg-approx"> · 估算</small>}{historical&&<small className="dw-leg-approx"> · 历史</small>}</span>
       <span className="dw-leg-action" aria-hidden="true">›</span>
     </button>;
   };
