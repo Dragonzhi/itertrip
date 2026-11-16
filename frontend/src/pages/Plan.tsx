@@ -6,7 +6,7 @@ import OfflinePanel from '../components/OfflinePanel';
 import AgentPreview from '../components/AgentPreview';
 import {agent, type AgentProposal, type AgentCandidate, type AgentEvidence} from '../lib/agent';
 import { isOnline, useOffline } from '../lib/offline';
-import { transport } from '../lib/transport';
+import { transport, type Edge } from '../lib/transport';
 import { schedule } from '../lib/schedule';
 import { ScheduleEditor, type ScheduleActions } from '../components/ScheduleView';
 import type { TransportActions } from '../components/TransportView';
@@ -94,52 +94,72 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const [trafficBusy, setTrafficBusy] = useState(false);
   const [trafficMessage, setTrafficMessage] = useState('');
   const trafficAbort = useRef<AbortController | null>(null);
+  const trafficBusyRef = useRef(false);
   const trafficSeq = useRef(0);
+  const alive = useRef(true);
+  const routeLive = useRef(route);
+  useEffect(() => { routeLive.current = route; }, [route]);
   const [, refreshTrafficClock] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => refreshTrafficClock(n => n + 1), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  // 自动补全批次标记：批内自己写回快照会触发 route 变化，不能当成用户改路线去清 busy
+  const autoActive = useRef(false);
   useEffect(() => {
     trafficSeq.current++;
     if (trafficAbort.current && !trafficAbort.current.signal.aborted) setTrafficMessage('路线已变化，已取消旧交通查询；请按当前路线重新查询。');
     trafficAbort.current?.abort();
     trafficAbort.current = null;
-    setTrafficBusy(false);
+    if (!autoActive.current) setTrafficBusy(false);
   }, [route]);
   useEffect(() => () => { trafficSeq.current++; trafficAbort.current?.abort(); }, []);
-  const trafficActions: TransportActions = {
-    busy: trafficBusy,
-    changeDay: (di, patch) => mutate(r => Object.assign(r.days[di], patch)),
-    changeLeg: (di, edge, patch) => mutate(r => {
-      const segment = r.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
-      if (segment) Object.assign(segment, patch);
-    }),
-    query: (di, edge) => {
-      if (trafficBusy) return;
-      if (!isOnline()) { setTrafficMessage('当前离线，无法刷新交通；保留上次快照，手工设置方式与缓冲仍可用。'); return; }
-      const edges = edge ? [edge] : transport.legs(route, di).slice(0, 12);
-      if (!edges.length) return;
-      const controller = new AbortController(); trafficAbort.current = controller;
-      const seq = ++trafficSeq.current;
-      setTrafficBusy(true); setTrafficMessage('正在查询高德交通方案…');
-      void queryTransport(edges, controller.signal).then(result => {
-        if (seq !== trafficSeq.current) return;
-        trafficAbort.current = null;
-        mutate(draft => {
-          for (const e of edges) {
-            const segment = draft.days[di].transport?.find(s => s.from_id === e.from.id && s.to_id === e.to.id);
-            const snapshot = result.results.find(s => s.signature === transport.sign(e));
-            if (segment && snapshot) {
-              if (snapshot.options.some(o => o.status === 'ok') || !segment.snapshot) segment.snapshot = snapshot;
-              else segment.snapshot.refresh_error = snapshot.options[0]?.reason || '刷新未返回可用方案';
-            }
+  const runTraffic = useCallback((di: number, edges: Edge[], modes: Array<'walk' | 'bus' | 'car'>, auto: boolean, expected: RouteJSON): Promise<boolean> => {
+    if (trafficBusyRef.current) return Promise.resolve(false);
+    if (!isOnline()) {
+      if (!auto) setTrafficMessage('当前离线，无法刷新交通；保留上次快照，手工设置方式与缓冲仍可用。');
+      return Promise.resolve(false);
+    }
+    if (!edges.length) return Promise.resolve(false);
+    const controller = new AbortController();
+    const seq = ++trafficSeq.current;
+    trafficBusyRef.current = true;
+    setTrafficBusy(true);
+    if (!auto) {
+      trafficAbort.current = controller;
+      setTrafficMessage('正在查询高德交通方案…');
+    }
+    return queryTransport(edges, controller.signal, modes).then(result => {
+      // 手动查询沿用版本号保护（路线变化即作废）；自动补全靠 mutate(expected) 校验，
+      // 批内自己回写快照会触发 route 变化，不能把自己的下一段查询掐掉
+      if (!auto && seq !== trafficSeq.current) return false;
+      if (auto && !alive.current) return false;
+      if (!auto) trafficAbort.current = null;
+      mutate(draft => {
+        for (const e of edges) {
+          const segment = draft.days[di].transport?.find(s => s.from_id === e.from.id && s.to_id === e.to.id);
+          const snapshot = result.results.find(s => s.signature === transport.sign(e));
+          if (!segment || !snapshot) continue;
+          if (!snapshot.options.some(o => o.status === 'ok') && segment.snapshot) {
+            segment.snapshot.refresh_error = snapshot.options[0]?.reason || '刷新未返回可用方案';
+            continue;
           }
-        }, route);
+          if (!segment.snapshot || segment.snapshot.signature !== snapshot.signature) { segment.snapshot = snapshot; continue; }
+          // 自动补全只查当天默认方式：按方式合并，保留已查过的其他方式（各自带查询时间）
+          const options = new Map(segment.snapshot.options.map(o => [o.mode, o]));
+          for (const o of snapshot.options) options.set(o.mode, o);
+          segment.snapshot.options = [...options.values()];
+          delete segment.snapshot.refresh_error;
+        }
+      }, expected, { history: !auto });
+      if (!auto) {
         const incomplete = result.results.some(s => s.options.every(o => o.status !== 'ok'));
         setTrafficMessage(`交通查询返回：${result.stats.calls} 次请求，${result.stats.cache_hits} 次缓存命中${result.stats.reason ? ' · ' + result.stats.reason : ''}${incomplete ? '；部分交通未刷新，已有记录保留为快照。' : ''}`);
-      }).catch(e => {
-        if (seq === trafficSeq.current && !controller.signal.aborted) {
+      }
+      return true;
+    }).catch(e => {
+      if (seq === trafficSeq.current && !controller.signal.aborted) {
+        if (!auto) {
           trafficAbort.current = null;
           const reason = e instanceof Error ? e.message : '交通查询失败，耗时未知';
           // A failed refresh must not destroy the last usable travel record or advance its timestamp.
@@ -148,10 +168,88 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
               const snapshot = draft.days[di].transport?.find(s => s.from_id === e.from.id && s.to_id === e.to.id)?.snapshot;
               if (snapshot) snapshot.refresh_error = reason;
             }
-          }, route);
+          }, expected);
           setTrafficMessage(reason + '；未刷新，保留上次交通快照。');
         }
-      }).finally(() => { if (seq === trafficSeq.current) setTrafficBusy(false); });
+      }
+      return false;
+    }).finally(() => {
+      if (!auto) trafficAbort.current = null;
+      trafficBusyRef.current = false;
+      setTrafficBusy(false);
+    });
+  }, [mutate]);
+  // M38 后续 · 交通耗时自动补全：生成/导入的路线落地后按天后台补当天默认方式，
+  // 恢复的旧路线同样在进入时补齐；只补「还没有这种方式记录」的段，查过（含失败结果）不自动重试，避免循环与额度浪费。
+  // 不做全量三方式预取：三方式比较仍由用户点开交通段触发，默认方式只为时间线/当天汇总提供可信耗时。
+  const autoQueue = useRef<number[]>([]);
+  const autoTried = useRef<Set<string>>(new Set());
+  const autoRunning = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  const runAutoTraffic = useCallback(async () => {
+    if (autoRunning.current) return;
+    autoRunning.current = true;
+    autoActive.current = true;
+    try {
+      while (autoQueue.current.length && alive.current) {
+        const di = autoQueue.current.shift()!;
+        const current = routeLive.current;
+        const day = current.days[di];
+        if (!day) continue;
+        const mode = (day.traffic_mode || 'walk') as 'walk' | 'bus' | 'car';
+        const edges = transport.legs(current, di).filter(e => {
+          if (!transport.usable(e.from) || !transport.usable(e.to)) return false;
+          const signature = transport.sign(e);
+          if (autoTried.current.has(`${signature}|${mode}`)) return false;
+          const s = transport.selected(day, e);
+          const option = s.segment?.snapshot?.signature === signature ? s.segment.snapshot.options.find(o => o.mode === mode) : undefined;
+          return !option;
+        }).slice(0, 12);
+        if (!edges.length) continue;
+        if (!isOnline() || !alive.current) break;
+        // 手动查询优先：等它结束再补，避免两个快照互相覆盖；久等则留给下一次进入
+        for (let wait = 0; trafficBusyRef.current && wait < 120; wait++) await new Promise(r => setTimeout(r, 100));
+        if (trafficBusyRef.current) { autoQueue.current.unshift(di); break; }
+        const ok = await runTraffic(di, edges, [mode], true, current);
+        if (!ok) {
+          // 本次失败（网络/额度/限流）不反复重试；成功后快照已落盘（含未知结果），下次自然跳过
+          for (const e of edges) autoTried.current.add(`${transport.sign(e)}|${mode}`);
+          break;
+        }
+        await new Promise(r => setTimeout(r, 80));
+      }
+    } finally {
+      autoRunning.current = false;
+      autoActive.current = false;
+    }
+  }, [runTraffic]);
+  useEffect(() => {
+    // 延迟一拍再启动：StrictMode 开发态会挂载→卸载→重挂载，首拍的定时器会被清理，避免自动补全被半途打断
+    const timer = window.setTimeout(() => {
+      // 首次进入最多自动补 7 天；更长行程按当前天懒补（天数上限 30，不能一次打满）
+      const days = Array.from({ length: Math.min(route.days.length, 7) }, (_, i) => i);
+      for (const di of days) if (!autoQueue.current.includes(di)) autoQueue.current.push(di);
+      void runAutoTraffic();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const trafficActions: TransportActions = {
+    busy: trafficBusy,
+    changeDay: (di, patch) => mutate(r => Object.assign(r.days[di], patch)),
+    changeLeg: (di, edge, patch) => mutate(r => {
+      const segment = r.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
+      if (segment) Object.assign(segment, patch);
+    }),
+    query: (di, edge) => {
+      if (trafficBusyRef.current) return;
+      if (!isOnline()) { setTrafficMessage('当前离线，无法刷新交通；保留上次快照，手工设置方式与缓冲仍可用。'); return; }
+      const current = routeLive.current;
+      const edges = edge ? [edge] : transport.legs(current, di).slice(0, 12);
+      if (!edges.length) return;
+      void runTraffic(di, edges, ['walk', 'bus', 'car'], false, current);
     },
   };
   const [outing, setOutingState] = useState<OutingProgress>(() => loadProgress(tripSession));
@@ -405,6 +503,17 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   }, [activeKey]);
 
   const visibleDay=Math.max(0,Math.min(desktopDay,route.days.length-1));
+  const visibleMode=route.days[visibleDay]?.traffic_mode;
+  // 长行程（>7 天）首次不预取全部：切到哪一天就补哪一天；切换当天默认方式也补新方式
+  const lastAutoVisible = useRef(visibleDay);
+  const lastAutoMode = useRef(visibleMode);
+  useEffect(() => {
+    if (lastAutoVisible.current === visibleDay && lastAutoMode.current === visibleMode) return;
+    lastAutoVisible.current = visibleDay;
+    lastAutoMode.current = visibleMode;
+    if (!autoQueue.current.includes(visibleDay)) autoQueue.current.push(visibleDay);
+    void runAutoTraffic();
+  }, [visibleDay, visibleMode, runAutoTraffic]);
   const selectedVisit = selection && selection.kind !== 'leg' ? route.days.flatMap((d,di)=>[
     ...d.places.map((point,pi)=>({point,di,pi,key:`d${di}-p${pi}`,hotel:false})),
     ...(d.hotel?[{point:d.hotel,di,pi:-1,key:`d${di}-hotel`,hotel:true}]:[])

@@ -31,9 +31,10 @@ export function useTripHistory(initial: RouteJSON) {
     idxRef.current = historyRef.current.length - 1;
   }, []);
 
-  /** 编辑入口：同步应用变更 + 同步推历史帧（异步回调/批处理安全）。 */
+  /** 编辑入口：同步应用变更 + 同步推历史帧（异步回调/批处理安全）。
+   *  history=false 用于派生数据（如自动补全的交通快照）：落盘并重渲染，但不占用撤销栈。 */
   const mutate = useCallback(
-    (updater: (draft: RouteJSON) => void, expected?: RouteJSON) => {
+    (updater: (draft: RouteJSON) => void, expected?: RouteJSON, opts?: { history?: boolean }) => {
       if (expected && routeRef.current !== expected) return false;
       const next = JSON.parse(JSON.stringify(routeRef.current)) as RouteJSON;
       updater(next);
@@ -42,7 +43,7 @@ export function useTripHistory(initial: RouteJSON) {
       routeRef.current = normalized;
       saveCurrentRoute(normalized);
       setRouteState(normalized);
-      pushFrame(normalized);
+      if (opts?.history !== false) pushFrame(normalized);
       bump((v) => v + 1);
       return true;
     },

@@ -17,7 +17,7 @@ globalThis.IntersectionObserver=globalThis.ResizeObserver=Observer;globalThis.IS
 const bundle=await build({entryPoints:['src/App.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},external:['react','react-dom','react-dom/*'],define:{'import.meta.env':'{}'}});
 const file=path.join(dir,'app-dom.mjs');await fs.writeFile(file,bundle.outputFiles[0].text);
 const React=await import('react'),{act}=React,{createRoot}=await import('react-dom/client'),{default:App}=await import(pathToFileURL(file).href);
-const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}}]},{day:3,theme:'未安排的一天',places:[{id:'d',name:'春熙路',lat:30.65,lng:104.08,type:'attraction'}]}],summary:['保留用户攻略与预约']};
+const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,source:'user',confidence:'high',prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}}]},{day:3,theme:'未安排的一天',places:[{id:'d',name:'春熙路',lat:30.65,lng:104.08,type:'attraction'}]}],summary:['保留用户攻略与预约']};
 const T=globalThis.IterTripTransport;T.normalize(fixture);
 const first=T.legs(fixture,0)[0];fixture.days[0].transport.find(s=>s.from_id===first.from.id&&s.to_id===first.to.id).snapshot={signature:T.sign(first),options:[{mode:'walk',status:'ok',duration_s:600,queried_at:new Date().toISOString(),source:'amap'}]};
 localStorage.setItem('itertrip:route',JSON.stringify(fixture));
@@ -31,7 +31,10 @@ assert.ok(document.querySelector('[data-testid=desktop-workspace]'));assert.equa
 const itinerary=()=>document.querySelector('[data-testid=desktop-itinerary]');
 const mapNode=document.querySelector('.dw-map .leaflet-container');assert.ok(mapNode);
 assert.ok(document.querySelector('.dw-dayrail')&&document.querySelector('.dw-itinerary')&&document.querySelector('.dw-divider')&&document.querySelector('.dw-map')&&document.querySelector('.dw-inspector'),'M38 底图架构：日期列/行程列/分割线/底图/面板五件套');
-assert.ok(itinerary().textContent.includes('约 10 分钟'));assert.ok(itinerary().textContent.includes('查看与查询'),'M38：未查交通段只留入口，不再说「耗时未知」');assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
+assert.ok(itinerary().textContent.includes('约 10 分钟'));assert.equal(itinerary().textContent.includes('查看与查询'),false,'交通段不再重复「查看与查询」按钮文案');assert.ok(itinerary().textContent.includes('待查'),'未查交通段只留安静入口');assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
+// M38 后续：进入规划页自动按天补默认方式交通（测试 fetch 直接失败，只验证确实发起了自动补全且不阻塞渲染）
+await act(async()=>{await new Promise(r=>setTimeout(r,30));});
+assert.ok(calls.some(u=>String(u).includes('/api/route/transport')),'进入规划页自动补全交通');
 // M38 用户方向：无安排的天不渲染状态板与「未知」占位 —— 只留安静的文字入口，开始安排后才出现状态板
 await click(document.querySelectorAll('.dw-dayrail button')[2]);
 assert.equal(document.querySelector('[data-testid=day-settings]')?.textContent,'安排与交通','未安排的天只留安静入口');
@@ -61,8 +64,10 @@ await click(document.querySelector('[aria-label=重做]'));assert.equal(saved().
 await click(document.querySelector('[aria-label=撤销]'));
 await click(textButton('删除地点',detail()));assert.equal(saved().days[0].places.length,1);assert.equal(detail().hidden,true,'removed selection closes inspector');
 await click(document.querySelector('[aria-label=撤销]'));assert.equal(JSON.stringify(saved()),original);
+const transportCalls=()=>calls.filter(u=>String(u).includes('/api/route/transport')).length;
+const beforeTrafficCalls=transportCalls();
 await click(document.querySelector('[data-testid=desktop-leg]'));assert.ok(detail().textContent.includes('比较三种方式'));
-assert.equal(calls.filter(u=>u.endsWith('/api/transport')).length,0,'selecting traffic is read-only');
+assert.equal(transportCalls(),beforeTrafficCalls,'selecting traffic is read-only');
 await click(document.querySelector('[aria-label=收起面板]'));
 await click(document.querySelector('[data-testid=chat-toggle]'));
 const textarea=document.querySelector('[data-testid=plan-chat-input]');

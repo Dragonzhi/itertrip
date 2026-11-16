@@ -17,7 +17,18 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   const drop=(e:DragEvent,at:number)=>{if(!drag.current)return;e.preventDefault();p.onDropMove?.(drag.current.di,drag.current.pi,di,at);drag.current=null;};
   const leg=(edge:Edge)=>{
     const s=transport.selected(day,edge);
-    return <button key={`${edge.from.id}-${edge.to.id}`} className="dw-leg" data-testid="desktop-leg" onClick={()=>p.onLegSelect?.(edge)}><span className="dw-leg-line"/><span>{s.known?`${transport.labels[s.mode]} · 约 ${Math.ceil(s.option!.duration_s!/60)} 分钟`:transport.labels[s.mode]}{s.stale?' · 历史快照':''}</span><span className="dw-leg-action">{s.known?'比较交通':'查看与查询'} →</span></button>;
+    const minutes=s.known?Math.ceil(s.option!.duration_s!/60):null;
+    const label=transport.labels[s.mode];
+    // 默认方式耗时由规划页自动补全；未查到的段也只留一行安静文字，整行可点开比较（不再每段挂「查看与查询」）
+    return <button key={`${edge.from.id}-${edge.to.id}`} className="dw-leg" data-testid="desktop-leg" title="查看与比较交通方式"
+      aria-label={`${label}${minutes!=null?`，约 ${minutes} 分钟`:'，交通待查'}${s.stale?'，历史快照':''}，查看与比较交通方式`}
+      onClick={()=>p.onLegSelect?.(edge)}>
+      <span className="dw-leg-line"/>
+      <span className="dw-leg-mode">{label}</span>
+      <span className="dw-leg-sep" aria-hidden="true">·</span>
+      <span className={minutes!=null?'dw-leg-time':'dw-leg-time dw-leg-pending'}>{minutes!=null?`约 ${minutes} 分钟`:'待查'}{s.stale?' · 历史快照':''}</span>
+      <span className="dw-leg-action" aria-hidden="true">›</span>
+    </button>;
   };
   return <div className="dw-day">
     <div className="dw-day-heading"><h2>{day.theme||`第 ${day.day||di+1} 天`}</h2><div>{!arranged&&<button className="dw-order-toggle" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>安排与交通</button>}{p.editing&&<button className="dw-order-toggle" aria-pressed={ordering} onClick={()=>setOrdering(v=>!v)}>{ordering?'完成排序':'调整顺序'}</button>}</div></div>

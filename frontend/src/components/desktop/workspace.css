@@ -118,10 +118,16 @@
 .dw-order button { padding: 2px 8px; min-height: 28px; }
 .dw-order label { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .dw-order select { border: 1px solid var(--dw-line); background: white; border-radius: 4px; padding: 3px; max-width: 100px; }
-.dw-leg { position: relative; display: flex; gap: 12px; align-items: center; text-align: left; background: transparent; margin-left: 85px; max-width: calc(100% - 85px); padding: 10px 0 10px 27px; font-size: 12px !important; color: var(--dw-muted); border: 0; }
+/* 交通段：一行安静文字（方式 · 约 N 分钟/待查 ›），整行可点开比较；不再每段挂绿色按钮文案 */
+.dw-leg { position: relative; display: flex; gap: 7px; align-items: center; text-align: left; background: transparent; margin-left: 85px; max-width: calc(100% - 85px); padding: 10px 0 10px 27px; font-size: 12px !important; color: var(--dw-muted); border: 0; }
 .dw-leg:hover { color: var(--dw-green); }
 .dw-leg-line { position: absolute; left: 0; top: -8px; bottom: -8px; border-left: 1px dashed #A6B9AD; }
-.dw-leg-action { color: var(--dw-green); white-space: nowrap; }
+.dw-leg-sep { color: #C9C2B6; }
+.dw-leg-time { color: #3C3C36; font-variant-numeric: tabular-nums; }
+.dw-leg-pending { color: var(--dw-muted); }
+.dw-leg-action { color: var(--dw-muted); opacity: .45; transition: opacity .15s ease, transform .15s ease; }
+.dw-leg:hover .dw-leg-time { color: var(--dw-green); }
+.dw-leg:hover .dw-leg-action, .dw-leg:focus-visible .dw-leg-action { opacity: 1; transform: translateX(2px); }
 .dw-hotel { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 16px 4px; border-top: 1px solid var(--dw-line); margin-top: 12px; background: transparent; }
 .dw-hotel svg { color: var(--dw-green); }
 .dw-hotel strong { font-weight: 600; }

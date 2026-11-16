@@ -22,10 +22,10 @@ export async function onlineFetch(input: RequestInfo | URL, init?: RequestInit):
  */
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "";
 
-export async function queryTransport(edges: Edge[], signal?: AbortSignal): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
+export async function queryTransport(edges: Edge[], signal?: AbortSignal, modes?: Array<'walk' | 'bus' | 'car'>): Promise<{ results: TransportSnapshot[]; stats: { calls: number; cache_hits: number; deduplicated: number; budget: number; reason: string; elapsed_ms: number } }> {
   const resp = await onlineFetch(API_BASE + '/api/route/transport', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
-    body: JSON.stringify({ edges: edges.map(e => ({ from: e.from, to: e.to, signature: transport.sign(e) })) }),
+    body: JSON.stringify({ edges: edges.map(e => ({ from: e.from, to: e.to, signature: transport.sign(e) })), ...(modes?.length ? { modes } : {}) }),
   });
   if (!resp.ok) throw new Error(`交通查询失败 (${resp.status})，请稍后重试`);
   return await resp.json();
