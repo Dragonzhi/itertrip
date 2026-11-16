@@ -107,6 +107,8 @@ export interface TransportOption {
   tolls_yuan?: number | null;
   fee_kind?: string;
   description?: string;
+  /** 起终点坐标未核验（模型/搜索高置信坐标）时的估算结果；前端如实标注 */
+  approx?: boolean;
   queried_at: string;
   source: string;
   source_url: string;

@@ -55,6 +55,7 @@ async def check():
         assert out["stats"]["cache_hits"] == 5
         walk, bus, car = out["results"][0]["options"]
         assert walk["duration_s"] == 600 and walk["walking_m"] == 2000
+        assert walk.get("approx") is False
         assert bus["duration_s"] == 600 and bus["walking_m"] == 500 and bus["fee_yuan"] == 4
         assert car["fee_yuan"] is None and car["tolls_yuan"] == 3
         assert out["results"][1]["options"][0]["queried_at"] == walk["queried_at"]
@@ -66,6 +67,17 @@ async def check():
         invalid = {**EDGE, "from": {**P, "source": "city"}}
         unknown = await t.query([invalid], ["walk"], key="test-only-placeholder", client=client)
         assert len(calls) == before and unknown["results"][0]["options"][0]["status"] == "unknown"
+        # 未核验但来源明确的模型坐标：允许估算并标 approx
+        before = len(calls)
+        approx_edge = {**EDGE, "from": {**P, "source": "llm", "lat": 30.6415}}
+        approx = await t.query([approx_edge], ["walk"], key="test-only-placeholder", client=client)
+        opt = approx["results"][0]["options"][0]
+        assert len(calls) == before + 1 and opt["status"] == "ok" and opt["approx"] is True
+        # 低置信 / 待确认仍然拒绝
+        before = len(calls)
+        low = {**EDGE, "from": {**P, "source": "llm", "confidence": "low", "lat": 30.6416}}
+        blocked = await t.query([low], ["walk"], key="test-only-placeholder", client=client)
+        assert len(calls) == before and blocked["results"][0]["options"][0]["status"] == "unknown"
         assert (await t.query([EDGE], ["car"], key="", client=client))["stats"]["calls"] == 0
     reset()
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "0", "infocode": "10003", "info": "SECRET-key"}))) as client:
@@ -93,7 +105,9 @@ async def check():
     meta = {}
     hit = _pick_best_poi([{'name': '武侯祠', 'location': '104.0499,30.6414', 'id': 'test-poi-id', 'citycode': '028', 'pname': '四川省', 'cityname': '成都市'}], '武侯祠', provinces=['四川'], cities=['成都'], metadata=meta)
     assert hit is not None and meta[(hit[0], hit[1])]['poi_id'] == 'test-poi-id'
+    route["days"][0]["transport"][0]["snapshot"] = {"signature": "s", "options": [{"mode": "walk", "status": "ok", "duration_s": 60, "queried_at": "2026-01-01T00:00:00Z", "approx": True}]}
     assert RouteJSON.model_validate(route).model_dump()["days"][0]["transport"][0]["buffer_min"] == 5
+    assert RouteJSON.model_validate(route).model_dump()["days"][0]["transport"][0]["snapshot"]["options"][0]["approx"] is True
     html = build_html(route)
     assert "__TRANSPORT_CORE__" not in html and "IterTripExportTransport" in html
     artifacts = Path('frontend/test-artifacts/m26'); artifacts.mkdir(parents=True, exist_ok=True)

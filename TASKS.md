@@ -93,6 +93,7 @@ updated: 2026-11-15
 **未完成/阻塞**：真机人工回归未做（验证基于 CDP 模拟 + 截图目检）。
 
 ## 工作留痕
+- 2026-11-16 · ZCode：修复酒店/未核验坐标交通段无法估算（用户指认「出酒店和回酒店无法获取起始终点」）——根因：交通服务只接受 user/memory/amap-high，酒店与泛化地点 source=llm 被一律拒绝；现引入 approx 估算层：llm/search 高置信坐标照常查高德并标 approx，低置信/待确认/mock/城市中心仍拒绝；自动补全会重查旧「请先确认坐标」unknown 快照；交通行/面板/当天汇总/导出标「估算」。验证 _check_m26 / transport.check / m25–m31 七 DOM / desktop-a / mobile-shot 全绿 + CDP 假接口（旧 unknown 重查、2 段 approx、面板措辞）。
 - 2026-11-16 · ZCode：交通段从「每段一个查看与查询按钮」改为自动补全 + 安静单行（用户提出「生成时让 agent 先收集一遍」）——Plan 落地按天串行补当天默认方式（只补缺失段／单批≤7 天，恢复路线按当前天懒补，手动查询优先；快照回写不占撤销栈，queryTransport 支持 modes）；交通行改成「方式 · 约 N 分钟/待查 ›」整行可点；不做全量三方式预取（额度／40 秒预算），比较仍按需。验证 tsc/build/m25–m31 七 DOM/desktop-a/mobile-shot 全绿 + CDP 假接口探针（1 次请求 modes=['walk']、3 段落盘、undo 仍禁用、点开不重复请求）。
 - 2026-11-16 · ZCode：PWA 新版本胶囊上顶栏（用户提议）——Workspace 新增 UpdateCapsule（useOffline 待更新状态 + 与离线面板同一守卫 updateBlocked/routeSaveStatus.failed；可直接更新，被挡时点开离线面板），Plan 提取 updateBlocked 变量共用；CDP 假 SW 探针验证出现/文案/点击发 APPLY_UPDATE；tsc/build/m31/desktop-a/mobile-shot（dev server 重启后）全绿。
 - 2026-11-15 · ZCode：日期列天数标签「D1」改「第N天」（用户问询，推荐案未答按推荐执行），收起态只留数字（新增 .dw-rail-num，对读屏隐藏、可访问名保留完整标签），地图角标与图例 D 色点同步；m31 断言改 第2天；验证 tsc/build/m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 两态目检。

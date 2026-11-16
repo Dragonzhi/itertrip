@@ -7,7 +7,7 @@
   function summary(container, di) {
     const s = core.summary(getTrip(), di);
     if (!s.total) return;
-    const p = el('p', `交通快照：${s.known ? `已知 ${s.known}/${s.total} 段 ${mins(s.seconds)}` : '交通耗时未知'} · 额外缓冲 ${s.buffer} 分钟 · ${s.walkKnown ? `已知步行 ${(s.walking / 1000).toFixed(1)} km（${s.walkKnown}/${s.total} 段）` : '步行距离未知'} · ${s.feeKnown ? `费用小计 ¥${s.fees.toFixed(1)}（${s.feeKnown}/${s.total} 段，缺项未知）` : '费用未知'}`);
+    const p = el('p', `交通快照：${s.known ? `已知 ${s.known}/${s.total} 段 ${mins(s.seconds)}` : '交通耗时未知'} · 额外缓冲 ${s.buffer} 分钟 · ${s.walkKnown ? `已知步行 ${(s.walking / 1000).toFixed(1)} km（${s.walkKnown}/${s.total} 段）` : '步行距离未知'} · ${s.feeKnown ? `费用小计 ¥${s.fees.toFixed(1)}（${s.feeKnown}/${s.total} 段，缺项未知）` : '费用未知'}${s.approx ? ` · 含 ${s.approx} 段按未核验坐标估算` : ''}`);
     p.style.cssText = 'font:12px/1.6 system-ui;padding:12px;background:#edf1e7;border-radius:12px';
     p.dataset.trafficSummary = di;
     container.append(p);
@@ -20,7 +20,7 @@
       box.style.cssText = 'font:12px/1.6 system-ui;padding:12px;margin:8px 0;border:1px solid #d8dfd2;border-radius:12px;background:#fffdf7';
       box.append(el('strong', `↳ ${edge.from.name} → ${edge.to.name}`));
       if (s.segment?.snapshot?.refresh_error) box.append(el('p', '上次刷新失败：' + s.segment.snapshot.refresh_error + '；历史记录不用于当前汇总与排程'));
-      box.append(el('p', s.known ? `${core.labels[s.mode]}约 ${mins(s.option.duration_s)} · ${s.option.distance_m == null ? '距离未知' : (s.option.distance_m / 1000).toFixed(1) + ' km'} · ${s.option.fee_yuan == null ? '费用未知' : (s.mode === 'car' ? '出租车参考 ¥' : '费用 ¥') + s.option.fee_yuan}` : `交通耗时未知 · ${s.stale ? '查询快照已过期' : s.option?.reason || '未查询或路线已变化'}`));
+      box.append(el('p', s.known ? `${core.labels[s.mode]}约 ${mins(s.option.duration_s)} · ${s.option.distance_m == null ? '距离未知' : (s.option.distance_m / 1000).toFixed(1) + ' km'} · ${s.option.fee_yuan == null ? '费用未知' : (s.mode === 'car' ? '出租车参考 ¥' : '费用 ¥') + s.option.fee_yuan}${s.approx ? '（按未核验坐标估算）' : ''}` : `交通耗时未知 · ${s.stale ? '查询快照已过期' : s.option?.reason || '未查询或路线已变化'}`));
       if (s.option) {
         box.append(el('p', `高德路径服务 · ${s.option.queried_at} · ${s.stale ? '历史快照' : '查询时估算'}`));
         if (s.stale && s.option.status === 'ok') box.append(el('p', `历史查询耗时：${mins(s.option.duration_s)}（未计入当前汇总）`));

@@ -206,7 +206,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           if (autoTried.current.has(`${signature}|${mode}`)) return false;
           const s = transport.selected(day, e);
           const option = s.segment?.snapshot?.signature === signature ? s.segment.snapshot.options.find(o => o.mode === mode) : undefined;
-          return !option;
+          // 旧版信任闸门留下的「请先确认坐标」unknown：坐标现在可估算时重查一次
+          return !option || (option.status !== 'ok' && /确认起终点坐标/.test(option.reason || ''));
         }).slice(0, 12);
         if (!edges.length) continue;
         if (!isOnline() || !alive.current) break;

@@ -19,6 +19,16 @@ route.days[0].transport![0].snapshot = { signature: transport.sign(edge), option
 route.days[0].transport![0].buffer_min = 10;
 let summary = transport.summary(route, 0);
 equal([summary.seconds, summary.known, summary.feeKnown, summary.buffer], [600, 1, 0, 10]);
+// 未核验但来源明确的模型坐标：可估算并计入 approx；低置信仍不可用
+const llm = JSON.parse(JSON.stringify(route)) as RouteJSON;
+llm.days[0].places[0].source = 'llm';
+const llmEdge = transport.legs(llm, 0)[0];
+llm.days[0].transport![0].snapshot = { signature: transport.sign(llmEdge), options: [{ ...option, approx: true }] };
+const approxSummary = transport.summary(llm, 0);
+equal([approxSummary.known, approxSummary.approx], [1, 1]);
+const low = JSON.parse(JSON.stringify(llm)) as RouteJSON;
+low.days[0].places[0].confidence = 'low';
+ok(!transport.usable(low.days[0].places[0]));
 const savedId = visits(route)[0].id;
 const failedRefresh = JSON.parse(JSON.stringify(route)) as RouteJSON;
 failedRefresh.days[0].transport![0].snapshot!.refresh_error = '网络中断';

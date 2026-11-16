@@ -18,15 +18,15 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
   const leg=(edge:Edge)=>{
     const s=transport.selected(day,edge);
     const minutes=s.known?Math.ceil(s.option!.duration_s!/60):null;
-    const label=transport.labels[s.mode];
+    const approx=s.known&&s.approx, label=transport.labels[s.mode];
     // 默认方式耗时由规划页自动补全；未查到的段也只留一行安静文字，整行可点开比较（不再每段挂「查看与查询」）
     return <button key={`${edge.from.id}-${edge.to.id}`} className="dw-leg" data-testid="desktop-leg" title="查看与比较交通方式"
-      aria-label={`${label}${minutes!=null?`，约 ${minutes} 分钟`:'，交通待查'}${s.stale?'，历史快照':''}，查看与比较交通方式`}
+      aria-label={`${label}${minutes!=null?`，约 ${minutes} 分钟`:'，交通待查'}${approx?'，按未核验坐标估算':''}${s.stale?'，历史快照':''}，查看与比较交通方式`}
       onClick={()=>p.onLegSelect?.(edge)}>
       <span className="dw-leg-line"/>
       <span className="dw-leg-mode">{label}</span>
       <span className="dw-leg-sep" aria-hidden="true">·</span>
-      <span className={minutes!=null?'dw-leg-time':'dw-leg-time dw-leg-pending'}>{minutes!=null?`约 ${minutes} 分钟`:'待查'}{s.stale?' · 历史快照':''}</span>
+      <span className={minutes!=null?'dw-leg-time':'dw-leg-time dw-leg-pending'}>{minutes!=null?`约 ${minutes} 分钟`:'待查'}{approx&&<small className="dw-leg-approx"> · 估算</small>}{s.stale?' · 历史快照':''}</span>
       <span className="dw-leg-action" aria-hidden="true">›</span>
     </button>;
   };
@@ -38,7 +38,7 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
         M38 用户方向：完全未安排的天整块不渲染（见上方 arranged 注释）。 */}
     {arranged&&<button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>
       <span>时间 <strong>{day.schedule?.start?(result.end?`${day.schedule.start}–${schedule.fmt(result.end)}`:`${day.schedule.start} 起`):'未定'}</strong>{!day.schedule?.start&&<small> · 补开始时刻后自动推算</small>}</span>
-      <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'待查'}</strong><small>{traffic.known?`${traffic.known}/${traffic.total} 段 · 缓冲 ${traffic.buffer} 分钟`:`共 ${traffic.total} 段`}</small></span>
+      <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'待查'}</strong><small>{traffic.known?`${traffic.known}/${traffic.total} 段 · 缓冲 ${traffic.buffer} 分钟${traffic.approx?` · ${traffic.approx} 段估算`:''}`:`共 ${traffic.total} 段`}</small></span>
       <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 处时间冲突`:result.unknown.length?'待评估':'预计可行'}</strong><small>{result.issues.length?'':result.unknown.length?` · ${result.unknown.length} 项信息不全`:' · 交通为查询时估算'}</small></span>
       <span className="dw-statusline-action">安排与交通 →</span>
     </button>}

@@ -124,6 +124,7 @@
 .dw-leg-line { position: absolute; left: 0; top: -8px; bottom: -8px; border-left: 1px dashed #A6B9AD; }
 .dw-leg-sep { color: #C9C2B6; }
 .dw-leg-time { color: #3C3C36; font-variant-numeric: tabular-nums; }
+.dw-leg-approx { color: var(--dw-muted); font-weight: 400; }
 .dw-leg-pending { color: var(--dw-muted); }
 .dw-leg-action { color: var(--dw-muted); opacity: .45; transition: opacity .15s ease, transform .15s ease; }
 .dw-leg:hover .dw-leg-time { color: var(--dw-green); }

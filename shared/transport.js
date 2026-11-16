@@ -60,7 +60,13 @@
     const key = p => [p.id, p.name, p.lat, p.lng, p.source || '', p.confidence || '', p.note || '', p.poi_id || '', p.city_code || ''];
     return JSON.stringify(['amap-v3-1', edge.city, key(edge.from), key(edge.to)]);
   }
-  function usable(p) { return root.IterTripNavigation.risk(p) === 'trusted'; }
+  function usable(p) {
+    // 可做估算：已核验坐标，或来源明确的模型/搜索高置信坐标（结果会标 approx）；
+    // 低置信、坐标待确认、mock、城市中心仍不可用（诚实边界不变）
+    if (root.IterTripNavigation.risk(p) === 'search') return false;
+    if (!p || p.confidence === 'low' || /坐标待确认/.test(p.note || '')) return false;
+    return ['user', 'memory', 'amap', 'llm', 'search'].includes(p.source);
+  }
   function selected(day, edge) {
     const segment = (day.transport || []).find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
     const mode = segment?.mode || day.traffic_mode || 'walk';
@@ -68,19 +74,20 @@
     const match = snapshot?.signature === sign(edge);
     const option = match && Array.isArray(snapshot.options) ? snapshot.options.find(o => o?.mode === mode) : null;
     const stale = !!option && (!!snapshot.refresh_error || !Number.isFinite(Date.parse(option.queried_at)) || Date.parse(option.queried_at) > Date.now() + 60_000 || Date.now() - Date.parse(option.queried_at) > 15 * 60 * 1000);
-    return { segment, mode, option, stale, known: usable(edge.from) && usable(edge.to) && !stale && option?.status === 'ok' && Number.isFinite(option.duration_s) && option.duration_s >= 0 };
+    const known = usable(edge.from) && usable(edge.to) && !stale && option?.status === 'ok' && Number.isFinite(option.duration_s) && option.duration_s >= 0;
+    return { segment, mode, option, stale, known, approx: known && !!option?.approx };
   }
   function summary(route, di) {
     const edges = legs(route, di);
-    let seconds = 0, walking = 0, fees = 0, known = 0, feeKnown = 0, walkKnown = 0, buffer = 0;
+    let seconds = 0, walking = 0, fees = 0, known = 0, feeKnown = 0, walkKnown = 0, buffer = 0, approx = 0;
     edges.forEach(e => {
       const s = selected(route.days[di], e); buffer += s.segment?.buffer_min || 0;
       if (!s.known) return;
-      known++; seconds += s.option.duration_s;
+      known++; if (s.approx) approx++; seconds += s.option.duration_s;
       if (Number.isFinite(s.option.walking_m) && s.option.walking_m >= 0) { walking += s.option.walking_m; walkKnown++; }
       if (Number.isFinite(s.option.fee_yuan) && s.option.fee_yuan >= 0) { fees += s.option.fee_yuan; feeKnown++; }
     });
-    return { total: edges.length, known, seconds, walking, walkKnown, fees, feeKnown, buffer };
+    return { total: edges.length, known, seconds, walking, walkKnown, fees, feeKnown, buffer, approx };
   }
   root.IterTripTransport = { normalize, legs, sign, selected, usable, summary, labels };
 })(globalThis);

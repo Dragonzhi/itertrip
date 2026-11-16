@@ -34,7 +34,7 @@ def number(value):
         return None
 
 
-def trusted(p):
+def _basic_ok(p):
     lat, lng = p.get("lat"), p.get("lng")
     if isinstance(lat, bool) or isinstance(lng, bool):
         return False
@@ -44,12 +44,25 @@ def trusted(p):
         return False
     if p.get("confidence") == "low" or "坐标待确认" in p.get("note", "") or "mock 占位" in p.get("note", ""):
         return False
-    return p.get("source") in ("user", "memory") or (p.get("source") == "amap" and p.get("confidence") == "high")
+    return True
 
 
-def unknown(mode, reason):
+def trusted(p):
+    """坐标已核验：用户/记忆真值，或高德强匹配 high。"""
+    return _basic_ok(p) and (
+        p.get("source") in ("user", "memory") or (p.get("source") == "amap" and p.get("confidence") == "high")
+    )
+
+
+def queryable(p):
+    """坐标足以做**估算**：未核验但来源明确的模型/搜索坐标也允许，
+    结果统一标 approx；低置信、待确认、mock、城市中心仍拒绝（诚实边界不变）。"""
+    return _basic_ok(p) and p.get("source") in ("user", "memory", "amap", "llm", "search")
+
+
+def unknown(mode, reason, approx=False):
     return dict(mode=mode, status="unknown", reason=reason, queried_at=datetime.now(timezone.utc).isoformat(),
-                source="amap", source_url=SOURCE_URL)
+                source="amap", source_url=SOURCE_URL, approx=approx)
 
 
 def parse(data, mode):
@@ -187,10 +200,12 @@ class Session:
         return code
 
     async def option(self, client, edge, mode):
-        if not trusted(edge["from"]) or not trusted(edge["to"]):
+        if not queryable(edge["from"]) or not queryable(edge["to"]):
             return unknown(mode, "请先在编辑器确认起终点坐标；交通耗时未知")
+        # 未核验但可估：照常查询，结果标 approx，前端如实标注「估算」
+        approx = not (trusted(edge["from"]) and trusted(edge["to"]))
         if not self.key:
-            return unknown(mode, "服务端未配置高德 Web 服务 Key；交通耗时未知")
+            return unknown(mode, "服务端未配置高德 Web 服务 Key；交通耗时未知", approx)
         params = {"origin": coord(edge["from"]), "destination": coord(edge["to"]), "extensions": "all"}
         path = "/v3/direction/" + {"walk": "walking", "bus": "transit/integrated", "car": "driving"}[mode]
         try:
@@ -209,9 +224,10 @@ class Session:
             result = parse(data, mode)
             if result["status"] == "ok":
                 result["queried_at"] = data["_queried_at"]
+            result["approx"] = approx
             return result
         except (QueryError, asyncio.TimeoutError) as e:
-            return unknown(mode, str(e) if isinstance(e, QueryError) else "交通查询等待超时")
+            return unknown(mode, str(e) if isinstance(e, QueryError) else "交通查询等待超时", approx)
 
 
 def coord(p):

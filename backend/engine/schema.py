@@ -216,6 +216,8 @@ class TransportOption(BaseModel):
     tolls_yuan: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     fee_kind: str = ""
     description: str = ""
+    # M26 后续：起终点坐标未核验（模型/搜索高置信坐标）时仍做估算，并显式标记
+    approx: bool = False
     queried_at: str
     source: Literal["amap"] = "amap"
     source_url: str = "https://lbs.amap.com/api/webservice/guide/api/direction"
