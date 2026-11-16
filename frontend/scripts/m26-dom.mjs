@@ -67,6 +67,15 @@ assert.equal(failedSummary.historical, 1, 'old record is labeled historical but 
 await click(byText('↩ 撤销'));
 assert.equal(saved().days[0].transport[0].snapshot.options[0].status, 'ok');
 assert.ok(!saved().days[0].transport[0].snapshot.refresh_error, 'undo restores the original state');
+const dayBox = document.querySelector('[aria-label="第1天交通设置"]');
+assert.ok(dayBox, 'day transport section renders');
+const dayQuery = [...dayBox.querySelectorAll('button')].find(b => /查询当天交通|刷新当天交通/.test(b.textContent));
+assert.ok(dayQuery, 'day transport exposes an explicit query button');
+let dayBody;
+globalThis.fetch = async (_url, options) => { dayBody = JSON.parse(options.body); return { ok: true, json: async () => response(dayBody) }; };
+await click(dayQuery);
+assert.deepEqual(dayBody.modes, [saved().days[0].traffic_mode], 'day query asks only the day default mode');
+assert.ok(saved().days[0].transport[0].snapshot, 'day query applies the result');
 await act(async () => root.unmount());
 const core = globalThis.IterTripTransport;
 assert.ok(core.summary(queried, 0).known === 1);

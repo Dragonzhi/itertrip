@@ -1291,7 +1291,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       {!selectedVisit.hotel&&<button className="nav-secondary" onClick={()=>handleDelete(selectedVisit.di,selectedVisit.pi)}>删除地点</button>}
     </div>
     <ScheduleVisit point={selectedVisit.point} row={schedule.calculate(route,selectedVisit.di,completedIds).rows.find(r=>r.id===selectedVisit.point.id)}/>
-    <dl><dt>坐标依据</dt><dd>{coordBadge(selectedVisit.point.source,selectedVisit.point.confidence)?.text||'来源未标注'}</dd><dt>原攻略时间</dt><dd>{('time' in selectedVisit.point && selectedVisit.point.time)||'未提供'}</dd>{!selectedVisit.hotel&&<><dt>门票</dt><dd>{route.days[selectedVisit.di].places[selectedVisit.pi].ticket||'未提供'}</dd></>}<dt>完整备注</dt><dd>{selectedVisit.point.note||'暂无备注'}</dd></dl>
+    <dl><dt>坐标依据</dt><dd>{coordBadge(selectedVisit.point.source,selectedVisit.point.confidence)?.text||'来源未标注'}</dd>{!selectedVisit.hotel&&<><dt>门票</dt><dd>{route.days[selectedVisit.di].places[selectedVisit.pi].ticket||'未提供'}</dd></>}<dt>完整备注</dt><dd>{selectedVisit.point.note||'暂无备注'}</dd></dl>
     {(!selectedVisit.hotel ? route.days[selectedVisit.di].places[selectedVisit.pi].warnings : undefined)?.map((text,i)=><p key={i} className="dw-alert">{text}</p>)}
     {selectedVisit.hotel&&<HotelCard hotel={route.days[selectedVisit.di].hotel!} active onClick={()=>handleHotelClick(selectedVisit.di)} city={route.trip.destination} checkIn={schedule.dayDate(route,selectedVisit.di)} checkOut={schedule.dayDate(route,selectedVisit.di+1)} onEdit={()=>openHotelForm(selectedVisit.di)} onSavePrices={prices=>saveHotelPrices(selectedVisit.di,prices)}/>}
   </div> : <p className="dw-empty">从当天行程或地图选择地点。</p>;

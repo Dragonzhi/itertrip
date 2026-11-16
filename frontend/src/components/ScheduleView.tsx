@@ -88,7 +88,7 @@ export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Plac
       else setError('编辑期间路线已变化，草稿未写入。请取消后重新打开安排。');
     }}>
       <header className="flex justify-between items-center"><h2 id="schedule-title" className="font-bold text-lg">{point.name} · 时间安排</h2><button type="button" className="nav-secondary" onClick={onClose} aria-label="关闭时间安排">✕</button></header>
-      <p className="text-xs text-ink-soft mt-2">原攻略时间保留。这里填写可计算的安排；每次保存可以撤销。手工改动固定时段仍会提示冲突。</p>
+      <p className="text-xs text-ink-soft mt-2">这里填写可计算的安排；每次保存可以撤销。手工改动固定时段仍会提示冲突。</p>
       <div className="grid grid-cols-2 gap-3 mt-3">
         <label>停留分钟<input type="number" min="0" max="1440" step="1" value={visit.duration_min ?? ''} onChange={e => patch({duration_min: e.target.value === '' ? null : Number(e.target.value)})} /></label>
         <label>时长来源<select value={visit.duration_source || 'user'} onChange={e => patch({duration_source: e.target.value as VisitPlan['duration_source']})}><option value="user">用户设置</option><option value="estimate">估计（待确认）</option></select></label>
