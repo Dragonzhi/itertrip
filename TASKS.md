@@ -93,6 +93,7 @@ updated: 2026-11-15
 **未完成/阻塞**：真机人工回归未做（验证基于 CDP 模拟 + 截图目检）。
 
 ## 工作留痕
+- 2026-11-16 · ZCode：PWA 新版本胶囊上顶栏（用户提议）——Workspace 新增 UpdateCapsule（useOffline 待更新状态 + 与离线面板同一守卫 updateBlocked/routeSaveStatus.failed；可直接更新，被挡时点开离线面板），Plan 提取 updateBlocked 变量共用；CDP 假 SW 探针验证出现/文案/点击发 APPLY_UPDATE；tsc/build/m31/desktop-a/mobile-shot（dev server 重启后）全绿。
 - 2026-11-15 · ZCode：日期列天数标签「D1」改「第N天」（用户问询，推荐案未答按推荐执行），收起态只留数字（新增 .dw-rail-num，对读屏隐藏、可访问名保留完整标签），地图角标与图例 D 色点同步；m31 断言改 第2天；验证 tsc/build/m31/desktop-a/mobile-shot 5 尺寸全绿 + CDP 两态目检。
 
 - 2026-11-15 · ZCode：「攻略与 AI 综合建议」折叠条加修饰（用户指认太素）——米纸内衬 + 苔绿旋转角标 + 虚线分隔 + 灰绿圆点清单，与工作台 hover 语言对齐；CDP 目检收起/展开两态，build/m31/desktop-a 全绿。

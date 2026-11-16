@@ -1,6 +1,8 @@
 import {useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react';
 import type {RouteJSON} from '../../types/route';
 import {schedule} from '../../lib/schedule';
+import {applyUpdate, startOffline, useOffline} from '../../lib/offline';
+import {routeSaveStatus} from '../../lib/settings';
 import './workspace.css';
 
 export type Auxiliary = 'place' | 'leg' | 'ai' | 'map' | 'offline' | null;
@@ -10,9 +12,31 @@ export function Icon({name}:{name:'undo'|'redo'|'ai'|'export'|'more'|'close'|'pl
   return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]}/></svg>;
 }
 
+// M38 后续：PWA 新版本胶囊 —— 更新入口不再只藏在「更多工具 → 离线管理」。
+// 可直接更新（与面板同一守卫：表单/请求/保存失败会挡）；被挡时点开离线面板看原因。
+function UpdateCapsule({blocked,open}:{blocked:boolean; open(a:Auxiliary):void}) {
+  const s=useOffline();
+  const [saved,setSaved]=useState(routeSaveStatus);
+  useEffect(()=>{
+    startOffline();
+    const read=()=>setSaved(routeSaveStatus());
+    window.addEventListener('itertrip:route-saved',read);
+    window.addEventListener('storage',read);
+    return ()=>{window.removeEventListener('itertrip:route-saved',read);window.removeEventListener('storage',read);};
+  },[]);
+  if(!s.update)return null;
+  const can=!blocked&&!saved.failed;
+  return <button className="dw-update-capsule" disabled={s.busy} data-testid="update-capsule"
+    aria-label={can?'有新版本可用，点击更新':'有新版本可用，当前有未完成操作'}
+    title={can?'更新并重新打开（撤销历史将重置）':'先保存或结束当前操作，点开查看原因'}
+    onClick={()=>{if(can)void applyUpdate();else open('offline');}}>
+    <i aria-hidden="true"/>{can&&!s.busy?'有新版本 · 更新':'有新版本'}
+  </button>;
+}
+
 // M38 第三批（用户方向稿定稿）：顶栏只做一行 —— 行程名/日期芯片/天数并入顶栏，不再有大标题横幅。
-function Toolbar({route,date,undo,redo,canUndo,canRedo,open,onHome,onJson,onHtml,exporting,recheck,rechecking,aux,aiBusy}: {
-  route:RouteJSON;date:ReactNode;undo():void;redo():void;canUndo:boolean;canRedo:boolean;open(a:Auxiliary):void;aux:Auxiliary;aiBusy:boolean;
+function Toolbar({route,date,undo,redo,canUndo,canRedo,open,onHome,onJson,onHtml,exporting,recheck,rechecking,aux,aiBusy,updateBlocked}: {
+  route:RouteJSON;date:ReactNode;undo():void;redo():void;canUndo:boolean;canRedo:boolean;open(a:Auxiliary):void;aux:Auxiliary;aiBusy:boolean;updateBlocked:boolean;
   onHome():void;onJson():void;onHtml():void;exporting:boolean;recheck():void;rechecking:boolean;
 }) {
   const [menu,setMenu]=useState<'export'|'more'|null>(null);
@@ -27,6 +51,7 @@ function Toolbar({route,date,undo,redo,canUndo,canRedo,open,onHome,onJson,onHtml
         <span className="dw-trip-count">{route.days.length} 天{route.trip.travelers?` · ${route.trip.travelers}`:''}</span>
       </div>
       <div className="dw-toolbar-actions">
+        <UpdateCapsule blocked={updateBlocked} open={open}/>
         <div className="dw-menu-wrap"><button aria-label="更多工具" aria-expanded={menu==='more'} onClick={()=>setMenu(menu==='more'?null:'more')}><Icon name="more"/>更多工具</button>{menu==='more'&&<div className="dw-menu"><button data-testid="recheck-coords" disabled={rechecking} onClick={()=>{setMenu(null);recheck();}}>{rechecking?'校准中…':'校准坐标'}</button><button onClick={()=>{setMenu(null);open('map');}}>地图设置</button><button onClick={()=>{setMenu(null);open('offline');}}>离线管理</button></div>}</div>
         <button aria-label="撤销" title="撤销（Ctrl+Z）" disabled={!canUndo} onClick={undo}><Icon name="undo"/><span className="dw-action-label">撤销</span></button>
         <button aria-label="重做" title="重做（Ctrl+Y）" disabled={!canRedo} onClick={redo}><Icon name="redo"/><span className="dw-action-label">重做</span></button>
@@ -45,7 +70,7 @@ const loadView=():DesktopView=>{try{return JSON.parse(localStorage.getItem('iter
 export default function Workspace(props:{
   route:RouteJSON;day:number;setDay(n:number):void;aux:Auxiliary;open(a:Auxiliary):void;map:ReactNode;itinerary:ReactNode;ai:ReactNode;detail:ReactNode;offline:ReactNode;mapSettings:ReactNode;date:ReactNode;messages:ReactNode;onAdd():void;
   undo():void;redo():void;canUndo:boolean;canRedo:boolean;onHome():void;onJson():void;onHtml():void;exporting:boolean;recheck():void;rechecking:boolean;
-  aiBusy:boolean;
+  aiBusy:boolean;updateBlocked?:boolean;
 }) {
   const closeRef=useRef<HTMLButtonElement>(null);
   const previous=useRef<HTMLElement|null>(null);
@@ -87,7 +112,7 @@ export default function Workspace(props:{
   // docW 绑定到 CSS 变量（拖拽/方向键才有真实效果）；收起时不写内联值，让 .dw-doc-collapsed 的类规则接管（内联会覆盖类）
   return <div className={`dw-workspace${railCollapsed?' dw-rail-collapsed':''}${docCollapsed?' dw-doc-collapsed':''}`} data-testid="desktop-workspace"
     style={docCollapsed?undefined:({'--dw-doc-w':String(docW)} as CSSProperties)}>
-    <Toolbar {...props}/>
+    <Toolbar {...props} updateBlocked={!!props.updateBlocked}/>
     <div className="dw-body" ref={bodyRef}>
       <nav className="dw-dayrail" aria-label="选择行程日期">
         {props.route.days.map((d,i)=>{

@@ -1119,7 +1119,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       />
       {desktop&&pickHint&&<div className="dw-pick-hint" role="status">{pickHint}<button className="focus-ring" onClick={()=>setPicking(null)}>取消</button></div>}
       </>);
-  const offlineContent=(          <OfflinePanel quiet blocked={!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating)} />);
+  const updateBlocked=!!agentPending || !progressSaved || !!(form || hotelForm || scheduleTarget || picking || chatInput.trim() || stream.sending || trafficBusy || exporting || rechecking || dateChecking || relocating);
+  const offlineContent=(          <OfflinePanel quiet blocked={updateBlocked} />);
   const desktopTimeline=(          <Timeline
             desktopDay={visibleDay}
             onDaySettings={()=>{setDaySettings(true);setSelection(null);openAux('place');}}
@@ -1161,7 +1162,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     <MotionConfig reducedMotion="user">
     <div className={desktop ? 'dw-plan' : undefined}>
     <div className={`h-[100dvh] overflow-hidden ${desktop?'dw-plan':''}`}>
-      {desktop&&<Workspace aiBusy={stream.sending} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
+      {desktop&&<Workspace aiBusy={stream.sending} updateBlocked={updateBlocked} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}

@@ -31,6 +31,10 @@
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 1px solid var(--dw-line); border-radius: 6px; background: white; padding: 8px 12px; min-height: 36px; white-space: nowrap;
 }
+/* 新版本胶囊：金调提醒（与取点提示同族），点按直达更新；被挡时打开离线面板看原因 */
+.dw-toolbar button.dw-update-capsule { border-radius: 999px; border: 1px solid #C8903C; background: #F6EBD8; color: #8A5E1E; font-size: 12px; padding: 5px 12px; min-height: 30px; gap: 7px; }
+.dw-toolbar button.dw-update-capsule i { display: block; width: 7px; height: 7px; border-radius: 50%; background: #C8903C; }
+.dw-toolbar button.dw-update-capsule:hover { background: #F1E0C4; border-color: #B57F2C; }
 .dw-workspace button.dw-primary { background: var(--dw-green); color: white; border: 1px solid var(--dw-green); }
 .dw-workspace button.dw-primary:hover { background: #175740; }
 .dw-workspace button.dw-primary[aria-expanded="true"] { background: #175740; }
