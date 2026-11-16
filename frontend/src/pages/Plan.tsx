@@ -4,6 +4,7 @@ import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import OfflinePanel from '../components/OfflinePanel';
 import AgentPreview from '../components/AgentPreview';
+import NoticeStack, { type Notice } from '../components/NoticeToast';
 import {agent, type AgentProposal, type AgentCandidate, type AgentEvidence} from '../lib/agent';
 import { isOnline, useOffline } from '../lib/offline';
 import { transport, type Edge } from '../lib/transport';
@@ -1295,11 +1296,29 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     {selectedVisit.hotel&&<HotelCard hotel={route.days[selectedVisit.di].hotel!} active onClick={()=>handleHotelClick(selectedVisit.di)} city={route.trip.destination} checkIn={schedule.dayDate(route,selectedVisit.di)} checkOut={schedule.dayDate(route,selectedVisit.di+1)} onEdit={()=>openHotelForm(selectedVisit.di)} onSavePrices={prices=>saveHotelPrices(selectedVisit.di,prices)}/>}
   </div> : <p className="dw-empty">从当天行程或地图选择地点。</p>;
 
+  // 操作反馈走视口顶部浮层，不再混进行程正文（否则会读成当天行程的一部分）。
+  const notices: Notice[] = [];
+  if (trafficMessage) notices.push({
+    id: 'traffic',
+    text: trafficMessage,
+    tone: /失败|无法|取消|离线|中断|异常|错误/.test(trafficMessage) ? 'danger' : trafficMessage.startsWith('交通查询返回') ? 'success' : 'info',
+  });
+  if (scheduleMsg) notices.push({ id: 'schedule', text: scheduleMsg });
+  if (recheckMsg) notices.push({ id: 'recheck', text: recheckMsg, tone: recheckMsg.startsWith('校准失败') ? 'danger' : 'success' });
+  if (exportError) notices.push({ id: 'export', text: `导出失败：${exportError}`, tone: 'danger' });
+  const closeNotice = (id: string) => {
+    if (id === 'traffic') setTrafficMessage('');
+    else if (id === 'schedule') setScheduleMsg('');
+    else if (id === 'recheck') setRecheckMsg('');
+    else if (id === 'export') setExportError('');
+  };
+
   return (
     <MotionConfig reducedMotion="user">
     <div className={desktop ? 'dw-plan' : undefined}>
     <div className={`h-[100dvh] overflow-hidden ${desktop?'dw-plan':''}`}>
-      {desktop&&<Workspace aiBusy={stream.sending} updateBlocked={updateBlocked} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[trafficMessage,scheduleMsg,recheckMsg,exportError,!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
+      <NoticeStack notices={notices} onClose={closeNotice} />
+      {desktop&&<Workspace aiBusy={stream.sending} updateBlocked={updateBlocked} route={route} day={visibleDay} setDay={chooseDay} aux={aux} open={openAux} map={mapContent} itinerary={desktopTimeline} ai={<aside ref={chatDrawerRef} aria-hidden={aux!=='ai'}>{aiContent}</aside>} detail={detailContent} offline={offlineContent} mapSettings={<MapSettings embedded value={mapView} panelOpen={false} onChange={patch=>setMapView(v=>({...v,...patch}))}/>} date={dateCardJsx} onAdd={openAddFlow} undo={undo} redo={redo} canUndo={canUndo} canRedo={canRedo} onHome={onRestart} onJson={handleExportJson} onHtml={handleExportHtml} exporting={exporting} recheck={handleRecheck} rechecking={rechecking} messages={<>{[!progressSaved?'浏览器无法保存出行进度，刷新后可能丢失。':'',!offline.online?'当前离线 · 使用已保存日程与快照':'',source==='mock'?'mock 草稿 · 地点与安排需确认':''].filter(Boolean).map((text,i)=><p key={i} className="dw-message" role="status">{text}</p>)}</>}/>}
       {!desktop && mapContent}
 
       {navVisit && <NavigationDialog key={navVisit.id} point={navVisit.point} previous={previousPoint} city={route.trip.destination} onClose={() => setNavKey(null)} />}
@@ -1417,8 +1436,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
           <button data-testid="outing-mode" aria-pressed={outing.mode === "outing"} className={outing.mode === "outing" ? "nav-primary" : "nav-secondary"} onClick={() => setOuting(p => ({ ...p, mode: "outing" }))}>出行视图</button>
         </div>
         {!progressSaved && <p role="status" className="text-xs text-danger px-[18px] py-2">浏览器无法保存出行进度，刷新后可能丢失。</p>}
-        {trafficMessage && <p role="status" className="text-xs text-ink-soft px-[18px] py-2">{trafficMessage}</p>}
-        {scheduleMsg && <p role="status" className="schedule-day mx-[18px]">{scheduleMsg}</p>}
         <div className="flex-1 overflow-y-auto min-h-0 px-[18px] pb-10 pt-2">
           {offlineContent}
           {!offline.online && <p role="status" className="text-xs text-ink-soft my-2">地图底图暂不可用，地点、备注、预约和进度仍可查看。搜索与 AI 需联网后使用。</p>}
@@ -1497,16 +1514,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
               )}
             </div>
           </div>
-          {recheckMsg && (
-            <div role="status" className="mt-1.5 text-xs text-moss bg-moss-soft rounded-lg px-2.5 py-1.5" data-testid="recheck-msg">
-              {recheckMsg}
-            </div>
-          )}
-          {exportError && (
-            <div role="status" className="mt-1.5 text-xs text-danger bg-[#F6E7E7] rounded-lg px-2.5 py-1.5" data-testid="export-error">
-              {exportError}
-            </div>
-          )}
         </div> : <div className="px-[18px] py-3 border-t border-line text-xs text-ink-soft">{progressSaved ? "当天与进度已保存 · 编辑和导出请切回规划视图" : "进度仅保留在本次页面，请勿刷新"}</div>}
         </motion.div>
       </aside>

@@ -265,3 +265,34 @@ body { overscroll-behavior-y: none; }
 /* quiet 变体（首页 / 行程抽屉）：常态的联网与准备状态不值得一张卡，收成一行入口；
  * 需要注意的事（离线 / 保存失败 / 有更新 / 出错）仍由各自 role=status|alert 主动可见。 */
 .offline-panel-quiet { margin: 4px 0; padding: 0; border: 0; background: transparent; }
+
+/* ===== 操作反馈浮层（M38 后续）=====
+ * 查询/校准/导出是「按钮的回复」，不是当天行程的一部分：统一放视口顶部居中，
+ * 白卡 + 细线 + 轻阴影，右上角关闭。普通提示 7 秒自动收起，错误留给用户关。
+ * 不占布局流；桌面工作台和紧凑态共用。 */
+.notice-stack {
+  position: fixed; z-index: 700; top: 68px; left: 50%; transform: translateX(-50%);
+  width: min(440px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.notice-toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 8px 10px 14px; background: #fff; border: 1px solid #E8E0D4;
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(43,43,40,.16);
+  animation: notice-in .18s ease-out;
+}
+.notice-toast .notice-dot {
+  flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; margin-top: 7px; background: #C8903C;
+}
+.notice-toast.notice-success .notice-dot { background: #1F6B54; }
+.notice-toast.notice-danger .notice-dot { background: #9C4038; }
+.notice-toast p { flex: 1; min-width: 0; margin: 0; font-size: 13px; line-height: 1.55; color: #2B2B28; overflow-wrap: anywhere; }
+.notice-toast button {
+  flex: 0 0 auto; width: 26px; height: 26px; display: grid; place-items: center;
+  margin: -4px 0 0 0; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: #6B6B64; font-size: 17px; line-height: 1;
+}
+.notice-toast button:hover { background: #FAF6F0; color: #2B2B28; }
+.notice-toast button:focus-visible { outline: 2px solid #1F6B54; outline-offset: 1px; }
+@keyframes notice-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .notice-toast { animation: none; } }
