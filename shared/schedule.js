@@ -46,7 +46,7 @@
       const visit = p.visit || {}, row = { id: p.id, name: p.name, hotel, arrival: cursor, start: cursor, departure: null, wait: 0, fixed: fixed(p, completed), issues: [], unknown: [], notes: [], suggestions: [], fact: null };
       const warn = text => { row.issues.push(text); push(issues, `${p.name}：${text}`, p.id); };
       const missing = text => { row.unknown.push(text); push(unknown, `${p.name}：${text}`, p.id); };
-      // 开放资料是可选增强：缺失只做软提示，不阻断到达时刻与停留推算（M27 后续按用户口径调整）
+      // 开放资料是选填：缺失只记入 notes 供已录入场景提示，不影响状态、标签与到达时刻推算
       const note = text => { row.notes.push(text); push(notes, `${p.name}：${text}`, p.id); };
       const incoming = edges.find(e => e.to.id === p.id);
       if (incoming) {
@@ -127,7 +127,7 @@
       });
     });
     rows.filter(r => r.issues.length && !r.suggestions.length).forEach(r => r.suggestions.push(r.fixed ? '固定／已完成站点保留；需调整之前的活动或手工修改预约' : '候选：手工调整时段或移至另一日，重新检查交通与开放资料'));
-    return { date: iso, rows, issues, unknown, notes, end: cursor, status: issues.length ? 'conflict' : unknown.length ? 'unassessed' : 'estimated', label: issues.length ? `${issues.length} 项时间冲突` : unknown.length ? `${unknown.length} 项未评估` : notes.length ? '按到达时刻估算（开放资料未核对）' : '当前输入下预计可行（交通为查询时估算）' };
+    return { date: iso, rows, issues, unknown, notes, end: cursor, status: issues.length ? 'conflict' : unknown.length ? 'unassessed' : 'estimated', label: issues.length ? `${issues.length} 项时间冲突` : unknown.length ? `${unknown.length} 项未评估` : '当前输入下预计可行（交通为查询时估算）' };
   }
   function refreshClosures(route) {
     const weekdays = ['日', '一', '二', '三', '四', '五', '六'];

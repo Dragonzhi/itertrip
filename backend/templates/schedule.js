@@ -16,7 +16,10 @@
     if (!day.start_from_hotel) b.append(el('p', '开始时已到首站，不含出发地到首站交通。'));
     r.issues.forEach(v => { const p = el('p', '⚠ ' + v.text); p.style.color = '#a43e3e'; b.append(p); });
     if (r.unknown.length) { const d = el('details', ''); d.append(el('summary', `未评估条件 ${r.unknown.length} 项`)); r.unknown.forEach(v => d.append(el('p', v.text))); b.append(d); }
-    if (r.notes?.length) { const d = el('details', ''); d.append(el('summary', `开放资料未核对 ${r.notes.length} 项`)); r.notes.forEach(v => d.append(el('p', v.text))); d.append(el('p', '不影响到达时刻推算；录入后可检查开放、闭馆与最后入场限制。')); b.append(d); }
+    const points = [...day.places, ...(day.hotel ? [day.hotel] : [])];
+    const entered = new Set(points.filter(p => (p.opening || []).length).map(p => p.id));
+    const openNotes = (r.notes || []).filter(v => entered.has(v.id));
+    if (openNotes.length) { const d = el('details', ''); d.append(el('summary', `开放资料待完善 ${openNotes.length} 项`)); openNotes.forEach(v => d.append(el('p', v.text))); d.append(el('p', '不影响到达时刻推算；补全并确认后会核对开门、闭馆与最后入场。')); b.append(d); }
     if (r.issues.length) b.append(el('p', '尚无已验证可行方案；修改后需重新评估，固定／已完成站点保持原位。'));
     container.append(b);
   }

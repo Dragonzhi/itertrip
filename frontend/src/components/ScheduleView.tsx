@@ -10,18 +10,22 @@ export interface ScheduleActions {
 }
 export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number; actions?: ScheduleActions}) {
   const result = schedule.calculate(route, di, actions?.completed);
-  const config = route.days[di].schedule || {};
+  const day = route.days[di], config = day.schedule || {};
+  // 开放资料是选填：没有录入的地点不提示；只有已经录入但缺来源／未确认／不完整时才列出待完善的资料
+  const points = [...day.places, ...(day.hotel ? [day.hotel] : [])];
+  const entered = new Set(points.filter(p => (p.opening || []).length).map(p => p.id));
+  const openNotes = result.notes.filter(v => entered.has(v.id));
   return <section className="schedule-day" data-testid="schedule-day">
     <div className="flex justify-between gap-2"><strong>🕘 当天时间 · {result.date || '日期未知'}</strong><span className={result.status === 'conflict' ? 'text-danger' : 'text-moss'}>{result.label}</span></div>
     {actions && <div className="grid grid-cols-2 gap-3 my-2">
-      <label>{route.days[di].start_from_hotel ? '离开酒店' : '首站开始'}<input aria-label={`第${di + 1}天开始时间`} type="time" value={config.start || ''} onChange={e => actions.day(di, {start: e.target.value})} /></label>
+      <label>{day.start_from_hotel ? '离开酒店' : '首站开始'}<input aria-label={`第${di + 1}天开始时间`} type="time" value={config.start || ''} onChange={e => actions.day(di, {start: e.target.value})} /></label>
       <label>当天结束<input aria-label={`第${di + 1}天结束时间`} type="time" value={config.end || ''} onChange={e => actions.day(di, {end: e.target.value})} /></label>
     </div>}
     {/* 实现细节（时区常量、版本范围）不进界面 —— 只说用户需要拿来做决定的部分 */}
-    <p>时间均为目的地当地时间。{route.days[di].start_from_hotel ? '开始 = 离开酒店的时刻。' : '开始 = 到达首站的时刻，不含前往首站的交通。'}交通耗时为查询时估算，未来时段可能变化。未录入开放资料时，按到达时刻与停留时长推算，不自动等待开门；录入后才核对开放／闭馆限制。</p>
+    <p>时间均为目的地当地时间。{day.start_from_hotel ? '开始 = 离开酒店的时刻。' : '开始 = 到达首站的时刻，不含前往首站的交通。'}交通耗时为查询时估算，未来时段可能变化。开放资料选填：不填也能按到达时刻与停留时长推算，不自动等待开门；填写并确认后才核对开门、闭馆与最后入场。</p>
     {!!result.issues.length && <ul className="text-danger">{result.issues.map((v, i) => <li key={i}>⚠ {v.text}</li>)}</ul>}
     {!!result.unknown.length && <details><summary>查看未评估条件（{result.unknown.length}）</summary><ul>{result.unknown.map((v, i) => <li key={i}>{v.text}</li>)}</ul></details>}
-    {!!result.notes.length && <details data-testid="schedule-notes"><summary>开放资料未核对（{result.notes.length}）</summary><ul>{result.notes.map((v, i) => <li key={i}>{v.text}</li>)}<li>不影响到达时刻推算；录入后可检查开放、闭馆与最后入场限制。</li></ul></details>}
+    {!!openNotes.length && <details data-testid="schedule-notes"><summary>开放资料待完善（{openNotes.length}）</summary><ul>{openNotes.map((v, i) => <li key={i}>{v.text}</li>)}<li>不影响到达时刻推算；补全并确认后会核对开门、闭馆与最后入场。</li></ul></details>}
     {!!result.issues.length && <p>尚无已验证的可行方案。下方候选需修改后重新评估，固定／已完成部分保持原位。</p>}
   </section>;
 }
@@ -107,8 +111,8 @@ export function ScheduleEditor({point, iso, city, onSave, onClose}: {point: Plac
           <p className="col-span-2 text-xs text-ink-soft">打开入口办理后自行记录状态。网站不会下单或自动宣称预约成功。车次时段应包含实际乘坐时间。</p>
         </div>}
       </fieldset>
-      <fieldset className="mt-4"><legend>开放／最后入场／闭馆资料</legend>
-        <p className="text-xs my-2">先查阅对应地点的官方公告或地图资料，再录入值与适用日期。搜索结果只是待核对的资料线索。</p>
+      <fieldset className="mt-4"><legend>开放资料（选填）</legend>
+        <p className="text-xs my-2">想核对「按这个时间到是否还开着」时再填：查阅官方公告或地图资料后录入开放／闭馆与最后入场。不填也能按到达时刻与停留时长继续推算。搜索结果只是待核对的资料线索。</p>
         <button type="button" className="nav-secondary" disabled={searching} onClick={async () => {
           const controller = new AbortController(); abort.current = controller; setSearching(true); setSourceMsg('');
           try {

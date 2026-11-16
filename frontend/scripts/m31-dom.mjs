@@ -17,7 +17,7 @@ globalThis.IntersectionObserver=globalThis.ResizeObserver=Observer;globalThis.IS
 const bundle=await build({entryPoints:['src/App.tsx'],bundle:true,write:false,format:'esm',platform:'browser',jsx:'automatic',loader:{'.css':'empty'},external:['react','react-dom','react-dom/*'],define:{'import.meta.env':'{}'}});
 const file=path.join(dir,'app-dom.mjs');await fs.writeFile(file,bundle.outputFiles[0].text);
 const React=await import('react'),{act}=React,{createRoot}=await import('react-dom/client'),{default:App}=await import(pathToFileURL(file).href);
-const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',time:'18:30-20:00',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,source:'user',confidence:'high',prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}}]},{day:3,theme:'未安排的一天',places:[{id:'d',name:'春熙路',lat:30.65,lng:104.08,type:'attraction'}]}],summary:['保留用户攻略与预约']};
+const fixture={trip:{title:'桌面验收：长名称行程与不同日期的预约',destination:'成都',start_date:'2030-10-08',date_source:'user'},days:[{day:1,theme:'城市漫游',schedule:{start:'09:00',end:'18:00'},traffic_mode:'walk',places:[{id:'a',name:'人民公园',lat:30.657,lng:104.06,type:'attraction',time:'18:30-20:00',note:'完整攻略备注',source:'user',confidence:'high',visit:{duration_min:40,duration_source:'user',kind:'rest'}},{id:'b',name:'成都博物馆（用于测试长名称不会丢失或覆盖按钮的地点）',lat:30.658,lng:104.065,source:'user',confidence:'high',visit:{duration_min:60,kind:'rest',reservation:{date:'2030-10-08',start:'08:00',end:'09:00',status:'confirmed',type:'entry'}}}],hotel:{id:'h',name:'测试酒店',lat:30.66,lng:104.06,source:'user',confidence:'high',prices:[]}},{day:2,theme:'第二天',schedule:{start:'10:00',end:'18:00'},places:[{id:'c',name:'宽窄巷子',lat:30.666,lng:104.054,visit:{duration_min:60,kind:'rest'}},{id:'e',name:'缺少停留的站点',lat:30.667,lng:104.055,source:'user',confidence:'high'}]},{day:3,theme:'未安排的一天',places:[{id:'d',name:'春熙路',lat:30.65,lng:104.08,type:'attraction'}]}],summary:['保留用户攻略与预约']};
 const T=globalThis.IterTripTransport;T.normalize(fixture);
 const first=T.legs(fixture,0)[0];fixture.days[0].transport.find(s=>s.from_id===first.from.id&&s.to_id===first.to.id).snapshot={signature:T.sign(first),options:[{mode:'walk',status:'ok',duration_s:600,queried_at:new Date().toISOString(),source:'amap'}]};
 localStorage.setItem('itertrip:route',JSON.stringify(fixture));
@@ -46,6 +46,12 @@ assert.equal(itinerary().textContent.includes('未知'),false,'整行不应再�
 await click(document.querySelector('[data-testid=place-name]'));
 assert.equal(document.querySelector('.dw-inspector').querySelector('[data-testid=schedule-visit]'),null,'未安排地点不渲染未评估清单');
 assert.equal(document.querySelector('.dw-inspector').textContent.includes('未知 → 未知'),false);
+// 信息不全不再只有数字：❕ 的悬浮标题直接说明缺的是哪个字段；开放资料是选填，不进入状态条
+await click(document.querySelectorAll('.dw-dayrail button')[1]);
+const statusHelp=document.querySelector('.dw-status-help');
+assert.ok(statusHelp,'statusline exposes a missing-info icon');
+assert.ok((statusHelp.getAttribute('title')||'').includes('停留时长未设置'),'hover title names the missing field');
+assert.equal(itinerary().textContent.includes('开放资料未核对'),false,'optional opening data is not a schedule status');
 await click(document.querySelectorAll('.dw-dayrail button')[0]);
 assert.equal(itinerary().textContent.includes('完整攻略备注'),false,'notes are contextual');
 await click(document.querySelector('[data-testid=place-name]'));
@@ -89,6 +95,7 @@ await act(async()=>{Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.protot
 await click(document.querySelector('[data-testid=day-settings]'));
 assert.ok(document.querySelector('[aria-label=第1天交通设置]'),'day settings shows transport controls');
 assert.ok(textButton('查询当天交通') || textButton('刷新当天交通'),'day transport exposes an explicit query button');
+assert.equal(document.querySelector('[data-testid=schedule-notes]'),null,'未录入开放资料时不在当天面板提示选填项');
 await click(document.querySelector('[data-testid=chat-toggle]'));
 assert.equal(document.querySelector('[data-testid=plan-chat-input]'),textarea,'AI remains single mounted instance');assert.equal(textarea.value,'保留我的修改草稿');
 assert.equal(JSON.stringify(saved()),original,'view transitions do not modify route');

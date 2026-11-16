@@ -96,6 +96,9 @@
 .dw-statusline strong { font-size: 13px; font-weight: 600; margin-left: 4px; }
 .dw-statusline strong.dw-danger { color: #9C4038; }
 .dw-statusline small { margin-left: 4px; color: var(--dw-muted); }
+/* 信息不全的明细入口：悬浮显示具体缺项，点整行仍进入「安排与交通」 */
+.dw-status-help { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-left: 5px; border: 1px solid #C8903C; border-radius: 50%; background: #F6EBD8; color: #8A5E1E; font-size: 10px; font-weight: 700; line-height: 1; cursor: help; vertical-align: 1px; }
+.dw-status-help:hover { border-color: #9A5E1F; color: #7F4A12; }
 .dw-statusline:hover { border-color: var(--dw-green); }
 .dw-statusline-action { margin-left: auto; color: var(--dw-green); white-space: nowrap; }
 .dw-danger, .dw-row-warnings { color: #9C4038; }
