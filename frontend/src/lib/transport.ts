@@ -8,7 +8,7 @@ export const transport = (globalThis as unknown as { IterTripTransport: {
   legs(route: RouteJSON, di: number): Edge[];
   sign(edge: Edge): string;
   usable(point: Place | Hotel): boolean;
-  selected(day: RouteJSON['days'][number], edge: Edge): { segment?: TransportSegment; mode: string; option?: TransportOption; stale: boolean; known: boolean; approx: boolean };
+  selected(day: RouteJSON['days'][number], edge: Edge): { segment?: TransportSegment; mode: 'walk' | 'bus' | 'car'; option?: TransportOption; stale: boolean; known: boolean; approx: boolean };
   summary(route: RouteJSON, di: number): { total: number; known: number; seconds: number; walking: number; walkKnown: number; fees: number; feeKnown: number; buffer: number; approx: number };
   labels: Record<string, string>;
 } }).IterTripTransport;

@@ -2,7 +2,7 @@ import type { RouteJSON, TransportSegment } from '../types/route';
 import { transport, type Edge } from '../lib/transport';
 import { useOffline } from '../lib/offline';
 export type TransportActions = {
-  query: (di: number, edge?: Edge) => void;
+  query: (di: number, edge?: Edge, modes?: Array<'walk' | 'bus' | 'car'>) => void;
   changeDay: (di: number, patch: Partial<RouteJSON['days'][number]>) => void;
   changeLeg: (di: number, edge: Edge, patch: Partial<TransportSegment>) => void;
   busy: boolean;
@@ -28,12 +28,13 @@ export function TransportLeg({ route, edge, actions, compact = false }: { route:
     <p className="font-semibold break-words">↳ {edge.from.name} → {edge.to.name}</p>
     {!online && <p className="text-ink-soft">离线快照 · 非实时交通{!s.option ? '（尚无已保存方案）' : ''}</p>}
     {s.stale && s.option?.status === 'ok' && s.option.duration_s != null && <p className="mt-1">上次记录：{transport.labels[s.mode]}约 {minutes(s.option.duration_s)}（已过期或刷新失败，不用于当前排程）{s.option.description ? ` · ${s.option.description}` : ''}</p>}
-    {s.known ? <p className="text-moss font-semibold mt-2">{transport.labels[s.mode]}约 {minutes(s.option!.duration_s!)}{s.option!.distance_m != null ? ` · ${distance(s.option!.distance_m)}` : ''}{s.option!.fee_yuan != null ? ` · ${s.mode === 'car' ? '出租车参考' : '费用'} ¥${s.option!.fee_yuan}` : ' · 费用未知'}{s.approx ? '（按未核验坐标估算）' : ''}</p> : <p className="text-ink-soft mt-2">交通耗时未知 · {blocked ? '先在编辑器确认起终点坐标' : s.segment?.snapshot?.refresh_error || (s.stale ? '查询快照已超过 15 分钟，请刷新' : s.option?.reason || '待查询')}</p>}
+    {s.known ? <p className="text-moss font-semibold mt-2">{transport.labels[s.mode]}约 {minutes(s.option!.duration_s!)}{s.option!.distance_m != null ? ` · ${distance(s.option!.distance_m)}` : ''}{s.option!.fee_yuan != null ? ` · ${s.mode === 'car' ? '出租车参考' : '费用'} ¥${s.option!.fee_yuan}` : ' · 费用未知'}{s.approx ? '（估算）' : ''}</p> : <p className="text-ink-soft mt-2">交通耗时未知 · {blocked ? '先在编辑器确认起终点坐标' : s.segment?.snapshot?.refresh_error || (s.stale ? '查询快照已超过 15 分钟，请刷新' : s.option?.reason || '待查询')}</p>}
+    {s.approx && <p className="text-ink-soft mt-1">估算依据：起终点坐标未核验；可在编辑器中确认位置后精确查询。</p>}
     {s.known && s.option?.description && <p className="mt-1 break-words">{s.option.description}</p>}
     {s.known && s.mode === 'car' && <p className="mt-1">道路收费：{s.option?.tolls_yuan == null ? '未知' : `¥${s.option.tolls_yuan}`}（另列，不并入出租车参考价）</p>}
     {s.option && <p className="text-ink-soft mt-1"><a className="underline focus-ring" href="https://lbs.amap.com/api/webservice/guide/api/direction" target="_blank" rel="noopener noreferrer">高德路径服务</a> · {new Date(s.option.queried_at).toLocaleString('zh-CN')} {s.stale ? '（历史快照）' : ''}</p>}
     {!compact && actions && <>
-      <div className="flex gap-2 flex-wrap items-center mt-2"><select aria-label={`前往${edge.to.name}的交通方式`} className="min-h-11 border border-line rounded-lg bg-white px-2" value={s.segment?.mode || ''} onChange={e => actions.changeLeg(edge.di, edge, { mode: e.target.value as TransportSegment['mode'] })}><option value="">跟随当天（{transport.labels[day.traffic_mode || 'walk']}）</option>{Object.entries(transport.labels).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select><button className="nav-secondary" disabled={actions.busy || blocked} onClick={() => actions.query(edge.di, edge)}>比较三种方式</button></div>
+      <div className="flex gap-2 flex-wrap items-center mt-2"><select aria-label={`前往${edge.to.name}的交通方式`} className="min-h-11 border border-line rounded-lg bg-white px-2" value={s.segment?.mode || ''} onChange={e => actions.changeLeg(edge.di, edge, { mode: e.target.value as TransportSegment['mode'] })}><option value="">跟随当天（{transport.labels[day.traffic_mode || 'walk']}）</option>{Object.entries(transport.labels).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select><button className="nav-secondary" disabled={actions.busy || blocked} onClick={() => actions.query(edge.di, edge, [s.mode])}>{s.known ? '刷新此方式' : '查询此方式'}</button><button className="nav-secondary" disabled={actions.busy || blocked} onClick={() => actions.query(edge.di, edge)}>比较三种方式</button></div>
       {s.segment?.snapshot?.options && <ul className="my-2 space-y-1">{s.segment.snapshot.options.map(o => <li key={o.mode}>{transport.labels[o.mode]}：{o.status === 'ok' && o.duration_s != null ? `${minutes(o.duration_s)}${o.fee_yuan != null ? ` · ${o.mode === 'car' ? '出租车参考 ' : ''}¥${o.fee_yuan}` : ' · 费用未知'}${o.approx ? '（估算）' : ''}` : `未知（${o.reason || '没有方案'}）`}{s.stale ? ' · 历史快照' : ''}</li>)}</ul>}
       <label className="flex items-center gap-2 min-h-11">额外缓冲<input type="number" aria-label={`前往${edge.to.name}的额外缓冲分钟`} min="0" max="180" value={s.segment?.buffer_min || 0} className="min-h-11 w-16 rounded-lg border border-line px-2" onChange={e => actions.changeLeg(edge.di, edge, { buffer_min: Number(e.target.value) })} />分钟</label>
     </>}

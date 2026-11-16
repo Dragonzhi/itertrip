@@ -68,6 +68,14 @@ const transportCalls=()=>calls.filter(u=>String(u).includes('/api/route/transpor
 const beforeTrafficCalls=transportCalls();
 await click(document.querySelector('[data-testid=desktop-leg]'));assert.ok(detail().textContent.includes('比较三种方式'));
 assert.equal(transportCalls(),beforeTrafficCalls,'selecting traffic is read-only');
+// 切换单段交通方式自动查询该方式（fetch 仍失败，只验证请求发出）；面板同时提供主动查询按钮
+const modeSelect=[...document.querySelectorAll('.dw-inspector select')].find(s=>(s.getAttribute('aria-label')||'').startsWith('前往'));
+assert.ok(modeSelect,'leg mode select');
+await act(async()=>{modeSelect.value='car';modeSelect.dispatchEvent(new w.Event('change',{bubbles:true}));});
+await act(async()=>{await new Promise(r=>setTimeout(r,40));});
+assert.ok(transportCalls()>beforeTrafficCalls,'切换交通方式自动查询');
+assert.ok(textButton('查询此方式'),'面板提供主动查询按钮');
+await click(document.querySelector('[aria-label=撤销]'));
 await click(document.querySelector('[aria-label=收起面板]'));
 await click(document.querySelector('[data-testid=chat-toggle]'));
 const textarea=document.querySelector('[data-testid=plan-chat-input]');

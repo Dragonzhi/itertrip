@@ -182,12 +182,18 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   // M38 后续 · 交通耗时自动补全：生成/导入的路线落地后按天后台补当天默认方式，
   // 恢复的旧路线同样在进入时补齐；只补「还没有这种方式记录」的段，查过（含失败结果）不自动重试，避免循环与额度浪费。
   // 不做全量三方式预取：三方式比较仍由用户点开交通段触发，默认方式只为时间线/当天汇总提供可信耗时。
-  const autoQueue = useRef<number[]>([]);
+  // 切换交通方式时入队的是「指定段 + 指定方式」，切换后自动补该方式，不需要再点按钮。
+  type AutoTask = { di: number; mode?: 'walk' | 'bus' | 'car'; fromId?: string; toId?: string; force?: boolean };
+  const autoQueue = useRef<AutoTask[]>([]);
   const autoTried = useRef<Set<string>>(new Set());
   const autoRunning = useRef(false);
+  const autoKick = useRef<number | null>(null);
   useEffect(() => {
     alive.current = true;
-    return () => { alive.current = false; };
+    return () => {
+      alive.current = false;
+      if (autoKick.current != null) window.clearTimeout(autoKick.current);
+    };
   }, []);
   const runAutoTraffic = useCallback(async () => {
     if (autoRunning.current) return;
@@ -195,26 +201,28 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     autoActive.current = true;
     try {
       while (autoQueue.current.length && alive.current) {
-        const di = autoQueue.current.shift()!;
+        const task = autoQueue.current.shift()!;
         const current = routeLive.current;
-        const day = current.days[di];
+        const day = current.days[task.di];
         if (!day) continue;
-        const mode = (day.traffic_mode || 'walk') as 'walk' | 'bus' | 'car';
-        const edges = transport.legs(current, di).filter(e => {
-          if (!transport.usable(e.from) || !transport.usable(e.to)) return false;
-          const signature = transport.sign(e);
-          if (autoTried.current.has(`${signature}|${mode}`)) return false;
-          const s = transport.selected(day, e);
-          const option = s.segment?.snapshot?.signature === signature ? s.segment.snapshot.options.find(o => o.mode === mode) : undefined;
-          // 旧版信任闸门留下的「请先确认坐标」unknown：坐标现在可估算时重查一次
-          return !option || (option.status !== 'ok' && /确认起终点坐标/.test(option.reason || ''));
-        }).slice(0, 12);
+        const mode = (task.mode || day.traffic_mode || 'walk') as 'walk' | 'bus' | 'car';
+        const edges = transport.legs(current, task.di)
+          .filter(e => !task.fromId || (e.from.id === task.fromId && e.to.id === task.toId))
+          .filter(e => {
+            if (!transport.usable(e.from) || !transport.usable(e.to)) return false;
+            const signature = transport.sign(e);
+            if (!task.force && autoTried.current.has(`${signature}|${mode}`)) return false;
+            const s = transport.selected(day, e);
+            const option = s.segment?.snapshot?.signature === signature ? s.segment.snapshot.options.find(o => o.mode === mode) : undefined;
+            // 旧版信任闸门留下的「请先确认坐标」unknown：坐标现在可估算时重查一次
+            return !option || (option.status !== 'ok' && /确认起终点坐标/.test(option.reason || ''));
+          }).slice(0, 12);
         if (!edges.length) continue;
         if (!isOnline() || !alive.current) break;
         // 手动查询优先：等它结束再补，避免两个快照互相覆盖；久等则留给下一次进入
         for (let wait = 0; trafficBusyRef.current && wait < 120; wait++) await new Promise(r => setTimeout(r, 100));
-        if (trafficBusyRef.current) { autoQueue.current.unshift(di); break; }
-        const ok = await runTraffic(di, edges, [mode], true, current);
+        if (trafficBusyRef.current) { autoQueue.current.unshift(task); break; }
+        const ok = await runTraffic(task.di, edges, [mode], true, current);
         if (!ok) {
           // 本次失败（网络/额度/限流）不反复重试；成功后快照已落盘（含未知结果），下次自然跳过
           for (const e of edges) autoTried.current.add(`${transport.sign(e)}|${mode}`);
@@ -227,30 +235,50 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
       autoActive.current = false;
     }
   }, [runTraffic]);
+  const enqueueAuto = useCallback((task: AutoTask) => {
+    const key = (t: AutoTask) => `${t.di}|${t.mode || ''}|${t.fromId || ''}>${t.toId || ''}`;
+    if (!autoQueue.current.some(t => key(t) === key(task))) autoQueue.current.push(task);
+    // 延后一拍再跑：changeDay/changeLeg 刚 mutate 完，routeLive 还没随渲染更新；
+    // 立即跑会拿到旧 expected，结果被版本保护丢掉（表现为「切换方式后一直待查」）
+    if (autoKick.current == null) {
+      autoKick.current = window.setTimeout(() => {
+        autoKick.current = null;
+        void runAutoTraffic();
+      }, 0);
+    }
+  }, [runAutoTraffic]);
   useEffect(() => {
     // 延迟一拍再启动：StrictMode 开发态会挂载→卸载→重挂载，首拍的定时器会被清理，避免自动补全被半途打断
     const timer = window.setTimeout(() => {
       // 首次进入最多自动补 7 天；更长行程按当前天懒补（天数上限 30，不能一次打满）
       const days = Array.from({ length: Math.min(route.days.length, 7) }, (_, i) => i);
-      for (const di of days) if (!autoQueue.current.includes(di)) autoQueue.current.push(di);
-      void runAutoTraffic();
+      for (const di of days) enqueueAuto({ di });
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
   const trafficActions: TransportActions = {
     busy: trafficBusy,
-    changeDay: (di, patch) => mutate(r => Object.assign(r.days[di], patch)),
-    changeLeg: (di, edge, patch) => mutate(r => {
-      const segment = r.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
-      if (segment) Object.assign(segment, patch);
-    }),
-    query: (di, edge) => {
+    changeDay: (di, patch) => {
+      mutate(r => Object.assign(r.days[di], patch));
+      if (patch.traffic_mode) enqueueAuto({ di, mode: patch.traffic_mode, force: true });
+    },
+    changeLeg: (di, edge, patch) => {
+      mutate(r => {
+        const segment = r.days[di].transport?.find(s => s.from_id === edge.from.id && s.to_id === edge.to.id);
+        if (segment) Object.assign(segment, patch);
+      });
+      if (patch.mode !== undefined) {
+        const mode = (patch.mode || routeLive.current.days[di]?.traffic_mode || 'walk') as 'walk' | 'bus' | 'car';
+        enqueueAuto({ di, mode, fromId: edge.from.id, toId: edge.to.id, force: true });
+      }
+    },
+    query: (di, edge, modes) => {
       if (trafficBusyRef.current) return;
       if (!isOnline()) { setTrafficMessage('当前离线，无法刷新交通；保留上次快照，手工设置方式与缓冲仍可用。'); return; }
       const current = routeLive.current;
       const edges = edge ? [edge] : transport.legs(current, di).slice(0, 12);
       if (!edges.length) return;
-      void runTraffic(di, edges, ['walk', 'bus', 'car'], false, current);
+      void runTraffic(di, edges, modes?.length ? modes : ['walk', 'bus', 'car'], false, current);
     },
   };
   const [outing, setOutingState] = useState<OutingProgress>(() => loadProgress(tripSession));
@@ -512,9 +540,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     if (lastAutoVisible.current === visibleDay && lastAutoMode.current === visibleMode) return;
     lastAutoVisible.current = visibleDay;
     lastAutoMode.current = visibleMode;
-    if (!autoQueue.current.includes(visibleDay)) autoQueue.current.push(visibleDay);
-    void runAutoTraffic();
-  }, [visibleDay, visibleMode, runAutoTraffic]);
+    enqueueAuto({ di: visibleDay });
+  }, [visibleDay, visibleMode, enqueueAuto]);
   const selectedVisit = selection && selection.kind !== 'leg' ? route.days.flatMap((d,di)=>[
     ...d.places.map((point,pi)=>({point,di,pi,key:`d${di}-p${pi}`,hotel:false})),
     ...(d.hotel?[{point:d.hotel,di,pi:-1,key:`d${di}-hotel`,hotel:true}]:[])
