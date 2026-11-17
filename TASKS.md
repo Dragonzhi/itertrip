@@ -44,7 +44,9 @@ updated: 2026-11-17
 - `handles()` 识别「补充/补全/完善/修复某天时间」与「时间冲突」；`SYSTEM` 要求补充/修复时不要反问具体时刻，直接给可执行候选。
 - 流式状态新增「正文 N 字 · 思考 N 字」，长思考/长输出期间持续可见；「模型排队中」提示只在既无正文也无思考时显示。
 
-**验证**：`_check_m30` 12 场景（含 Agent 看到 schedule issues）；`_probe_stream` 28/28（编辑模式无 memory 空步）；`chat-stream` 26/26（正文/思考字数与 trace 实时出现）；`m31-dom` 冲突修复入口；真实浏览器 CDP 确认修复按钮请求含冲突原文与 `agent_schedule`。
+**验证**：`_check_m30` 12 场景（含 Agent 看到 schedule issues 与 preflight 超时/压缩量）；`_probe_stream` 28/28（编辑模式无 memory 空步）；`chat-stream` 26/26（正文/思考字数与 trace 实时出现）；`m31-dom` 冲突修复入口；真实浏览器 CDP 确认修复按钮请求含冲突原文与 `agent_schedule`。
+
+**推理型模型发现**：`glm-5.3-flash` 默认会把 1800／4096／8192 token 全花在 reasoning 上，`content` 为空、`finish_reason=length`，Agent 只能回「请补充具体修改要求」。已改为 `max_tokens=16384` + `reasoning_effort=low`（供应商不支持时自动去掉并标记用量不完整）+ 焦点日上下文 + `schedule_preflight` 冲突反馈。同一重庆第 2 天冲突实测：2 轮、34 秒、7 个停留压到 300 分钟、20:55 结束的无冲突候选。
 
 ### 2026-11-17 · M39 AI 预排时间、核验流式化与坐标链审查
 
