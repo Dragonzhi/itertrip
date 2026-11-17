@@ -785,7 +785,10 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       推理型模型适配：Agent 预算改为 6 轮／360 秒／`max_tokens=16384`／`reasoning_effort=low`（不支持自动回退）；
       修复/补充意图只展开焦点日上下文；纯日程提案先过 `agent_ops.schedule_preflight`，把「还差多少分钟」反馈给模型
       再跑一轮。glm-5.3-flash 实测从「1800 token 全花在 reasoning、空回复」变为 2 轮 34 秒产出无冲突候选。
-      验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（12 场景）、`_probe_stream` 28/28、
+      第三天「补充时间」实测：候选与当前预排相同时，`agent_turn.no_op_result` 说明已有起止／停留与 `schedule.unknown`，
+      并点名 `confidence=low`／【坐标待确认】的地点（`query_transport` 也透出该原因）；日程算不出结束时刻时，
+      行程页状态条仍显示已配置的 `start–end` 并标「计划」。
+      验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（13 场景）、`_probe_stream` 28/28、
       `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、chat-stream 26/26、desktop-a／mobile-shot
       与真实浏览器 CDP 探针（含冲突修复按钮请求内容）。
 - [x] **M35 Agent 强化·第一轮（知识点地图 + 注入防御统一，2026-11-15）**：`docs/AGENT_KNOWLEDGE_MAP.md`

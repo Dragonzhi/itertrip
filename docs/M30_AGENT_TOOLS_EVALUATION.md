@@ -69,6 +69,8 @@ M39 补充 `set_day_schedule(day,start,end,durations,source)`：一次提交某�
 
 推理型模型实测（glm-5.3-flash）：默认推理会把 1800／4096／8192 token 全部花在 reasoning 上，`content` 为空、`finish_reason=length`，Agent 只能回「请补充具体修改要求」。现在：`max_tokens` 默认 16384（`ITERTRIP_AGENT_MAX_TOKENS` 可配）、供应商支持时传 `reasoning_effort=low`（不支持会自动去掉并标记用量不完整）、修复/补充意图只展开焦点日上下文、纯日程提案先过 `schedule_preflight` 并把「还差多少分钟」反馈给模型。同一重庆第 2 天冲突实测：2 轮、34 秒、产出把 7 个停留压到 300 分钟、总结束 20:55 的无冲突候选。
 
+第三天「补充时间」实测补丁：模型可能原样重复当前预排（例如 09:30–16:00 + 90/90/60 分钟），服务端 `validate` 会判 `candidate == route`。现在 `agent_turn.no_op_result` 不再只回「操作没有实际变化」，而是说明当天已有起止与停留、引用前端 `schedule.unknown` 原文，并点名 `confidence=low`／【坐标待确认】的地点，给出「按名称重新定位 / 更改位置 → 查询当天交通」的操作路径；`schedule` 摘要也补了每天 `start/end/durations`，`SYSTEM` 要求相同候选不要重复提交。`query_transport` 的 unknown 原因同时透出具体地点（如「山城第三步道」坐标待确认），不再统一写成「数据未配置」。低置信坐标仍按 M26 边界拒绝交通估算——这一步只能由用户确认坐标后继续。
+
 ### 供应商能力和预算
 
 默认 `.env` 中 `ITERTRIP_AGENT_PROTOCOL=protocol`，兼容现有双段 JSON。明确支持 Chat Completions 函数调用的供应商可设置 `tools`：传 `tools` 和 `parallel_tool_calls=false`。只接受单个工具调用；出现 400／422 且错误指明不支持工具相关参数才回退，鉴权／配额错误不会冒充能力不足。拒绝请求也消耗一轮预算，回退可见于轨迹。
