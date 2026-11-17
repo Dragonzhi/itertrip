@@ -185,7 +185,9 @@ export function diffRoute(oldRoute: RouteJSON, newRoute: RouteJSON): RouteDiff {
   }
 
   const summary: string[] = [];
-  const scheduleChanged = oldRoute.days.length !== newRoute.days.length || oldRoute.days.some((d,i) => JSON.stringify(d.schedule) !== JSON.stringify(newRoute.days[i]?.schedule));
+  // 只比较起止时刻：source=estimate→user 是来源元数据变化，不是用户可见的日程改动
+  const scheduleKey = (s?: {start?: string; end?: string}) => JSON.stringify([s?.start || '', s?.end || '']);
+  const scheduleChanged = oldRoute.days.length !== newRoute.days.length || oldRoute.days.some((d,i) => scheduleKey(d.schedule) !== scheduleKey(newRoute.days[i]?.schedule));
   const dateChanged = oldRoute.trip.start_date !== newRoute.trip.start_date || oldRoute.trip.date_source !== newRoute.trip.date_source;
   if (scheduleChanged) summary.push('更新了当天起止时间');
   if (dateChanged) summary.push('更新了出发日期');

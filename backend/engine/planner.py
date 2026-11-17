@@ -33,6 +33,7 @@ from .coordinates import (
 from ._llmutil import endpoint
 from . import facts
 from .geo import haversine_km, in_china, wgs84_to_gcj02
+from .schedule_defaults import fill_default_schedule
 from .schema import RouteJSON
 
 # 离谱坐标检测：偏离行程中位数中心 > 100km 视为可疑；重定位结果与原值差 > 10km 才替换
@@ -52,8 +53,10 @@ SYSTEM_PROMPT = """你是专业旅行规划师。根据用户需求生成行程 
 只输出 JSON 本身，不要输出任何解释文字或 markdown 代码块标记。
 JSON 结构：
 {"trip": {"title": str, "destination": str, "days": int, "dates": str, "budget": str, "style": str, "travelers": str},
- "days": [{"day": int, "theme": str, "places": [{"name": str, "lat": float, "lng": float,
-   "type": "attraction|food|transport|other", "time": str, "transport": str, "ticket": str, "note": str}],
+ "days": [{"day": int, "theme": str, "schedule": {"start": "HH:mm", "end": "HH:mm"},
+   "places": [{"name": str, "lat": float, "lng": float,
+   "type": "attraction|food|transport|other", "time": str, "transport": str, "ticket": str, "note": str,
+   "visit": {"duration_min": int, "duration_source": "estimate", "kind": "visit|meal|rest"}}],
    "hotel": {"name": str, "lat": float, "lng": float, "note": str, "prices": []}}],
  "summary": [str]}
 要求：
@@ -61,6 +64,10 @@ JSON 结构：
 2. type 只能是 attraction / food / transport / other 之一
 3. summary 给 2-4 条综合建议（性价比 / 交通 / 节奏等）
 4. hotel.prices 留空数组——价格由用户后续手动提供
+5. 为每天给出一个可执行的默认时间安排：schedule.start/end 用 24 小时 HH:mm，按游览节奏给每个地点合理的
+   visit.duration_min（分钟，duration_source 固定写 estimate，餐饮写 kind=meal）。没有把握也给保守估计，
+   系统会标注为「AI 预排」并允许用户调整。
+6. 不要声称已核实开放时间、预约或交通耗时；攻略里的营业时间仍写进 time，另行给出可计算的 schedule/visit。
 """
 
 
@@ -303,19 +310,61 @@ def route_to_gcj02(route: RouteJSON, source: str = "llm") -> RouteJSON:
     return route
 
 
+def _old_point_index(route: RouteJSON):
+    """旧路线索引：id 优先，名称只在唯一时作为后备。
+
+    M39：此前只按 name 建字典，7 天同名酒店会被折叠成最后一天；模型回显时只要坐标
+    有 4~6 位小数舍入（1e-6 判等失败）就会被当成「新坐标」二次 WGS84→GCJ-02 转换并
+    降级成 llm/high。现在按 id 优先 + 距离容差判断回显，避免编辑一次就把可信来源改坏。
+    """
+    by_id: dict[str, object] = {}
+    by_name: dict[str, list] = {}
+    for d in route.days:
+        for p in d.places:
+            if p.id:
+                by_id[p.id] = p
+            by_name.setdefault(p.name, []).append(p)
+    hotels_by_id: dict[str, object] = {}
+    hotels_by_name: dict[str, list] = {}
+    for d in route.days:
+        h = d.hotel
+        if h is None:
+            continue
+        if h.id:
+            hotels_by_id[h.id] = h
+        hotels_by_name.setdefault(h.name, []).append(h)
+    return by_id, by_name, hotels_by_id, hotels_by_name
+
+
+_ECHO_DEG = 1e-4  # 约 11m：覆盖模型保留 4~6 位小数的回显舍入，又不会吞掉真正的移动
+
+
+def _echoed(old, new) -> bool:
+    return (
+        old is not None
+        and old.lat is not None and old.lng is not None
+        and abs(old.lat - new.lat) <= _ECHO_DEG
+        and abs(old.lng - new.lng) <= _ECHO_DEG
+    )
+
+
 def convert_new_coords(new: RouteJSON, old: RouteJSON) -> RouteJSON:
     """改路线出口的坐标处理：只转「本轮新写/改动」的坐标。
 
-    与旧路线同名同值的坐标是回显的 GCJ-02（连同来源标注一起沿用），跳过转换以防双重偏移；
-    差异坐标视为模型新写的 WGS84 → 转换并标 source="llm"。
+    与旧路线同 id（或唯一同名）且坐标在 ~11m 内的坐标是回显的 GCJ-02：连同来源标注
+    一起沿用，跳过转换以防双重偏移。差异坐标视为模型新写的 WGS84 → 转换并标 llm/high。
     """
-    old_places = {p.name: p for d in old.days for p in d.places}
-    old_hotels = {d.hotel.name: d.hotel for d in old.days if d.hotel}
+    old_by_id, old_by_name, hotel_by_id, hotel_by_name = _old_point_index(old)
     for d in new.days:
         for p in d.places:
-            o = old_places.get(p.name)
-            echoed = o is not None and o.lat is not None and abs(o.lat - p.lat) < 1e-6 and abs(o.lng - p.lng) < 1e-6
-            if echoed:
+            o = old_by_id.get(p.id) if p.id else None
+            if o is None:
+                candidates = old_by_name.get(p.name) or []
+                if len(candidates) == 1:
+                    o = candidates[0]
+            if _echoed(o, p):
+                # 用旧坐标而不是模型舍入后的坐标，避免多次编辑累积漂移。
+                p.lat, p.lng = o.lat, o.lng
                 p.source, p.confidence = o.source, o.confidence
                 continue
             if p.lat and p.lng:
@@ -323,9 +372,13 @@ def convert_new_coords(new: RouteJSON, old: RouteJSON) -> RouteJSON:
                 p.source, p.confidence = "llm", "high"
         h = d.hotel
         if h is not None and h.lat and h.lng:
-            oh = old_hotels.get(h.name)
-            echoed_h = oh is not None and oh.lat is not None and abs(oh.lat - h.lat) < 1e-6 and abs(oh.lng - h.lng) < 1e-6
-            if echoed_h:
+            oh = hotel_by_id.get(h.id) if h.id else None
+            if oh is None:
+                candidates = hotel_by_name.get(h.name) or []
+                if len(candidates) == 1:
+                    oh = candidates[0]
+            if _echoed(oh, h):
+                h.lat, h.lng = oh.lat, oh.lng
                 h.source, h.confidence = oh.source, oh.confidence
                 continue
             h.lat, h.lng = wgs84_to_gcj02(h.lat, h.lng)
@@ -333,13 +386,24 @@ def convert_new_coords(new: RouteJSON, old: RouteJSON) -> RouteJSON:
     return new
 
 
+def _is_placeholder_hotel(name: str) -> bool:
+    """「XX附近连锁酒店（自选）」这类占位名不是真实 POI，不能当成酒店去强匹配。"""
+    s = name or ""
+    return ("附近" in s or "自选" in s or "待定" in s) and ("酒店" in s or "住宿" in s or "民宿" in s)
+
+
 def _day_targets(d, di: int) -> list[tuple[str, object, str]]:
-    """阶段③的核验对象：该天所有地点 + 有名字的酒店（顺序与原实现逐字一致）。"""
+    """阶段③的核验对象：该天所有地点 + 有名字的酒店（顺序与原实现逐字一致）。
+
+    酒店 hint 用 `__placeholder__` 标记占位名；阶段③会跳过高德查询，只在轨迹里说明
+    「酒店未指定，坐标为区域参考」，避免把地铁站/道路当成酒店强匹配。
+    """
     out: list[tuple[str, object, str]] = [
         (f"geo:d{di}-p{pi}", p, getattr(p, "type", "")) for pi, p in enumerate(d.places)
     ]
     if d.hotel is not None and (d.hotel.name or "").strip():
-        out.append((f"geo:d{di}-hotel", d.hotel, ""))
+        hint = "__placeholder__" if _is_placeholder_hotel(d.hotel.name) else ""
+        out.append((f"geo:d{di}-hotel", d.hotel, hint))
     return out
 
 
@@ -370,6 +434,7 @@ async def _enrich_coordinates(
     session: AmapSession | None = None,
     force_verify: bool = False,
     on_progress=None,
+    on_record=None,
 ) -> int:
     """对缺失/离谱/不可信坐标做补全与核验；返回处理（写入坐标）个数。
 
@@ -412,6 +477,12 @@ async def _enrich_coordinates(
         if on_progress is not None:
             on_progress(done, total, name)
 
+    def _record(**kw) -> None:
+        """写入一条坐标决策记录，并立即回调（M39：让 /api/chat 能逐点流式下发 trace）。"""
+        _geo_rec(rec, **kw)
+        if on_record is not None:
+            on_record(rec[-1])
+
     # ---- 阶段①：离谱检测 ----
     valid = [(p.lat, p.lng) for d in route.days for p in d.places if _has_coord(p)]
     mlat = mlng = None
@@ -448,7 +519,7 @@ async def _enrich_coordinates(
             rid = f"geo:d{di}-p{pi}"
             if result["lat"] is None:
                 _add_note(p, "【坐标待确认】")
-                _geo_rec(rec, rid=rid, name=p.name, action="miss", level=result["source"], ms=ms)
+                _record(rid=rid, name=p.name, action="miss", level=result["source"], ms=ms)
                 continue
             new_lat, new_lng = result["lat"], result["lng"]
             moved = haversine_km(new_lat, new_lng, p.lat, p.lng)
@@ -460,12 +531,12 @@ async def _enrich_coordinates(
                 if result["confidence"] != "high":
                     _add_note(p, "【坐标待确认】")
                 filled += 1
-                _geo_rec(rec, rid=rid, name=p.name, action="replace", level=result["source"],
+                _record(rid=rid, name=p.name, action="replace", level=result["source"],
                          confidence=result["confidence"], dist_km=moved, ms=ms)
             else:
                 # 重新定位结果与原值接近 → 原坐标大概率没错（合法远点/知名地标），仅标注
                 _add_note(p, "【坐标待确认】")
-                _geo_rec(rec, rid=rid, name=p.name, action="keep", level=result["source"],
+                _record(rid=rid, name=p.name, action="keep", level=result["source"],
                          confidence=result["confidence"], dist_km=moved, ms=ms)
 
     # ---- 阶段②：缺失补全 ----
@@ -487,14 +558,14 @@ async def _enrich_coordinates(
             ms = int((time.perf_counter() - t0) * 1000)
             rid = f"geo:d{di}-p{pi}"
             if result["lat"] is None:
-                _geo_rec(rec, rid=rid, name=p.name, action="miss", level=result["source"], ms=ms)
+                _record(rid=rid, name=p.name, action="miss", level=result["source"], ms=ms)
                 continue
             p.lat, p.lng = result["lat"], result["lng"]
             p.source, p.confidence = result["source"], result["confidence"]
             if result["confidence"] != "high":
                 _add_note(p, "【坐标待确认】")
             filled += 1
-            _geo_rec(rec, rid=rid, name=p.name, action="fill", level=result["source"],
+            _record(rid=rid, name=p.name, action="fill", level=result["source"],
                      confidence=result["confidence"], ms=ms)
         h = d.hotel
         if h is not None and not _has_coord(h):
@@ -508,10 +579,10 @@ async def _enrich_coordinates(
                 h.lat, h.lng = result["lat"], result["lng"]
                 h.source, h.confidence = result["source"], result["confidence"]
                 filled += 1
-                _geo_rec(rec, rid=rid, name=h.name, action="fill", level=result["source"],
+                _record(rid=rid, name=h.name, action="fill", level=result["source"],
                          confidence=result["confidence"], ms=ms)
             else:
-                _geo_rec(rec, rid=rid, name=h.name, action="miss", level=result["source"], ms=ms)
+                _record(rid=rid, name=h.name, action="miss", level=result["source"], ms=ms)
 
     # ---- 阶段③：主动核验（只查高德；仅在配置了 key 且高德未熔断时进行）----
     if amap_enabled() and not sess.disabled:
@@ -522,16 +593,25 @@ async def _enrich_coordinates(
         envelope_strict = mlat is not None and spread <= _OUTLIER_KM
         drift_limit = max(spread, 50.0) + _VERIFY_DRIFT_KM
         anchor = destination_anchor(destination)
+        if anchor is None:
+            # 目的地没有解析出城市/省会：高德的 citylimit 与地理闸门可能不完整，必须可见。
+            _record(rid="geo-region", name=destination, action="region", level="", ms=0)
         # 进度总数：与主循环共用 _day_targets / _verify_eligible，避免两处口径漂移
         _v_total = sum(
             1
             for _di, _d in enumerate(route.days)
             for _rid, _obj, _hint in _day_targets(_d, _di)
-            if _verify_eligible(_obj, anchor, force_verify, traveler, destination)
+            if _hint != "__placeholder__"
+            and _verify_eligible(_obj, anchor, force_verify, traveler, destination)
         )
         _v_done = 0
+        placeholders: list[str] = []
         for di, d in enumerate(route.days):
             for rid, obj, hint in _day_targets(d, di):
+                if hint == "__placeholder__":
+                    if obj.name not in placeholders:
+                        placeholders.append(obj.name)
+                    continue
                 if not _verify_eligible(obj, anchor, force_verify, traveler, destination):
                     continue
                 _v_done += 1
@@ -551,7 +631,8 @@ async def _enrich_coordinates(
                 )
                 ms = int((time.perf_counter() - t0) * 1000)
                 if hit is None:
-                    _geo_rec(rec, rid=rid, name=obj.name, action="miss", level="amap", ms=ms)
+                    action = "budget" if sess.calls >= sess.max_calls else "miss"
+                    _record(rid=rid, name=obj.name, action=action, level="amap", ms=ms)
                     continue
                 dist = haversine_km(obj.lat, obj.lng, hit[0], hit[1])
                 score, agree = hit[2], (hit[3] if len(hit) > 3 else 1)
@@ -586,18 +667,22 @@ async def _enrich_coordinates(
                         action = "redirect"
                     else:
                         action = "replace" if dist > _VERIFY_KM else "align"
-                    _geo_rec(rec, rid=rid, name=obj.name,
+                    _record(rid=rid, name=obj.name,
                              action=action, level="amap",
                              confidence="high", dist_km=dist, score=score, ms=ms)
                 elif dist > _VERIFY_KM:
                     # 证据不足（弱匹配 / 同名子 POI / 异地同名点）：保留原坐标，标注交用户判断
                     _add_note(obj, "【坐标待确认】")
-                    _geo_rec(rec, rid=rid, name=obj.name, action="conflict", level="amap",
+                    _record(rid=rid, name=obj.name, action="conflict", level="amap",
                              confidence=obj.confidence, dist_km=dist, score=score, ms=ms)
                 else:
                     # 弱匹配但很近：不敢挪动坐标，也**不升级来源标注**（避免「高德核验」名不副实）
-                    _geo_rec(rec, rid=rid, name=obj.name, action="confirm", level="amap",
+                    _record(rid=rid, name=obj.name, action="confirm", level="amap",
                              confidence=obj.confidence, dist_km=dist, score=score, ms=ms)
+        if placeholders:
+            # 占位酒店没有唯一 POI：不查高德，也不冒充「高德核验」，只说明坐标是区域参考。
+            _record(rid="geo-placeholder", name="、".join(placeholders[:3]),
+                    action="placeholder", level="", ms=0)
     # Only metadata from the adopted POI point is retained; user pins remain authoritative.
     for day in route.days:
         for obj in [*day.places, *([day.hotel] if day.hotel else [])]:
@@ -621,7 +706,9 @@ async def recheck_route(
     - 不调用 `route_to_gcj02`：输入必须是已存的 GCJ-02（应用内 route 即此格式）
     - 返回 {route, filled, records, amap_calls, amap_reason}，records 供前端展示改了什么
     """
-    session = AmapSession()
+    # 显式「校准坐标」允许比普通生成更高的预算，避免 36 个点时半途而废。
+    points = sum(len(d.places) + (1 if d.hotel else 0) for d in route.days)
+    session = AmapSession(max_calls=max(80, points * 2))
     records: list[dict] = []
     filled = await _enrich_coordinates(
         route, route.trip.destination, overrides, traveler,
@@ -652,6 +739,10 @@ async def plan(req: dict, overrides: dict | None = None, traveler: str = "") -> 
         source = "mock"
     # 新生成的坐标（LLM 知识/mock 样本池）按 WGS84 处理 → 统一转 GCJ-02（0,0 占位不动）
     route_to_gcj02(route, source=("mock" if source == "mock" else "llm"))
+    # M39：首次生成补一份可执行的默认时间（全部标 estimate，界面提示可调整）
+    sched = fill_default_schedule(route)
+    if sched["days"] or sched["durations"]:
+        print(f"[planner] AI 预排时间：{sched['days']} 天起止、{sched['durations']} 个停留")
     try:
         filled = await _enrich_coordinates(route, route.trip.destination, overrides, traveler)
         if filled:

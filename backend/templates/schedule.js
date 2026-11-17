@@ -15,6 +15,7 @@
     b.append(el('p', `${day.start_from_hotel ? '离开酒店' : '首站开始'} ${day.schedule?.start || '未知'} → 当天结束 ${day.schedule?.end || '未知'} · Asia/Shanghai。交通为查询时估算，未来时段可能变化。`));
     if (!day.start_from_hotel) b.append(el('p', '开始时已到首站，不含出发地到首站交通。'));
     r.issues.forEach(v => { const p = el('p', '⚠ ' + v.text); p.style.color = '#a43e3e'; b.append(p); });
+    if (r.caveats?.length) { const d = el('details', ''); d.append(el('summary', `AI 预排提示 ${r.caveats.length} 项`)); r.caveats.forEach(v => d.append(el('p', v.text))); d.append(el('p', '可直接修改起止时间或各站停留；改过后提示会消失。')); b.append(d); }
     if (r.unknown.length) { const d = el('details', ''); d.append(el('summary', `未评估条件 ${r.unknown.length} 项`)); r.unknown.forEach(v => d.append(el('p', v.text))); b.append(d); }
     const points = [...day.places, ...(day.hotel ? [day.hotel] : [])];
     const entered = new Set(points.filter(p => (p.opening || []).length).map(p => p.id));
@@ -36,6 +37,7 @@
       b.append(el('p', `用户查阅后记录：${f.closed ? '当天关闭' : `${f.open}–${f.close}，最后入场 ${f.last_entry || '未提供'}`} · 查验 ${f.checked_at} · 有效 ${f.valid_from}–${f.valid_to}`)); link(b, f.source_url, '开放资料来源');
     }
     r.issues.forEach(t => { const p = el('p', '⚠ ' + t); p.style.color = '#a43e3e'; b.append(p); });
+    r.caveats?.forEach(t => b.append(el('p', 'AI 预排：' + t)));
     r.unknown.forEach(t => b.append(el('p', '未评估：' + t)));
     r.suggestions.forEach(t => b.append(el('p', t))); container.append(b);
   }

@@ -177,7 +177,12 @@ _FULLWIDTH = str.maketrans(
 # 类型提示：营地/门店名与 POI 大类吻合时给一点点加分（仅作同分裁决，不改变阈值）
 _TYPE_HINTS: dict[str, tuple[str, ...]] = {
     "food": ("餐饮", "美食", "小吃", "咖啡", "茶艺"),
-    "attraction": ("风景名胜", "景点", "公园", "博物馆", "展馆", "寺庙"),
+    # M39：自然地名（山/岛屿/河流/湖泊）此前不在提示表里，岳麓山/橘子洲这类景区
+    # 会被 −0.15 的类型惩罚从 0.87 压到 0.72，核验只能记「弱匹配」而无法对齐。
+    "attraction": (
+        "风景名胜", "景点", "公园", "公园广场", "博物馆", "展馆", "寺庙",
+        "自然地名", "山/岛屿", "岛屿", "河流", "湖泊",
+    ),
     "transport": ("交通设施", "地铁", "车站", "机场", "港口", "长途汽车"),
 }
 
@@ -210,6 +215,14 @@ _PROVINCES_SORTED = tuple(sorted(_PROVINCES, key=len, reverse=True))
 _CITY_SPLIT_RE = re.compile(r"[·・•∙⋅/\\|、,，;；:：\-\u2014\s]+")
 _ADMIN_SUFFIXES = (
     "特别行政区", "自治区", "自治州", "自治县", "地区", "新区", "省", "市", "区", "县", "盟", "旗",
+)
+# M39：复合目的地（「长沙岳麓山」「长沙橘子洲」）在无分隔符时会被当成一个不存在的城市名，
+# 高德 citylimit 静默失效。只对「已知城市前缀 + 景区/地标后缀」做保守拆分，
+# 不把「长沙湾」这类真实地名误判成长沙。
+_KNOWN_CITY_PREFIXES = tuple(sorted({*_CITY_CENTER, *_PROVINCE_CENTER}, key=len, reverse=True))
+_SUBSITE_SUFFIXES = (
+    "山", "洲", "景区", "公园", "湖", "河", "岛", "寺", "广场",
+    "博物馆", "大学", "古镇", "步行街",
 )
 
 
@@ -255,6 +268,10 @@ def parse_region(destination: str) -> tuple[list[str], list[str]]:
             if hit in _MUNICIPALITIES and not rest and hit not in cities:
                 cities.append(hit)  # 直辖市：本身即城市，可直接用于高德 city 参数
         city = _norm_region(rest) if rest else ""
+        if city and city not in _CITY_CENTER and city not in _PROVINCE_CENTER:
+            pref = next((k for k in _KNOWN_CITY_PREFIXES if city.startswith(k) and len(city) > len(k)), "")
+            if pref and any(s in city[len(pref):] for s in _SUBSITE_SUFFIXES):
+                city = pref
         if city and city not in cities:
             cities.append(city)
     return provinces, cities
@@ -473,10 +490,11 @@ class AmapSession:
     - disabled + reason：key 无效、配额用尽、连续网络失败 → 本次请求后续不再尝试高德
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_calls: int = _MAX_AMAP_CALLS) -> None:
         self.cache: dict[str, tuple[float, float, float] | None] = {}
         self.poi_meta: dict[tuple[float, float], dict] = {}
         self.calls = 0
+        self.max_calls = max(1, int(max_calls))
         self.net_fails = 0
         self.disabled = False
         self.reason = ""
@@ -554,16 +572,18 @@ async def geocode_amap_scored(
     if not key:
         return None
     sess = session if session is not None else AmapSession()
-    if sess.disabled or sess.calls >= _MAX_AMAP_CALLS:
-        if sess.calls >= _MAX_AMAP_CALLS and not sess.disabled:
-            sess.disabled, sess.reason = True, f"本次请求高德调用已达上限 {_MAX_AMAP_CALLS} 次"
-        return None
     query = _clean_name(name)
     if not query:
         return None
     ck = f"{_norm_name(query)}|{_norm_name(city)}|{hint_type or ''}"
+    # M39：缓存检查放在预算检查之前 —— 同名酒店/地点在预算耗尽后仍应复用本轮已查结果，
+    # 而不是把「已查过」误报成「未命中」。
     if ck in sess.cache:
         return sess.cache[ck]
+    if sess.disabled or sess.calls >= sess.max_calls:
+        if sess.calls >= sess.max_calls and not sess.disabled:
+            sess.disabled, sess.reason = True, f"本次请求高德调用已达上限 {sess.max_calls} 次"
+        return None
 
     # 目的地 → (省份, 城市)。city_param 只取「城市」：高德不认识省市连写、也不认省级名称，
     # 传错等于没传（比不传更危险，因为会假装限制了范围）。无城市时用省份做粗过滤。
@@ -588,7 +608,7 @@ async def geocode_amap_scored(
                 pois, query, hint_type, provinces=provinces, cities=cities, anchors=anchors,
                 allow_fuzzy=True, near=near, query_full=name, metadata=sess.poi_meta,
             )
-            if result is None and city_param and sess.calls < _MAX_AMAP_CALLS:
+            if result is None and city_param and sess.calls < sess.max_calls:
                 # 第二步：去掉城市限制，靠地理闸门（省份 / 距城市中心距离）筛跨城地点
                 sess.calls += 1
                 pois2, err2, fatal2 = await _amap_query(client, key, query, "", citylimit=False)

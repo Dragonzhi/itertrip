@@ -58,6 +58,7 @@ from ..engine.planner import (
     llm_config_with_source,
     route_to_gcj02,
 )
+from ..engine.schedule_defaults import fill_default_schedule
 
 router = APIRouter()
 
@@ -65,8 +66,10 @@ router = APIRouter()
 
 _SCHEMA_HINT = (
     '{"trip": {"title": str, "destination": str, "days": int, "dates": str, "budget": str, "style": str, '
-    '"travelers": str}, "days": [{"day": int, "theme": str, "places": [{"name": str, "lat": float, "lng": float, '
-    '"type": "attraction|food|transport|other", "time": str, "transport": str, "ticket": str, "note": str}], '
+    '"travelers": str}, "days": [{"day": int, "theme": str, "schedule": {"start": "HH:mm", "end": "HH:mm"}, '
+    '"places": [{"name": str, "lat": float, "lng": float, '
+    '"type": "attraction|food|transport|other", "time": str, "transport": str, "ticket": str, "note": str, '
+    '"visit": {"duration_min": int, "duration_source": "estimate", "kind": "visit|meal|rest"}}], '
     '"hotel": {"name": str, "lat": float, "lng": float, "note": str, "prices": []} | null}], "summary": [str]}'
 )
 
@@ -103,6 +106,9 @@ SYSTEM_EXTRACT = (
     "4. 攻略中的营业时间/门票/贴士写进 time/ticket/note；transport 留空由用户补充\n"
     "5. 攻略提到住宿就填 hotel；没提则 hotel 为 null\n"
     "6. summary 提炼 2-4 条攻略里的关键建议（避坑/预约/交通等），不要泛泛而谈\n"
+    "6.1 为每天给出可执行的默认时间安排：schedule.start/end 用 24 小时 HH:mm，按游览节奏给每个地点合理的 "
+    "visit.duration_min（分钟，duration_source 固定写 estimate，餐饮写 kind=meal）。没有把握也给保守估计，"
+    "系统会标注为「AI 预排」并允许用户调整；不要声称已核实开放时间、预约或交通耗时。\n"
     '7. 无法确定目的地或提取不到任何地点时，只输出 <<<REPLY>>> 段（后接一个具体的追问），不要输出 <<<JSON>>> 段\n'
     "8. 用户可能附攻略截图（多模态图片输入）：从图中提取地点名/营业时间/门票/贴士/住宿，忠于图片内容；多张截图视为同一篇攻略，按顺序合并为一条路线；图中未提及的坐标一律填 0（系统会自动补全），不要凭空编造\n"
     + _QUESTIONS_HINT
@@ -492,10 +498,12 @@ async def _enrich_progress(
     records: list[dict] | None = None,
     force_verify: bool = False,
 ):
-    """跑 _enrich_coordinates 并逐点播报进度（优化②）。
+    """跑 _enrich_coordinates 并逐点播报进度（优化② + M39）。
 
-    yield ("stage", "正在核验坐标 3/7：湖南博物院…")，最后 yield ("done", filled)。
-    为什么要队列：_enrich_coordinates 的进度回调是同步函数，没法直接 yield 出去；
+    yield ("stage", "正在核验坐标 3/7：湖南博物院…")、
+    yield ("record", {id, name, action, ...}) —— 每完成一个点立即把决策记录交给调用方发 trace，
+    最后 yield ("done", filled)。
+    为什么要队列：_enrich_coordinates 的回调是同步函数，没法直接 yield 出去；
     也不能用 wait_for 催它（会取消正在跑的网络调用），所以用「任务 + 队列」把边跑边报抽出来。
     异常照原样抛给调用方（调用点已有自己的降级兜底）。
     """
@@ -504,20 +512,28 @@ async def _enrich_progress(
     q: asyncio.Queue = asyncio.Queue()
 
     def _on_progress(done: int, total: int, name: str) -> None:
-        q.put_nowait((done, total, name))
+        q.put_nowait(("progress", (done, total, name)))
+
+    def _on_record(rec: dict) -> None:
+        q.put_nowait(("record", rec))
 
     task = asyncio.create_task(_enrich_coordinates(
         route, destination, overrides=overrides, traveler=traveler,
         records=records, force_verify=force_verify, on_progress=_on_progress,
+        on_record=_on_record,
     ))
     while True:
+        if task.done() and q.empty():
+            break
         try:
-            done, total, name = await asyncio.wait_for(q.get(), 1.5)
+            kind, payload = await asyncio.wait_for(q.get(), 1.5)
         except asyncio.TimeoutError:
-            if task.done():
-                break
             continue
-        yield ("stage", f"正在核验坐标 {done}/{total}：{name}…")
+        if kind == "progress":
+            done, total, name = payload
+            yield ("stage", f"正在核验坐标 {done}/{total}：{name}…")
+        else:
+            yield ("record", payload)
     yield ("done", await task)
 
 
@@ -532,9 +548,11 @@ _GEO_LEVEL_TEXT = {
 }
 _GEO_ACTION_TEXT = {
     "fill": "补全", "replace": "已替换", "align": "核验并对齐 POI 坐标",
-    "redirect": "明显偏离用户指定的目的地，已改回", "confirm": "核验一致（未调整）",
+    "redirect": "明显偏离用户指定的目的地，已改回", "confirm": "高德弱匹配参考（未采用）",
     "keep": "保留原值（可疑但未被推翻）",
     "conflict": "同名 POI 偏差大，未替换", "miss": "未命中",
+    "budget": "高德预算用尽，未核验", "placeholder": "酒店未指定，坐标为区域参考",
+    "region": "目的地未解析出城市，坐标核验可能不完整",
 }
 
 
@@ -573,22 +591,34 @@ def _geo_step(r: dict) -> dict:
     """把 planner 的坐标记录翻译成一条可读的轨迹步。"""
     level = str(r.get("level") or "")
     action = str(r.get("action") or "")
-    parts = [_GEO_LEVEL_TEXT.get(level, level or "未知")]
-    if r.get("confidence") == "low":
-        parts.append("低置信")
-    parts.append(_GEO_ACTION_TEXT.get(action, action))
+    if action == "confirm":
+        # 弱匹配只说明「高德有一个名字相近的参考点」，不证明当前坐标就是那个 POI。
+        parts = ["高德弱匹配参考（未采用）", "未升级来源"]
+    elif action == "budget":
+        parts = ["高德预算用尽，未核验"]
+    elif action == "placeholder":
+        parts = ["酒店未指定，坐标为区域参考"]
+    elif action == "region":
+        parts = ["目的地未解析出城市，坐标核验可能不完整"]
+    else:
+        parts = [_GEO_LEVEL_TEXT.get(level, level or "未知")]
+        if r.get("confidence") == "low":
+            parts.append("低置信")
+        parts.append(_GEO_ACTION_TEXT.get(action, action))
     dist = r.get("dist_km")
     if dist is not None:
         parts.append(f"偏离 {dist * 1000:.0f}m" if dist < 1 else f"偏离 {dist:.1f}km")
     if r.get("score") is not None:
         parts.append(f"名称匹配 {r['score']:.2f}")
-    if action == "miss" and level == "amap":
+    if action in ("confirm", "budget", "placeholder"):
+        status = "skip"
+    elif action == "miss" and level == "amap":
         parts.append("沿用原坐标")
         status = "skip"  # 高德没查到 ≠ 出错，原坐标继续用
     elif action == "miss":
         parts.append("无坐标可用")
         status = "fail"
-    elif action in ("conflict", "keep"):
+    elif action in ("conflict", "keep", "region"):
         status = "warn"
     else:
         status = "done"
@@ -600,18 +630,30 @@ def _geo_step(r: dict) -> dict:
 
 
 def _geo_summary_text(records: list[dict]) -> str:
-    """坐标阶段汇总文案：来源分布 + 修正/对齐数 + 待确认数。"""
-    counts = Counter(
-        str(r.get("level") or "unknown") for r in records
-        if r.get("action") in ("fill", "replace", "align", "redirect", "confirm", "keep", "conflict")
-    )
+    """坐标阶段汇总文案：真正采用/补全的来源 + 弱参考/未命中/预算分开说。
+
+    关键口径（M39）：`confirm` 只是「高德有一个名字相近的参考点」，没有升级来源，
+    不能再算进「高德 POI」；否则轨迹会同时出现「高德核验」和「AI 推测」两种说法。
+    """
+    resolved = [r for r in records if r.get("action") in ("fill", "replace", "align", "redirect")]
+    counts = Counter(str(r.get("level") or "unknown") for r in resolved)
     parts = [f"{_GEO_LEVEL_TEXT.get(k, k)} {v}" for k, v in counts.most_common()]
     line = " · ".join(parts) if parts else "本次无需处理坐标"
+    weak = sum(1 for r in records if r.get("action") == "confirm")
     replaced = sum(1 for r in records if r.get("action") == "replace")
     redirected = sum(1 for r in records if r.get("action") == "redirect")
     aligned = sum(1 for r in records if r.get("action") == "align")
     warns = sum(1 for r in records if r.get("action") in ("keep", "conflict"))
     missed = sum(1 for r in records if r.get("action") == "miss")
+    budget = sum(1 for r in records if r.get("action") == "budget")
+    placeholders = sum(1 for r in records if r.get("action") == "placeholder")
+    region = sum(1 for r in records if r.get("action") == "region")
+    if weak:
+        line += f" · 高德弱参考 {weak} 处（未采用）"
+    if placeholders:
+        line += f" · 占位酒店 {placeholders} 处（区域参考）"
+    if region:
+        line += " · 目的地城市未识别"
     if replaced:
         line += f" · 修正 {replaced} 处"
     if redirected:
@@ -622,6 +664,8 @@ def _geo_summary_text(records: list[dict]) -> str:
         line += f" · {warns} 处待确认"
     if missed:
         line += f" · {missed} 处未命中"
+    if budget:
+        line += f" · 高德预算用尽 {budget} 处"
     return line
 
 
@@ -807,6 +851,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                         event = frame.pop('event')
                         if event == 'reply':
                             frame['stats'].update(model=model_name, provider=cfg_source)
+                            yield _sse("stage", {"stage": "done", "label": "完成"})
                         yield _sse(event, frame)
             except TimeoutError:
                 yield _sse('reply', dict(reply='行程未修改：Agent 已达到 90 秒预算，请分步重试。', intent='chitchat', route=None))
@@ -1038,6 +1083,8 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             route = RouteJSON.model_validate(strip_generated(data))
             # M19 修复：提取路径此前漏了坐标基准转换（模型坐标是 WGS84，画在高德瓦片上偏移约 360~560m）
             route = route_to_gcj02(route)
+            # M39：首次生成补一份可执行的默认时间（全部标 estimate，界面提示可调整）
+            fill_default_schedule(route)
             n_places = sum(len(d.places) for d in route.days)
             geo_records: list[dict] = []
             filled = 0
@@ -1053,6 +1100,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     "label": f"正在为 {missing} 个地点补全坐标…" if missing else f"正在核验 {n_places} 个地点的坐标…",
                 })
                 t_geo = time.perf_counter()
+                yield emit(_trace_step("geo-summary", "geocode", "run", "正在核验坐标", "准备中…"))
                 try:
                     async for _kind, _val in _enrich_progress(
                         route, route.trip.destination, overrides=cfg if is_user_key else None,
@@ -1060,17 +1108,19 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     ):
                         if _kind == "stage":
                             yield _sse("stage", {"stage": "geocode", "label": _val})
+                        elif _kind == "record":
+                            yield emit(_geo_step(_val))
                         else:
                             filled = _val
                 except Exception as e:
                     print(f"[chat] 坐标补全失败（忽略）: {e}")
                     yield emit(_trace_step("geo-error", "geocode", "warn", "坐标补全失败（已忽略）", str(e)[:140]))
-                for r in geo_records:
-                    yield emit(_geo_step(r))
-                yield emit(_trace_step(
-                    "geo-summary", "geocode", "done", f"坐标处理完成（写入 {filled} 处）",
-                    _geo_summary_text(geo_records), ms=int((time.perf_counter() - t_geo) * 1000),
-                ))
+                    yield emit(_trace_step("geo-summary", "geocode", "warn", "坐标处理中断", str(e)[:140]))
+                else:
+                    yield emit(_trace_step(
+                        "geo-summary", "geocode", "done", f"坐标处理完成（写入 {filled} 处）",
+                        _geo_summary_text(geo_records), ms=int((time.perf_counter() - t_geo) * 1000),
+                    ))
                 if filled:
                     yield _sse("stage", {"stage": "geocode", "label": f"已补全 {filled} 个坐标"})
             # M22：出发日期推断 + 闭馆日冲突检查（确定性算术，零网络调用；失败不阻断出路线）
@@ -1104,7 +1154,6 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             return
 
         # ---- 改路线模式 ----
-        yield _sse("stage", {"stage": "done", "label": "完成"})
         if data is None:
             # M22.3：如果这是个能确定性执行的报价设置请求，就别只报「什么都没变」——
             # 直接改出来给用户（这是本条请求第一次被报「说了没做」的路径）。
@@ -1117,6 +1166,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                             "price-fallback", "edit", "done", "报价已按你的要求直接设置",
                             f"模型这轮没给出可执行的改动，后端确定性写入：{_hp.summary_text(recs)}",
                         ))
+                        yield _sse("stage", {"stage": "done", "label": "完成"})
                         for ev in _reply_events(
                             tr,
                             _summary_step(tr, t_start, attempts=attempts, model=model_name,
@@ -1142,6 +1192,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 + "。可以再说一次，或直接在「✎ 编辑酒店」里手填报价。"
                 if edit_intent else (claim or "我在呢，想怎么改？")
             )
+            yield _sse("stage", {"stage": "done", "label": "完成"})
             for ev in _reply_events(
                 tr,
                 _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未产出改动"),
@@ -1175,9 +1226,11 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                                     need_fix.append(p)
                     fixed = 0
                     fixed_names: list[str] = []
-                    for p in need_fix:
+                    yield _sse("stage", {"stage": "geocode", "label": "正在重新定位你点名的地点…"})
+                    for i, p in enumerate(need_fix, 1):
                         # 强制重算一次坐标（即使已有坐标也以 geocode 降级链为准纠正；高德优先，用户真值最优先）
                         from ..engine.coordinates import geocode as _geocode
+                        yield emit(_trace_step(f"coord-fallback:{i}", "geocode", "run", f"📍 {p.name}", "正在重新定位…"))
                         res = await _geocode(p.name, _tmp.trip.destination, llm_overrides=cfg if is_user_key else None, traveler=traveler)
                         if res["lat"] is not None:
                             p.lat = res["lat"]
@@ -1185,12 +1238,16 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                             p.source, p.confidence = res["source"], res["confidence"]
                             fixed += 1
                             fixed_names.append(p.name)
+                            yield emit(_trace_step(f"coord-fallback:{i}", "geocode", "done", f"📍 {p.name}", "已重新定位"))
+                        else:
+                            yield emit(_trace_step(f"coord-fallback:{i}", "geocode", "skip", f"📍 {p.name}", "未找到新坐标，保留原值"))
                     if fixed:
                         route_obj = _tmp
                         yield emit(_trace_step(
                             "coord-fallback", "edit", "done", "坐标兜底修正（模型只说抱歉没动手）",
                             f"{fixed} 个地点已重新定位：" + "、".join(fixed_names[:4]),
                         ))
+                        yield _sse("stage", {"stage": "done", "label": "完成"})
                         for ev in _reply_events(
                             tr,
                             _summary_step(tr, t_start, filled=fixed, replaced=fixed, attempts=attempts,
@@ -1217,6 +1274,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                             "price-fallback", "edit", "done", "报价已按你的要求直接设置",
                             f"模型返回 changed=false，后端确定性写入：{_hp.summary_text(recs)}",
                         ))
+                        yield _sse("stage", {"stage": "done", "label": "完成"})
                         for ev in _reply_events(
                             tr,
                             _summary_step(tr, t_start, attempts=attempts, model=model_name,
@@ -1235,6 +1293,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     yield emit(_trace_step("price-fallback", "edit", "fail", "报价直接写入失败（已忽略）", str(_ep)[:140]))
             qs = data.get("questions") or []
             yield emit(_trace_step("edit", "edit", "skip", "未改动路线", "聊天/咨询类请求（changed=false）"))
+            yield _sse("stage", {"stage": "done", "label": "完成"})
             for ev in _reply_events(
                 tr,
                 _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="未改动路线"),
@@ -1253,6 +1312,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         if constraint_errors:
             reason = "；".join(constraint_errors)
             yield emit(_trace_step("schedule-guard", "edit", "warn", "固定日程保护：本次修改未应用", reason))
+            yield _sse("stage", {"stage": "done", "label": "完成"})
             for ev in _reply_events(tr, _summary_step(tr, t_start, attempts=attempts, model=model_name, source=cfg_source, note="固定约束阻止修改"), {"reply": "行程未修改：" + reason, "intent": "chitchat", "route": None}):
                 yield ev
             return
@@ -1275,23 +1335,31 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         edit_records: list[dict] = []
         edit_filled = 0
         edit_facts: dict = {}
+        t_geo2 = time.perf_counter()
         try:
             from ..engine.schema import RouteJSON as _RJ2
             _route_obj = _RJ2.model_validate(data["__route"])
-            t_geo2 = time.perf_counter()
             yield _sse("stage", {
                 "stage": "geocode",
                 "label": f"正在核验 {sum(len(d.places) for d in _route_obj.days)} 个地点的坐标…",
             })
+            yield emit(_trace_step("geo-summary", "geocode", "run", "正在核验坐标", "准备中…"))
             async for _kind2, _val2 in _enrich_progress(
                 _route_obj, _route_obj.trip.destination, overrides=cfg if is_user_key else None,
                 traveler=traveler, records=edit_records,
             ):
                 if _kind2 == "stage":
                     yield _sse("stage", {"stage": "geocode", "label": _val2})
+                elif _kind2 == "record":
+                    yield emit(_geo_step(_val2))
                 else:
                     edit_filled = _val2
+            yield emit(_trace_step(
+                "geo-summary", "geocode", "done", f"改后坐标处理完成（写入 {edit_filled} 处）",
+                _geo_summary_text(edit_records), ms=int((time.perf_counter() - t_geo2) * 1000),
+            ))
             # M22：日期/事实检查独立兜底，避免自己的异常被上面那层误标成「坐标补全失败」
+            yield _sse("stage", {"stage": "facts", "label": "正在核对闭馆日…"})
             try:
                 from ..engine import facts as _facts
 
@@ -1300,19 +1368,14 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 print(f"[chat] 改路线闭馆日检查失败（忽略）: {_ef}")
                 yield emit(_trace_step("facts-error", "facts", "warn", "闭馆日检查失败（已忽略）", str(_ef)[:140]))
             data["__route"] = _route_obj.model_dump()
-            for r in edit_records:
-                yield emit(_geo_step(r))
-            if edit_records:
-                yield emit(_trace_step(
-                    "geo-summary", "geocode", "done", f"改后坐标处理完成（写入 {edit_filled} 处）",
-                    _geo_summary_text(edit_records), ms=int((time.perf_counter() - t_geo2) * 1000),
-                ))
             if edit_facts:
                 yield emit(_facts_step(edit_facts))
         except Exception as _e2:
             print(f"[chat] 改路线坐标补全失败(忽略): {_e2}")
             yield emit(_trace_step("geo-error", "geocode", "warn", "改后坐标处理失败（已忽略）", str(_e2)[:140]))
+            yield emit(_trace_step("geo-summary", "geocode", "warn", "坐标处理中断", str(_e2)[:140]))
         # 口头说改但坐标未动的二次校验：若 changed=true 且用户提及某地名但该地坐标未变，强制 geocode 纠正
+        yield _sse("stage", {"stage": "verify", "label": "正在复核坐标改动…"})
         try:
             from ..engine.coordinates import geocode as _geocode2
             from ..engine.schema import RouteJSON as _RJ3
@@ -1325,12 +1388,17 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                     if p.name and p.name in req.prompt:
                         o = old_map.get(p.name)
                         if o and abs(o[0] - p.lat) < 1e-6 and abs(o[1] - p.lng) < 1e-6:
+                            rid = f"coord-recheck:{p.id or p.name}"
+                            yield emit(_trace_step(rid, "geocode", "run", f"📍 {p.name}", "正在二次核验…"))
                             res = await _geocode2(p.name, _new.trip.destination, llm_overrides=cfg if is_user_key else None, traveler=traveler)
                             if res["lat"] is not None:
                                 p.lat = res["lat"]
                                 p.lng = res["lng"]
                                 p.source, p.confidence = res["source"], res["confidence"]
                                 rechecked.append(p.name)
+                                yield emit(_trace_step(rid, "geocode", "done", f"📍 {p.name}", "已重新定位"))
+                            else:
+                                yield emit(_trace_step(rid, "geocode", "skip", f"📍 {p.name}", "未找到新坐标，保留原值"))
             data["__route"] = _new.model_dump()
             if rechecked:
                 yield emit(_trace_step(
@@ -1364,6 +1432,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         edit_detail = f"{len(data['__route'].get('days') or [])} 天 · {edited_places} 个地点"
         if price_recs:
             edit_detail += f" · 报价已设为 ¥{price_spec['price']:.0f}"
+        yield _sse("stage", {"stage": "done", "label": "完成"})
         yield emit(_trace_step("edit", "edit", "done", "路线候选已生成，等待客户端核对实际变更", edit_detail))
         for ev in _reply_events(
             tr,

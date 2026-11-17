@@ -28,6 +28,18 @@ export interface CoordDigestCount {
   n: number;
 }
 
+/** M39：同名同来源的降级项合并展示（7 天同一个占位酒店不该刷 7 行） */
+export interface CoordDigestGroup {
+  key: string;
+  name: string;
+  hotel: boolean;
+  source: string;
+  confidence: string;
+  missing: boolean;
+  days: number[];
+  count: number;
+}
+
 export interface CoordDigest {
   /** 地点 + 酒店总数 */
   total: number;
@@ -37,6 +49,8 @@ export interface CoordDigest {
   verified: number;
   /** 降级项（含无坐标），按天与出现顺序 */
   degraded: CoordDigestItem[];
+  /** 降级项的可读分组：同名同来源合并，保留出现顺序 */
+  groups: CoordDigestGroup[];
 }
 
 /** 计数的固定展示顺序（未列出的来源追加在尾部，保持出现顺序） */
@@ -103,10 +117,24 @@ export function coordDigest(route: RouteJSON | null | undefined): CoordDigest | 
   const trusted = (it: CoordDigestItem) =>
     !it.missing && TRUSTED.has(it.source) && it.confidence !== "low";
 
+  const degraded = items.filter((it) => !trusted(it));
+  const groupMap = new Map<string, CoordDigestGroup>();
+  for (const it of degraded) {
+    const key = [it.hotel ? "h" : "p", it.name, it.source, it.confidence, it.missing ? "1" : "0"].join("|");
+    let group = groupMap.get(key);
+    if (!group) {
+      group = { ...it, key, days: [], count: 0 };
+      groupMap.set(key, group);
+    }
+    if (!group.days.includes(it.day)) group.days.push(it.day);
+    group.count += 1;
+  }
+
   return {
     total: items.length,
     counts,
     verified: items.filter(trusted).length,
-    degraded: items.filter((it) => !trusted(it)),
+    degraded,
+    groups: [...groupMap.values()],
   };
 }

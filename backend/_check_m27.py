@@ -3,7 +3,7 @@ import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 from fastapi import FastAPI
@@ -15,6 +15,7 @@ from backend.engine.schema import RouteJSON, VisitPlan, OpeningFact
 from backend.engine.arrangements import protect_arrangements
 from backend.engine.builder import build_html
 from backend.engine.hotel_price import apply_price
+from backend.engine.schedule_defaults import fill_default_schedule
 
 now = datetime.now(timezone.utc).isoformat()
 fact = dict(place_name="测试馆A（合成）", open="09:00", close="17:00", last_entry="16:00", valid_from="2026-10-01", valid_to="2026-10-31", source_kind="official", source_url="https://example.org/synthetic-opening", checked_at=now, confirmed=True)
@@ -25,6 +26,29 @@ route = {"trip": {"title": "M27 合成日程测试", "destination": "成都", "d
 parsed = RouteJSON.model_validate(route).model_dump()
 assert parsed["days"][0]["places"][0]["opening"][0]["source_url"] == fact["source_url"]
 assert parsed["days"][0]["hotel"]["prices"][0]["room"] == "双床"
+
+# M39：首次生成补默认起止/停留，全部标 estimate；模型自称 user 也降为 estimate。
+generated = RouteJSON.model_validate({
+    "trip": {"title": "M39 预排", "destination": "成都", "days": 2},
+    "days": [
+        {"day": 1, "places": [
+            {"name": "景点A", "lat": 0, "lng": 0, "type": "attraction"},
+            {"name": "餐厅B", "lat": 0, "lng": 0, "type": "food",
+             "visit": {"duration_min": 30, "duration_source": "user"}},
+        ]},
+        {"day": 2, "schedule": {"start": "10:00", "end": "19:00"}, "places": []},
+    ],
+})
+stats = fill_default_schedule(generated)
+assert stats["days"] == 2 and stats["durations"] == 2, stats
+assert generated.days[0].schedule.start == "09:00" and generated.days[0].schedule.end == "18:00"
+assert generated.days[0].schedule.source == "estimate"
+assert generated.days[0].places[0].visit.duration_min == 90
+assert generated.days[0].places[0].visit.duration_source == "estimate"
+assert generated.days[0].places[1].visit.duration_min == 30
+assert generated.days[0].places[1].visit.duration_source == "estimate"
+assert generated.days[0].places[1].visit.kind == "meal"
+assert generated.days[1].schedule.start == "10:00" and generated.days[1].schedule.source == "estimate"
 price_route = copy.deepcopy(route)
 price_route['days'][0]['hotel']['prices'][0]['platform'] = '手动录入'
 apply_price(price_route, {'price': 200})
@@ -53,6 +77,35 @@ assert protect_arrangements(route, candidate)[0]["days"][0]["places"][0]["id"] =
 
 app = FastAPI(); app.include_router(search.router); app.include_router(plan.router); app.include_router(chat.router)
 client = TestClient(app)
+
+# M39：真实生成入口（/api/plan + /api/chat 提取）都要补默认时间，而不是只有工具函数会补。
+bare_route = RouteJSON.model_validate({
+    "trip": {"title": "M39 生成路径", "destination": "成都", "days": 1},
+    "days": [{"day": 1, "places": [{"name": "人民公园", "lat": 30.66, "lng": 104.06, "type": "attraction"}]}],
+})
+with patch.object(plan.planner, '_llm_config', return_value={'base_url': 'https://example.org', 'api_key': 'k', 'model': 'm'}), \
+     patch.object(plan.planner, 'plan_with_llm', new=AsyncMock(return_value=bare_route)), \
+     patch.object(plan.planner, '_enrich_coordinates', new=AsyncMock(return_value=0)):
+    body = client.post('/api/plan', json={"destination": "成都", "days": 1}).json()
+assert body['days'][0]['schedule']['start'] == '09:00'
+assert body['days'][0]['schedule']['source'] == 'estimate'
+assert body['days'][0]['places'][0]['visit']['duration_min'] == 90
+assert body['days'][0]['places'][0]['visit']['duration_source'] == 'estimate'
+
+async def fake_extract(*args, **kwargs):
+    yield 'content', '<<<REPLY>>>已识别人民公园。\n<<<JSON>>>' + json.dumps(bare_route.model_dump(), ensure_ascii=False)
+async def fake_enrich(*args, **kwargs):
+    return 0
+with patch.object(chat, '_resolve_cfg', return_value=({'base_url': 'https://example.org', 'api_key': 'k', 'model': 'm'}, False, 'env')), \
+     patch.object(chat, '_stream_llm', side_effect=fake_extract), \
+     patch.object(chat, '_memory_reference', new=AsyncMock(return_value=('', {'hits': 0, 'reason': '合成', 'ms': 0}))), \
+     patch('backend.engine.planner._enrich_coordinates', new=fake_enrich):
+    extracted = client.post('/api/chat', json={"prompt": "成都一日", "history": []})
+    frames = [json.loads(b.split('data: ', 1)[1]) for b in extracted.text.split('\n\n') if b.startswith('event: reply')]
+    assert frames and frames[-1]['route'], extracted.text[:400]
+    assert frames[-1]['route']['days'][0]['schedule']['source'] == 'estimate'
+    assert frames[-1]['route']['days'][0]['places'][0]['visit']['duration_min'] == 90
+
 res = client.post('/api/route/datecheck', json={"route": route, "start_date": "2026-10-06"})
 assert res.status_code == 200, res.text
 data = res.json()["route"]

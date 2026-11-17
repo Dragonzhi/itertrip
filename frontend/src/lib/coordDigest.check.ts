@@ -53,6 +53,7 @@ eq("只有 0 坐标算 missing", d.degraded.map((x) => x.missing), [false, false
 eq("酒店被标记 hotel", d.degraded.map((x) => x.hotel), [false, false, false, true]);
 eq("天号取自 days[].day", d.degraded.map((x) => x.day), [1, 2, 2, 2]);
 eq("高德低置信仍算降级", d.degraded[3].source + "/" + d.degraded[3].confidence, "amap/low");
+eq("分组按出现顺序", d.groups.map((g) => g.name), ["笨罗卜", "某小店", "待定位点", "某酒店"]);
 
 /** 全部可信 → 不报降级 */
 const ALL_OK = {
@@ -82,6 +83,21 @@ const un = coordDigest(UNKNOWN)!;
 eq("空来源归入 unknown", un.counts, [{ source: "unknown", n: 1 }]);
 eq("空来源算降级", un.degraded.length, 1);
 eq("day 缺失回退为下标 +1", un.degraded[0].day, 1);
+
+/** 同名同来源跨天重复 → 只显示一组，但计数仍按坐标槽位 */
+const DUPLICATE = {
+  trip: { title: "长沙七日", destination: "长沙", days: 7 },
+  days: Array.from({ length: 7 }, (_, i) => ({
+    day: i + 1,
+    places: [],
+    hotel: { name: "树木岭地铁站附近连锁酒店（自选）", lat: 28.1, lng: 113.0, source: "llm", confidence: "high" },
+  })),
+} as unknown as RouteJSON;
+const dup = coordDigest(DUPLICATE)!;
+eq("同名酒店跨天合并为一组", dup.groups.length, 1);
+eq("组内天数 1..7", dup.groups[0].days, [1, 2, 3, 4, 5, 6, 7]);
+eq("组内计数 7", dup.groups[0].count, 7);
+eq("原始降级计数仍为 7", dup.degraded.length, 7);
 
 /** 没有可说的就返回 null（调用方不渲染） */
 eq("无路线 → null", coordDigest(null), null);

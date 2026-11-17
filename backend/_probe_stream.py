@@ -99,10 +99,13 @@ async def t_enrich_progress() -> None:
     seen: list[tuple[str, object]] = []
 
     async def fake_enrich(route, destination, overrides=None, traveler="", records=None,
-                          session=None, force_verify=False, on_progress=None):
+                          session=None, force_verify=False, on_progress=None, on_record=None):
         for i, name in enumerate(["橘子洲头", "太平老街", "湖南博物院"], 1):
             if on_progress:
                 on_progress(i, 3, name)
+            if on_record:
+                on_record({"id": f"geo:{i}", "name": name, "action": "align",
+                           "level": "amap", "confidence": "high", "dist_km": 0.1, "score": 0.92, "ms": 1})
             await asyncio.sleep(0.01)
         return 2
 
@@ -114,8 +117,10 @@ async def t_enrich_progress() -> None:
         planner._enrich_coordinates = orig
 
     stages = [v for k, v in seen if k == "stage"]
+    records = [v for k, v in seen if k == "record"]
     done = [v for k, v in seen if k == "done"]
-    check("3 条进度 + 1 条完成", len(stages) == 3 and done == [2], str(seen))
+    check("3 条进度 + 3 条逐点记录 + 1 条完成", len(stages) == 3 and len(records) == 3 and done == [2], str(seen))
+    check("逐点记录带 id/name/action", records[0]["id"] == "geo:1" and records[0]["name"] == "橘子洲头" and records[0]["action"] == "align")
     check("进度文案含 序号/总数/名称", "1/3" in stages[0] and "橘子洲头" in stages[0], stages[0])
 
 
@@ -138,11 +143,14 @@ async def t_route() -> None:
         yield ("content", FAKE_ROUTE_JSON)
 
     async def fake_enrich(route, destination, overrides=None, traveler="", records=None,
-                          session=None, force_verify=False, on_progress=None):
-        # 坐标阶段是真正的长静默（整批跑完才吐 trace）——心跳就是为它准备的
+                          session=None, force_verify=False, on_progress=None, on_record=None):
+        # 坐标阶段是真正的长静默；M39 起每完成一个点就立即 on_record 吐 trace
         await asyncio.sleep(2.5)
         if on_progress:
             on_progress(1, 1, "橘子洲头")
+        if on_record:
+            on_record({"id": "geo:d0-p0", "name": "橘子洲头", "action": "fill",
+                       "level": "amap", "confidence": "high", "dist_km": None, "score": 1.0, "ms": 10})
         return 1
 
     orig_resolve, orig_stream = chat_mod._resolve_cfg, chat_mod._stream_llm
@@ -188,11 +196,97 @@ async def t_route() -> None:
     check("reply 之后没有 ping", "ping" not in names[names.index("reply"):] if "reply" in names else True)
 
 
+EDIT_ROUTE = {
+    "trip": {"title": "长沙一日", "destination": "长沙", "days": 1,
+             "start_date": "2026-10-05", "date_source": "user"},
+    "days": [{"day": 1, "schedule": {"start": "09:00", "end": "18:00"},
+              "places": [{"id": "p1", "name": "橘子洲头", "lat": 28.19, "lng": 112.96,
+                          "type": "attraction", "source": "llm", "confidence": "high",
+                          "visit": {"duration_min": 60, "duration_source": "estimate"}}],
+              "hotel": None}],
+    "summary": [],
+}
+
+
+async def t_edit_route() -> None:
+    print("[5] 编辑模式：逐点 geo trace 先于 reply，done 阶段最后")
+
+    async def fake_resolve(request):
+        return {"base_url": "http://fake.local", "api_key": "k", "model": "fake-model"}, False, "env"
+
+    async def fake_stream_llm(cfg, system, user_text, history, images=None):
+        days = json.loads(json.dumps(EDIT_ROUTE["days"]))
+        days[0]["places"][0]["note"] = "二次校验后的备注"
+        yield ("content", "<<<REPLY>>>已调整时间。\n<<<JSON>>>" + json.dumps(
+            {"reply": "已调整时间。", "changed": True, "days": days}, ensure_ascii=False))
+
+    async def fake_enrich(route, destination, overrides=None, traveler="", records=None,
+                          session=None, force_verify=False, on_progress=None, on_record=None):
+        await asyncio.sleep(0.05)
+        if on_progress:
+            on_progress(1, 2, "橘子洲头")
+        if on_record:
+            on_record({"id": "geo:d0-p0", "name": "橘子洲头", "action": "confirm",
+                       "level": "amap", "confidence": "high", "dist_km": 0.542, "score": 0.72, "ms": 10})
+        await asyncio.sleep(0.05)
+        if on_progress:
+            on_progress(2, 2, "岳麓山")
+        if on_record:
+            on_record({"id": "geo:d0-p1", "name": "岳麓山", "action": "align",
+                       "level": "amap", "confidence": "high", "dist_km": 0.12, "score": 0.92, "ms": 10})
+        return 1
+
+    orig_resolve, orig_stream = chat_mod._resolve_cfg, chat_mod._stream_llm
+    orig_enrich = planner._enrich_coordinates
+    chat_mod._resolve_cfg, chat_mod._stream_llm = fake_resolve, fake_stream_llm
+    planner._enrich_coordinates = fake_enrich
+    frames: list[str] = []
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://probe") as client:
+            async with client.stream("POST", "/api/chat", json={
+                "prompt": "帮我整理一下时间", "history": [], "route": EDIT_ROUTE,
+            }) as resp:
+                buf = ""
+                async for chunk in resp.aiter_text():
+                    buf += chunk
+                    while "\n\n" in buf:
+                        raw, buf = buf.split("\n\n", 1)
+                        if raw.strip():
+                            frames.append(raw)
+    finally:
+        chat_mod._resolve_cfg, chat_mod._stream_llm = orig_resolve, orig_stream
+        planner._enrich_coordinates = orig_enrich
+
+    parsed = [parse_frame(f) for f in frames]
+    names = [n for n, _ in parsed]
+    stages = [d.get("stage") for n, d in parsed if n == "stage"]
+    trace_steps = [d.get("step") or {} for n, d in parsed if n == "trace"]
+    ids = [s.get("id") for s in trace_steps]
+    check("编辑模式最终仍以 reply 收尾", names and names[-1] == "reply", str(names[-4:]))
+    check("逐点 geo trace 按完成顺序实时出现", "geo:d0-p0" in ids and "geo:d0-p1" in ids
+          and ids.index("geo:d0-p0") < ids.index("geo:d0-p1"), str(ids))
+    check("逐点 geo trace 出现在 reply 之前", "geo:d0-p1" in ids and names.index("reply") > max(
+        i for i, n in enumerate(names) if n == "trace" and (parsed[i][1].get("step") or {}).get("id") == "geo:d0-p1"
+    ), str(names))
+    check("stage:done 在 geocode/facts/verify 之后",
+          "done" in stages and all(stages.index("done") > stages.index(x) for x in ("geocode", "facts", "verify") if x in stages),
+          str(stages))
+    check("done 没有提前到 geocode 之前", "geocode" not in stages or stages.index("done") > stages.index("geocode"),
+          str(stages))
+    summary = [s for s in trace_steps if s.get("id") == "geo-summary"]
+    check("geo-summary 从 run 更新为 done", bool(summary) and summary[0].get("status") == "run"
+          and summary[-1].get("status") == "done", str(summary))
+    check("弱匹配轨迹明确说未采用", any(s.get("id") == "geo:d0-p0" and "未采用" in (s.get("detail") or "")
+          for s in trace_steps), str([s for s in trace_steps if s.get("id") == "geo:d0-p0"]))
+
+
 async def main() -> None:
     await t_heartbeat()
     await t_inner_error()
     await t_enrich_progress()
     await t_route()
+    await t_edit_route()
     print()
     if FAIL:
         print(f"结果: {PASS} 通过 / {len(FAIL)} 失败 → {FAIL}")

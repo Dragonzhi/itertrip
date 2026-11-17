@@ -48,7 +48,24 @@ class Add(Strict):
     type: Literal['attraction', 'food', 'transport', 'other']
 
 
-Action = Annotated[Move | Duration | Lock | Reservation | Add, Field(discriminator='op')]
+class DayDuration(Strict):
+    place_id: str = Field(min_length=1, max_length=80)
+    minutes: StrictInt = Field(ge=0, le=1440)
+
+
+class SetDaySchedule(Strict):
+    op: Literal['set_day_schedule']
+    day: StrictInt = Field(ge=1, le=30)
+    start: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+    end: str = Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')
+    durations: list[DayDuration] = Field(default_factory=list, max_length=20)
+    source: Literal['estimate', 'user'] = 'estimate'
+
+
+Action = Annotated[
+    Move | Duration | Lock | Reservation | Add | SetDaySchedule,
+    Field(discriminator='op'),
+]
 
 
 class Proposal(Strict):
@@ -112,6 +129,31 @@ def validate(route, raw, version, completed=()):
             candidate['days'][di]['places'].append(point)
             index[key] = (point, di, len(candidate['days'][di]['places']) - 1)
             continue
+        if a['op'] == 'set_day_schedule':
+            if a['end'] <= a['start']:
+                raise ValueError('当天结束时间必须晚于开始时间')
+            di = a['day'] - 1
+            if di >= len(candidate['days']):
+                raise ValueError('目标天不存在')
+            day = candidate['days'][di]
+            seen: set[str] = set()
+            for item in a['durations']:
+                key = item['place_id']
+                if key in seen:
+                    raise ValueError('同一天不能重复设置同一地点的停留时间')
+                seen.add(key)
+                if key not in index:
+                    raise ValueError('地点不存在：' + key)
+                point, point_di, pi = index[key]
+                if point_di != di or pi < 0:
+                    raise ValueError('只能设置目标天内的地点停留时间')
+                if fixed(point, completed):
+                    raise ValueError('固定访问的停留时间不能由 AI 改动')
+                visit = point.get('visit') or {}
+                visit.update(duration_min=item['minutes'], duration_source=a['source'])
+                point['visit'] = visit
+            day['schedule'] = dict(start=a['start'], end=a['end'], source=a['source'])
+            continue
         if a['place_id'] not in index:
             raise ValueError('地点不存在：' + a['place_id'])
         point, di, pi = index[a['place_id']]
@@ -163,6 +205,12 @@ def explicit(prompt, proposal, route):
     if re.search(r'如果|假如|是否|够不够|怎样|怎么样|[？?]|不要|不需要|别(?:改|动|锁)|仅.*(?:讨论|建议)', prompt):
         return False
     a = proposal['actions'][0]
+    if a['op'] == 'set_day_schedule':
+        # 纯起止调整且用户原文同时给出两个时刻 → 可直接应用；带多站停留的整日预排必须预览。
+        if a.get('durations'):
+            return False
+        day_ok = re.search(r'(?:第\s*[一二三四五六七八九十\d]+\s*天|当天|每天)', prompt)
+        return bool(day_ok and a['start'] in prompt and a['end'] in prompt)
     points = [p for d in route['days'] for p in [*d['places'], *([d['hotel']] if d.get('hotel') else [])]]
     point = next((p for p in points if p.get('id') == a.get('place_id')), None)
     if not point or point['name'] not in prompt or sum(p['name'] == point['name'] for p in points) != 1:

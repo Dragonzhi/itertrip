@@ -30,10 +30,13 @@ version='m30-turn-001'
 proposal=lambda *acts: dict(transaction_id=version,base_version=version,actions=list(acts))
 duration=dict(op='set_duration',place_id='a',minutes=45)
 move=dict(op='move_place',place_id='a',to_day=2,before_id='')
+schedule_op=dict(op='set_day_schedule',day=2,start='10:00',end='19:00',durations=[dict(place_id='c',minutes=90)],source='estimate')
 original=json.dumps(route)
 assert not A.handles('把每天酒店报价调整到 200 元')
 assert not A.handles('地点位置不对，请调整到长沙')
 assert not A.handles('看一下今天的天气') and not A.handles('下午下雨，帮我调整路线')
+assert A.handles('帮我给第二天的时间安排都规划一下')
+assert A.handles('把第二天开始时间改成 10:00')
 candidate,p,changed=O.validate(route,proposal(duration),version)
 assert changed and candidate['days'][0]['places'][0]['visit']['duration_min']==45
 assert json.dumps(route)==original
@@ -42,6 +45,29 @@ assert not O.explicit('如果春熙路休息点停留 45 分钟会怎样？',p,r
 assert not O.explicit('不要把春熙路休息点停留改为 45 分钟',p,route)
 assert not O.explicit('帮我优化路线',p,route)
 assert not O.explicit('把同名地点停留改为 45 分钟',p,route)
+sched_candidate,sched_p,sched_changed=O.validate(route,proposal(schedule_op),version)
+assert sched_changed and sched_candidate['days'][1]['schedule']==dict(start='10:00',end='19:00',source='estimate')
+assert sched_candidate['days'][1]['places'][0]['visit']['duration_min']==90
+assert sched_candidate['days'][1]['places'][0]['visit']['duration_source']=='estimate'
+assert not O.explicit('帮我给第二天的时间安排都规划一下',sched_p,route)
+pure=dict(op='set_day_schedule',day=2,start='10:00',end='19:00')
+pure_candidate,pure_p,_=O.validate(route,proposal(pure),version)
+assert pure_candidate['days'][1]['schedule']['source']=='estimate'
+assert O.explicit('把第二天时间设为 10:00 到 19:00',pure_p,route)
+bad_sched=[
+    {**schedule_op,'day':9},
+    {**schedule_op,'start':'19:00','end':'10:00'},
+    {**schedule_op,'durations':[{'place_id':'a','minutes':60}]},
+    {**schedule_op,'durations':[{'place_id':'missing','minutes':60}]},
+    {**schedule_op,'durations':[{'place_id':'c','minutes':60},{'place_id':'c','minutes':70}]},
+    {**schedule_op,'durations':[{'place_id':'c','minutes':True}]},
+]
+for raw in bad_sched:
+    try:O.validate(route,proposal(raw),version);raise AssertionError('invalid schedule accepted')
+    except (ValidationError,ValueError):pass
+fixed_sched=copy.deepcopy(route);fixed_sched['days'][1]['places'][0]['visit']['locked']=True
+try:O.validate(fixed_sched,proposal(schedule_op),version);raise AssertionError('fixed schedule duration accepted')
+except ValueError:pass
 bad=[proposal({**duration,'minute':40}),proposal({**duration,'place_id':'missing'}),proposal({**duration,'minutes':True}),proposal(duration,{**duration,'place_id':'missing'}),{**proposal(duration),'base_version':'old-version'}]
 for raw in bad:
     try:O.validate(route,raw,version);raise AssertionError('invalid operation accepted')
@@ -121,6 +147,13 @@ def scenario(name,mode,handler,body=None):
 completion=lambda content: httpx.Response(200,json=dict(choices=[dict(message=dict(role='assistant',content=content))],usage=dict(prompt_tokens=200,completion_tokens=40,total_tokens=240)))
 result,_=scenario('明确停留时长，双段协议', 'protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(duration)))))
 assert result['agent_direct'] and result['agent_proposal']
+result,_=scenario('整日时间预排，必须预览', 'protocol', lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(schedule_op)))), dict(prompt='帮我给第二天的时间安排都规划一下'))
+assert result['agent_proposal'] and not result['agent_direct']
+assert result['agent_proposal']['actions'][0]['source']=='estimate'
+pure_schedule=dict(op='set_day_schedule',day=2,start='10:00',end='19:00')
+result,_=scenario('用户明确起止，日程可直接应用', 'protocol', lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(pure_schedule)))), dict(prompt='把第二天时间设为 10:00 到 19:00'))
+assert result['agent_proposal'] and result['agent_direct']
+assert result['agent_proposal']['actions'][0]['source']=='user'
 result,_=scenario('仅声称成功，无有效操作','protocol',lambda req:completion('<<<REPLY>>>已经修改成功'))
 assert not result.get('agent_proposal') and '成功' not in result['reply']
 result,_=scenario('合法 JSON，但停留时长不变','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':30})))))

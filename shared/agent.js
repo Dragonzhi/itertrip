@@ -22,16 +22,29 @@
       if (!/^[A-Za-z0-9_-]{8,60}$/.test(p.transaction_id) || typeof p.base_version !== 'string' || p.base_version.length<8 || p.base_version.length>80) reject('操作编号或版本无效');
       if (!Array.isArray(p.actions) || !p.actions.length || p.actions.length>12 || JSON.stringify(p).length>16000) reject('操作数量超出预算');
       for (const a of p.actions) {
-        const fields={move_place:['place_id','to_day'],set_duration:['place_id','minutes'],lock_visit:['place_id','locked'],set_reservation:['place_id','date','start','end'],add_place:['to_day','name','type']}[a.op];
+        const fields={move_place:['place_id','to_day'],set_duration:['place_id','minutes'],lock_visit:['place_id','locked'],set_reservation:['place_id','date','start','end'],add_place:['to_day','name','type'],set_day_schedule:['day','start','end']}[a.op];
         if (!fields) reject('不支持的领域操作');
-        keys(a,['op',...fields],a.op==='move_place'?['before_id']:[]);
+        const optional=a.op==='move_place'?['before_id']:a.op==='set_day_schedule'?['durations','source']:[];
+        keys(a,['op',...fields],optional);
         if (a.op==='move_place') { if(!('before_id' in a)) a.before_id=''; if(typeof a.before_id!=='string'||a.before_id.length>80) reject('插入位置身份无效'); }
         if ('place_id' in a && (typeof a.place_id!=='string'||!a.place_id||a.place_id.length>80)) reject('地点身份无效');
         if ('to_day' in a) integer(a.to_day,1,30);
+        if ('day' in a) integer(a.day,1,30);
         if ('minutes' in a) integer(a.minutes,0,1440);
         if ('locked' in a && typeof a.locked!=='boolean') reject('锁定参数必须为布尔值');
         if (a.op==='add_place' && (typeof a.name!=='string'||!a.name.trim()||a.name.length>150||!['attraction','food','transport','other'].includes(a.type))) reject('新增地点参数无效');
         if (a.op==='set_reservation' && (!S.date(a.date)||S.clock(a.start)===null||S.clock(a.end)===null||a.end<=a.start)) reject('预约时间无效');
+        if (a.op==='set_day_schedule') {
+          if (S.clock(a.start)===null||S.clock(a.end)===null||a.end<=a.start) reject('当天起止时间无效');
+          if ('source' in a && !['estimate','user'].includes(a.source)) reject('时间来源无效');
+          if (!('durations' in a)) a.durations=[];
+          if (!Array.isArray(a.durations)||a.durations.length>20) reject('停留列表超出预算');
+          for (const item of a.durations) {
+            keys(item,['place_id','minutes']);
+            if (typeof item.place_id!=='string'||!item.place_id||item.place_id.length>80) reject('停留地点身份无效');
+            integer(item.minutes,0,1440);
+          }
+        }
       }
       const payload=canonical(p), receipts=route.agent_receipts||[], prior=receipts.find(r=>r.id===p.transaction_id);
       if (prior) {
@@ -57,6 +70,24 @@
           if(index.has(id)) reject('新增地点已存在，拒绝重放');
           day.places.push({id,name:a.name,type:a.type,lat:0,lng:0,note:'坐标待确认：请按名称定位后确认。',source:'none',confidence:'low'});
           reindex(); continue;
+        }
+        if (a.op==='set_day_schedule') {
+          const day=out.days[a.day-1];
+          if (!day) reject('目标天不存在');
+          const seen=new Set();
+          for (const item of a.durations) {
+            if (seen.has(item.place_id)) reject('同一天不能重复设置同一地点的停留');
+            seen.add(item.place_id);
+            const entry=index.get(item.place_id);
+            if (!entry) reject('地点不存在：'+item.place_id);
+            const {point,di,hotel}=entry;
+            if (hotel || di!==a.day-1) reject('只能设置目标天内的地点停留时间');
+            if (completed.includes(point.id)||point.visit?.completed||S.fixed(point,completed)) reject('固定访问的停留时间不能由 AI 改动');
+            const visit=point.visit||{};
+            point.visit={...visit,duration_min:item.minutes,duration_source:a.source||'estimate'};
+          }
+          day.schedule={start:a.start,end:a.end,source:a.source||'estimate'};
+          continue;
         }
         const entry=index.get(a.place_id);
         if(!entry) reject('地点不存在：'+a.place_id);

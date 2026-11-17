@@ -42,7 +42,12 @@ ok(schedule.calculate(changed,0).unknown.some(v=>v.text.includes('日期未知')
 changed = clone(route); changed.trip.date_source = 'inferred';
 eq(schedule.calculate(changed,0).status,'unassessed','inferred dates need confirmation');
 changed = clone(route); changed.days[0].places[0].visit!.duration_source = 'estimate';
-ok(schedule.calculate(changed,0).unknown.some(v=>v.text.includes('时长为估计')),'duration estimate stays visible');
+r = schedule.calculate(changed,0);
+ok(r.caveats.some(v=>v.text.includes('AI 估计')),'AI duration estimate stays visible as a soft caveat');
+ok(!r.unknown.some(v=>v.text.includes('时长为估计')),'AI duration estimate is not treated as missing information');
+eq(r.status,'estimated','AI duration estimate does not block feasibility');
+changed.days[0].schedule!.source = 'estimate';
+ok(schedule.calculate(changed,0).caveats.some(v=>v.text.includes('AI 预排')),'AI-prefilled day boundaries are disclosed');
 changed = clone(route); changed.days[0].places[0].opening = [{...fact,valid_to:'2026-10-04'}];
 ok(schedule.calculate(changed,0).notes.some(v=>v.text.includes('适用于当天')),'expired fact not treated as current');
 ok(schedule.calculate(changed,0).rows[1].arrival !== null,'expired fact does not block later arrivals');

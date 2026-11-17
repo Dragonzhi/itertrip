@@ -50,6 +50,18 @@ const direct=JSON.stringify(saved());await click(byText('↩ 撤销'));assert.eq
 await click(byText('↪ 重做'));assert.equal(JSON.stringify(saved()),direct);
 await click(byText('↩ 撤销'));
 
+// M39：整日时间预排只出预览，应用后才写起止与停留，并标 estimate。
+model([{op:'set_day_schedule',day:1,start:'09:30',end:'18:30',durations:[{place_id:'a',minutes:50}],source:'estimate'}],false);
+await send('帮我给第一天的时间安排都规划一下');
+assert.ok(document.querySelector('[data-testid="agent-preview"]'));
+assert.equal(JSON.stringify(saved()),original,'AI schedule preview is read-only');
+await click(byText('应用这组修改'));
+assert.equal(saved().days[0].schedule.start,'09:30');
+assert.equal(saved().days[0].schedule.source,'estimate');
+assert.equal(saved().days[0].places[0].visit.duration_min,50);
+assert.equal(saved().days[0].places[0].visit.duration_source,'estimate');
+await click(byText('↩ 撤销'));assert.equal(JSON.stringify(saved()),original,'one undo restores AI schedule preview');
+
 model([{op:'set_duration',place_id:'a',minutes:40},{op:'set_duration',place_id:'b',minutes:45}],false);
 await send('把两处休息时间都调整一下');assert.ok(document.querySelector('[data-testid="agent-preview"]'));
 assert.equal(JSON.stringify(saved()),original,'preview is read-only');

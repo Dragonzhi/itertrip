@@ -9,6 +9,7 @@ export default function AgentPreview({proposal, candidate, original, disabled, a
     <p className="font-medium text-sm">修改预览 · 尚未应用</p>
     <ul className="text-xs space-y-1">{diff.summary.map((s,i)=><li key={i}>{s}</li>)}</ul>
     {proposal.actions.some(a=>a.op==='set_reservation')&&<p className="text-xs text-gold-deep">仅记录待确认预约，未替你预订或购票。</p>}
+    {proposal.actions.some(a=>a.op==='set_day_schedule')&&<p className="text-xs text-gold-deep">这是 AI 预排的时间，只调整起止与停留，不改变地点顺序、预约或开放资料。</p>}
     {!!candidate.unknown.length&&<details className="text-xs text-gold-deep"><summary>仍有 {candidate.unknown.length} 项未充分评估</summary><ul>{candidate.unknown.slice(0,10).map((s,i)=><li key={i}>{s}</li>)}</ul></details>}
     <div className="flex gap-2"><button type="button" className="px-3 py-1.5 rounded-lg bg-moss text-white text-xs disabled:opacity-50" disabled={disabled} onClick={apply}>应用这组修改</button><button type="button" className="px-3 py-1.5 rounded-lg border border-line text-xs" onClick={cancel}>取消</button></div>
   </section>;

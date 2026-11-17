@@ -15,6 +15,7 @@ export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number;
   const points = [...day.places, ...(day.hotel ? [day.hotel] : [])];
   const entered = new Set(points.filter(p => (p.opening || []).length).map(p => p.id));
   const openNotes = result.notes.filter(v => entered.has(v.id));
+  const caveats = result.caveats || [];
   return <section className="schedule-day" data-testid="schedule-day">
     <div className="flex justify-between gap-2"><strong>🕘 当天时间 · {result.date || '日期未知'}</strong><span className={result.status === 'conflict' ? 'text-danger' : 'text-moss'}>{result.label}</span></div>
     {actions && <div className="grid grid-cols-2 gap-3 my-2">
@@ -24,6 +25,7 @@ export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number;
     {/* 实现细节（时区常量、版本范围）不进界面 —— 只说用户需要拿来做决定的部分 */}
     <p>时间均为目的地当地时间。{day.start_from_hotel ? '开始 = 离开酒店的时刻。' : '开始 = 到达首站的时刻，不含前往首站的交通。'}交通耗时为查询时估算，未来时段可能变化。开放资料选填：不填也能按到达时刻与停留时长推算，不自动等待开门；填写并确认后才核对开门、闭馆与最后入场。</p>
     {!!result.issues.length && <ul className="text-danger">{result.issues.map((v, i) => <li key={i}>⚠ {v.text}</li>)}</ul>}
+    {!!caveats.length && <details data-testid="schedule-caveats"><summary>AI 预排提示（{caveats.length}）</summary><ul>{caveats.map((v, i) => <li key={i}>{v.text}</li>)}<li>可直接修改上方起止时间或各站停留；改过后提示会消失。</li></ul></details>}
     {!!result.unknown.length && <details><summary>查看未评估条件（{result.unknown.length}）</summary><ul>{result.unknown.map((v, i) => <li key={i}>{v.text}</li>)}</ul></details>}
     {!!openNotes.length && <details data-testid="schedule-notes"><summary>开放资料待完善（{openNotes.length}）</summary><ul>{openNotes.map((v, i) => <li key={i}>{v.text}</li>)}<li>不影响到达时刻推算；补全并确认后会核对开门、闭馆与最后入场。</li></ul></details>}
     {!!result.issues.length && <p>尚无已验证的可行方案。下方候选需修改后重新评估，固定／已完成部分保持原位。</p>}
@@ -55,6 +57,7 @@ export function ScheduleVisit({point, row, onEdit}: {point: Place | Hotel; row?:
     {r && <p>预约：{r.date || '日期未知'} {r.start}–{r.end} · {{needed: '待办理', pending: '待确认', confirmed: '用户记录已确认', cancelled: '已取消'}[r.status]}{schedule.url(r.url) && <a href={schedule.url(r.url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">打开提供的入口 ↗</a>}</p>}
     {row.fact?.known && row.fact.value && <p>开放资料：{row.fact.value.closed ? '当天关闭' : `${row.fact.value.open}–${row.fact.value.close}${row.fact.value.last_entry ? `，最后入场 ${row.fact.value.last_entry}` : ''}`} · 用户查阅后记录（{{official:'官方',map:'地图',user:'用户提供'}[row.fact.value.source_kind]}）<a href={schedule.url(row.fact.value.source_url)} target="_blank" rel="noopener noreferrer" className="ml-2 underline">来源 ↗</a><br/>查验 {row.fact.value.checked_at} · 有效 {row.fact.value.valid_from}–{row.fact.value.valid_to}</p>}
     {row.issues.map((text, i) => <p key={'i' + i} className="text-danger">⚠ {text}</p>)}
+    {row.caveats.length > 0 && <p className="text-ink-soft">AI 预排：{row.caveats.join('；')}</p>}
     {row.unknown.length > 0 && <p className="text-ink-soft">未评估：{row.unknown.join('；')}</p>}
     {row.suggestions.map((text, i) => <p key={'s' + i}>{text}</p>)}
   </section>;

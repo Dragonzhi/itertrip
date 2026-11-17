@@ -240,6 +240,8 @@ class TransportSegment(BaseModel):
 class DaySchedule(BaseModel):
     start: str = ""
     end: str = ""
+    # M39：起止时间来源。首次生成时由 AI 预排的默认值标 estimate，用户改过后标 user。
+    source: Literal["", "user", "estimate"] = ""
 
 
 class DayPlan(BaseModel):

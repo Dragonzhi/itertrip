@@ -68,6 +68,8 @@ try{
     await page.mouse.down();
     await page.mouse.move(b.x+b.width/2-90,y,{steps:6});
     await page.mouse.up();
+    // 松手后列宽有一次过渡；等它落定再读，避免把动画中间帧误判成「没拖回去」。
+    await new Promise(r=>setTimeout(r,200));
     const restored=await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width);
     assert.ok(Math.abs(restored-before)<12,'拖回原宽');
   }

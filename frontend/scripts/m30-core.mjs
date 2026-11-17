@@ -47,6 +47,18 @@ const parityOut=check('前后端规范化协议一致',route,parity.proposal,tru
 assert.deepEqual(parityOut.route.agent_receipts[0],parity.receipt);
 const multi=check('组合修改一次提交候选',route,proposal(duration,{op:'set_duration',place_id:'b',minutes:40}),true);
 assert.equal(multi.route.agent_receipts.length,1);
+const sched={op:'set_day_schedule',day:2,start:'10:00',end:'19:00',durations:[{place_id:'c',minutes:90}],source:'estimate'};
+const schedOut=check('日程起止与各站停留一次提交',route,proposal(sched),true);
+assert.equal(schedOut.route.days[1].schedule.start,'10:00');
+assert.equal(schedOut.route.days[1].schedule.source,'estimate');
+assert.equal(schedOut.route.days[1].places[0].visit.duration_min,90);
+assert.equal(schedOut.route.days[1].places[0].visit.duration_source,'estimate');
+check('日程不能改到其他天的地点',route,proposal({...sched,durations:[{place_id:'a',minutes:60}]}),false);
+check('日程起止倒置',route,proposal({...sched,start:'19:00',end:'10:00'}),false);
+const fixedSched=clone(route);fixedSched.days[1].places[0].visit.locked=true;
+check('固定访问不能被日程预排覆盖',fixedSched,proposal(sched),false);
+const sourceOnly=clone(route);sourceOnly.days[1].schedule={...sourceOnly.days[1].schedule,source:'estimate'};
+assert.equal(diffRoute(route,sourceOnly).changed,false,'source-only schedule metadata is not a visible change');
 const reserved=clone(route);reserved.days[0].places[1].visit.reservation={type:'entry',date:route.trip.start_date,start:'10:00',end:'11:00',status:'confirmed',url:'https://example.org/synthetic'};
 check('增加停留不能错过固定预约',reserved,proposal({...duration,minutes:120}),false);
 const unknownFixed=clone(reserved);unknownFixed.days[0].transport=[];

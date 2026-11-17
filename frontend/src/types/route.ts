@@ -58,7 +58,8 @@ export interface Place {
 }
 
 export interface DayPlan {
-  schedule?: { start?: string; end?: string };
+  /** M39：source=estimate 表示首次生成时 AI 预排的默认起止，用户改过后为 user */
+  schedule?: { start?: string; end?: string; source?: 'user' | 'estimate' | '' };
   day: number;
   theme?: string;
   places: Place[];

@@ -7,7 +7,8 @@ export type AgentAction =
   | {op:'set_duration';place_id:string;minutes:number}
   | {op:'lock_visit';place_id:string;locked:boolean}
   | {op:'set_reservation';place_id:string;date:string;start:string;end:string}
-  | {op:'add_place';to_day:number;name:string;type:'attraction'|'food'|'transport'|'other'};
+  | {op:'add_place';to_day:number;name:string;type:'attraction'|'food'|'transport'|'other'}
+  | {op:'set_day_schedule';day:number;start:string;end:string;durations?:{place_id:string;minutes:number}[];source?:'estimate'|'user'};
 export interface AgentProposal {transaction_id:string;base_version:string;actions:AgentAction[]}
 export interface AgentCandidate {route:RouteJSON;changed:boolean;replayed?:boolean;reasons:string[];unknown:string[]}
 export interface AgentEvidence {base_version:string;from_id:string;to_id:string;from_point:Place|Hotel;to_point:Place|Hotel;options:TransportOption[]}

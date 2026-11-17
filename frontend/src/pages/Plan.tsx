@@ -299,7 +299,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const completedIds = visits(route).filter(v => outing.completed.includes(v.id)).map(v => v.point.id!).filter(Boolean);
   const scheduleActions: ScheduleActions = {
     completed: completedIds,
-    day: (di, patch) => mutate(r => { r.days[di].schedule = {...r.days[di].schedule, ...patch}; }),
+    day: (di, patch) => mutate(r => { r.days[di].schedule = {...r.days[di].schedule, ...patch, source: 'user'}; }),
     edit: (di, id) => setScheduleTarget({di, id, version:route}),
   };
   const scheduledPoint = scheduleTarget && [...route.days[scheduleTarget.di]?.places || [], ...(route.days[scheduleTarget.di]?.hotel ? [route.days[scheduleTarget.di].hotel!] : [])].find(p => p.id === scheduleTarget.id);

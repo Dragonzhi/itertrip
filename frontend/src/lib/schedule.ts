@@ -3,12 +3,15 @@ import '../../../shared/schedule.js';
 import type { RouteJSON, Place, Hotel, OpeningFact, PriceItem } from '../types/route';
 export interface ScheduleRow {
   id?: string; name: string; hotel: boolean; arrival: number | null; start: number | null;
-  departure: number | null; wait: number; fixed: boolean; issues: string[]; unknown: string[]; notes: string[]; suggestions: string[];
+  departure: number | null; wait: number; fixed: boolean; issues: string[]; unknown: string[]; notes: string[];
+  /** M39：AI 预排的停留/起止提示，不阻断推算也不计入「信息不全」 */
+  caveats: string[]; suggestions: string[];
   fact: { known: boolean; reason?: string; value?: OpeningFact } | null;
 }
 export interface ScheduleResult {
   date: string; rows: ScheduleRow[]; issues: {id: string; text: string}[];
-  unknown: {id: string; text: string}[]; notes: {id: string; text: string}[]; end: number | null;
+  unknown: {id: string; text: string}[]; notes: {id: string; text: string}[];
+  caveats: {id: string; text: string}[]; end: number | null;
   status: 'conflict' | 'unassessed' | 'estimated'; label: string;
 }
 export const schedule = (globalThis as unknown as { IterTripSchedule: {
