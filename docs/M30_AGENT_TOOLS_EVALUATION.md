@@ -61,7 +61,9 @@
 
 统一查询结果带 `status`（ok／unknown／error）、`data`、`reason`、`base_version`、`queried_at`、`source`、`http_calls`、`cached`、`elapsed_ms`。成功的网页查询仍是未核实线索。模型不能自行构造交通证据：只有适配器实际取得的结果才通过终帧 `agent_evidence` 提供；候选采用前检查版本、端点完整签名、可信坐标和 15 分钟时效。只读调用不会改当前路线，采用依据与应用候选在同一帧提交。
 
-操作目录：`move_place`、`set_duration`、`lock_visit`、`set_reservation`、`add_place`。不开放任意 JSON 路径、执行脚本或任意 URL 抓取。数字参数拒绝布尔值；未知参数、无效日期／时段、缺失或重复身份均拒绝。日期和预约值来自用户输入或待确认预览，不允许模型制造 confirmed。服务端先拷贝并整组校验，浏览器再对实际最新状态重新验证。
+操作目录：`move_place`、`set_duration`、`lock_visit`、`set_reservation`、`add_place`、`set_day_schedule`。不开放任意 JSON 路径、执行脚本或任意 URL 抓取。数字参数拒绝布尔值；未知参数、无效日期／时段、缺失或重复身份均拒绝。日期和预约值来自用户输入或待确认预览，不允许模型制造 confirmed。服务端先拷贝并整组校验，浏览器再对实际最新状态重新验证。
+
+M39 补充 `set_day_schedule(day,start,end,durations,source)`：一次提交某天的起止与各站停留，`durations` 只能指向该天，且不能覆盖固定／已完成／锁定／有效预约点。用户明确给出起止时刻且不带多站停留时可直接应用（`source=user`）；只说「帮我规划一下」时必须走 `AgentPreview`（`source=estimate`），应用后才入撤销栈。浏览器端用同一份 `shared/schedule.js` 重算新旧日程，新增冲突整组拒绝。
 
 ### 供应商能力和预算
 

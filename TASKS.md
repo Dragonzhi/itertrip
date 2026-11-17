@@ -1,8 +1,8 @@
 # itertrip
 
 status: 进行中
-next: 桌面底图+浮层架构已实装（M38 第三批）；等用户真机试用反馈与文字细排布意见；M36/M37/MCP/CI 继续挂起（知识点地图 + 注入防御统一 + 小白讲解页）；下一步候选 M36 legacy 收敛 / M37 LLM-as-judge 评估 / MCP / CI，等用户挑方向；真机回归与盲审 4 条继续挂起
-updated: 2026-11-16
+next: M39 已落地（AI 预排时间 + Agent 日程预览 + 坐标核验逐点流式 + 坐标链修正 + AGENTS 同步清单）；等用户真实使用一轮反馈；M36 legacy 收敛 / M37 LLM-as-judge / MCP / CI 继续挂起；真机回归与盲审 4 条继续挂起
+updated: 2026-11-17
 
 ## 待办
 
@@ -19,6 +19,7 @@ updated: 2026-11-16
 
 ## 已完成
 
+- [x] M39 AI 预排时间 + Agent 日程 + 核验流式 + 坐标链审查：首次生成由 `engine/schedule_defaults.py` 补默认起止/停留（全标 `estimate`，`shared/schedule.js` 用 `caveats` 软提示，不再算「信息不全」），行程页提示「AI 预排，可调整」；Agent 新增 `set_day_schedule(day,start,end,durations,source)`，用户只说「规划第二天时间」可提议但必须预览，固定/预约/已完成点不覆盖；编辑模式坐标核验改为逐点 trace 实时下发（`_enrich_coordinates(on_record=…)` + 双通道队列），`stage:done` 移到坐标/facts/二次校验之后，facts/verify/changed=false 兜底都有进度；坐标链修回显降级（id 优先 + ~11m 容差）、自然景区类型误判、弱匹配「核验一致」文案、预算/缓存顺序、占位酒店与同名酒店去重、复合目的地解析；`AGENTS.md §10.1` 新增强制同步清单。验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（11 场景）、`_probe_stream` 27/27、`_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、desktop-a/mobile-shot、真实浏览器 CDP（预排提示、Agent 预览应用、逐点 trace 先于 reply）（2026-11-17）
 - [x] M38 前端好用度冲刺·第三批 = 桌面工作台重构实装（方向稿四轮迭代定稿后一次落地）：①地图升全幅底图（`isolation:isolate` 防瓦片越层），调整/收起侧栏不再 resize 地图；②日期带改左竖列 76↔36 角标（`itertrip:desktop-view` 持久化）；③行程列可拖 28–58%、收起只留贴边中段半圆；④顶栏一行化（行程名/日期芯片/天数并入，删 104px 大脑门与面包屑）；⑤AI 面板右缘锚定固定 380/340、无宽度拖拽（用户指认游离拖拽条后按删除测试移除）、顶栏按钮完整开关、**默认停在 AI**（Q2）；⑥「关闭辅助区」→「收起面板」；⑦行程文档标题与日期列去重；图例/标题 chip 跟随可见区（`--dw-left-w`）。验证：tsc/build、m25–m31 DOM（「AI 盖地图」断言翻转）、desktop-a 四尺寸（几何断言改底图架构）、mobile-shot 5 尺寸、CDP 四状态目检；紧凑态 <1024 未动。AGENTS v1.16（§6.3 desktop-view + §10 条目）、DESIGN.md §4/§5 同步（2026-11-15）
 - [x] M38 前端好用度冲刺·第二批（用户指认）：未安排的日程默认安静 —— 当天没有任何安排输入（时刻／已查交通／停留时长全空）时不渲染 dw-statusline 待评估状态板，只留标题行一个安静文字入口「安排与交通」；时间列「未知／未知 离开」「停留时间未知」「耗时未知」占位全部改为留白/只留入口（时间只渲染推算出的真实值）；开始安排后状态板才出现（缺口仍如实报告），入口收敛为状态板一处，data-testid=day-settings 两态都在。起因：用户问「为什么这么多地方都是未知」——新提取行程四类排程依据全空，满屏警示板像坏了；用户方向：「未安排不是错误，暂不完善的效果先不拿出来」。DESIGN.md §9 已写入该规则。tsc/build/m25–m31 DOM/desktop-a/mobile-shot 5 尺寸全绿 + CDP 探针前后对比截图（未安排 0 处「未知」→ 设 19:30 后状态板出现）（2026-11-15）
 - [x] M38 前端好用度冲刺·第一批 = 盲审 4 条收尾债全清：①🤖/🗺 aria-label/expanded + 展开态反色 + 一次性提示条（itertrip:plan-hint）；②⚙ 紧凑态归排右下角 + 抽屉打开时隐藏；③地图 D1–D6 循环配色 + 金色酒店左下角图例（顺带修 >6 天 pin 无色小洞）；④桌面状态条措辞人话化（未定/待查/待评估 + 怎么补，诚实口径不变）；附带 Chat 输入带改浮起圆角输入卡（接缝观感）。bee297b + f987a62；tsc/build/mobile-shot 5 尺寸/m25–m31 DOM/desktop-a/chat-stream 24/24 全绿，逐截图目检（2026-11-15）
@@ -31,6 +32,21 @@ updated: 2026-11-16
 - [x] M32 规划页全尺寸打通：<1024 统一底部抽屉与互斥（平板带不再双栏互叠）、窄屏观感与对话面板对齐工作台设计语言、mobile-shot 覆盖 5 尺寸（2026-11-07）
 
 ## 交接摘要
+
+### 2026-11-17 · M39 AI 预排时间、核验流式化与坐标链审查
+
+**变更**（backend + shared + frontend）：
+
+- 默认时间：`engine/schedule_defaults.py` 在 `/api/plan`、`/api/chat` 提取、mock 出口补 `schedule`（09:00–18:00）与 `visit.duration_min`（景点 90／餐饮 60／交通 30／其他 60），全标 `estimate`；模型自称 `user` 强制降为 `estimate`。
+- 日程语义：`shared/schedule.js` 新增 `caveats`；AI 估计不再进 `unknown`，状态条显示「预计可行 · 含 AI 预排」，行程页提示「时间为 AI 预排，点安排与交通可调整」；导出同步。
+- Agent：`set_day_schedule` 领域 op（后端 Pydantic + `shared/agent.js` 同构 + 前端类型）；`handles()` 识别「第 N 天时间安排/规划」；用户明确给起止时可直接应用（source=user），只说「规划一下」必须 `AgentPreview`（source=estimate）；固定/预约/已完成点不可改。
+- 流式：`_enrich_coordinates(on_record=…)` 每点完成即回调；`_enrich_progress` 双通道队列即时发 trace；编辑模式 `stage:done` 移到坐标/facts/二次校验之后；补 facts/verify/坐标兜底进度；Agent 路径补 stage 事件。
+- 坐标链：`convert_new_coords` 改 id 优先 + ~11m 回显容差；自然景区类型提示；`confirm` 改「高德弱匹配参考（未采用）」并单列统计；`budget` 动作；缓存先于预算；`AmapSession(max_calls=…)`，recheck 80；占位酒店不入高德；`coordDigest` 同名去重分组；复合目的地保守拆分 + `geo-region` warn。
+- 文档：`AGENTS.md §10.1` 新增「新增可编辑字段必须同步 Agent」强制清单；M27/M30 记录与版本号同步。
+
+**验证**：`_check_coords` 26 项；`_check_m27`（含 `/api/plan` 与 `/api/chat` 提取默认时间）；`_check_m30` 11 场景；`_probe_stream` 27/27（含编辑模式逐点 trace 早于 reply、done 最后）；`_check_injection`；`npx tsc --noEmit`；`npm run build`；`schedule.check` 56 项；`coordDigest.check` 21 项；m30-core 37 场景；m30-dom / m31-dom；desktop-a-browser 四尺寸；mobile-shot 五尺寸；真实浏览器 CDP（预排提示、Agent 预览应用、trace 实时渲染）。
+
+**诚实边界**：AI 预排是估计，不宣称开放/预约已核实；弱匹配仍不升级来源；占位酒店/泛指地点无法变成唯一 POI 的仍如实归入降级并分组展示；所有提交仍为本地，未 push。
 
 ### 2026-11-15 · M35 Agent 强化第一轮（知识点地图 + 注入防御统一）
 

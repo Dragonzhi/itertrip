@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.17 · 2026-11-16 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.18 · 2026-11-17 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -442,10 +442,10 @@ RouteJSON
 起点或终点未核验但来源明确（`llm`/`search` 高置信）时仍按坐标估算，选项带 `approx`，前端标「估算」；低置信、坐标待确认、mock、城市中心仍拒绝查询。
 完整契约、酒店起终点规则与验证见 [M26 施工记录](docs/M26_TRANSPORT.md)。
 
-**M27 日程契约补充**：day 有可选 `schedule.start/end`；place／hotel 有 `visit`（停留来源、参观／用餐／休息、
+**M27 日程契约补充**：day 有可选 `schedule.start/end/source`；place／hotel 有 `visit`（停留来源、参观／用餐／休息、
 必去、锁定、规划已完成、固定预约记录）及 `opening[]`（地点、开放／最后入场、预约要求、适用日期／星期、
 来源、查阅时间与用户确认）。酒店逐条报价保留入住／离店、房型、人数、退改、计价单位和来源。
-`shared/schedule.js` 为前端与导出共用的确定性时间计算；缺失交通／停留则暂停推进，不凭模型补齐。开放资料是选填：缺失／待确认／有效期不符只记入 `result.notes`，不阻断按到达时刻与停留时长的推算，也不进入日程状态条或标签；仅在已录入但资料待完善时于当天安排中列出。录入并确认后才检查开放、闭馆与最后入场限制。
+`shared/schedule.js` 为前端与导出共用的确定性时间计算。**M39 起**首次生成路线（`/api/plan`、`/api/chat` 提取、mock）由 `engine/schedule_defaults.py` 补一份 AI 预排：每天 `schedule` 缺失时填 09:00–18:00，地点停留缺失时按类型兜底（景点 90／餐饮 60／交通 30／其他 60），全部标 `source=estimate`；模型自称 `user` 也会被降为 `estimate`。这些估计值只进 `result.caveats`（「AI 预排，可调整」），不阻断到达时刻推算、不计入「信息不全」，也不进入状态条的未评估计数；用户改过起止后 `schedule.source=user`，提示消失。开放资料仍是选填：缺失／待确认／有效期不符只记入 `result.notes`，不阻断按到达时刻与停留时长的推算，也不进入日程状态条或标签；仅在已录入但资料待完善时于当天安排中列出。录入并确认后才检查开放、闭馆与最后入场限制。
 M22 文本闭馆警告本地幂等重算；时间结果是派生值，不写成 route 的永久事实。
 `engine/arrangements.py` 在 AI 修改的坐标核验前拒绝违反固定／已完成／必去约束的候选，轨迹记 `schedule-guard`；
 前端再次校验并保护独立的途中完成进度。用户查阅后记录开放资料，搜索线索不自动变成“已核实”事实。
@@ -575,7 +575,8 @@ M29 的天气评估与局部调整（`/api/route/weather`、`route.weather[]`、
 | max_tokens 探测档位 | 512→256→128→32 | `llm._text_probe_max_tokens` |
 | 记忆检索 top-k / 注入字数上限 | 6 条 / 1200 字 | `memory_ingest._TOP_K` / `_MAX_CHARS` |
 | 记忆检索/入库超时 | 30s / 180s（入库为后台任务） | `chat._memory_reference` / `_memory_ingest_bg` |
-| 高德超时 / 单次预算 / 熔断 | 8s / 40 次 / 致命 1 次·网络连续 2 次 | `coordinates._AMAP_TIMEOUT` / `_MAX_AMAP_CALLS` / `AmapSession` |
+| 高德超时 / 单次预算 / 熔断 | 8s / 40 次（显式 recheck ≥80）/ 致命 1 次·网络连续 2 次 | `coordinates._AMAP_TIMEOUT` / `_MAX_AMAP_CALLS` / `AmapSession(max_calls)` |
+| 编辑回显容差 | ~1e-4°（约 11m） | `planner._ECHO_DEG` |
 | 高德名称接受 / 强匹配 / 精确同名 | 0.72 / 0.85 / 0.99（类型不符 −0.15） | `coordinates._AMAP_MIN_SCORE` / `_AMAP_STRONG_SCORE` / `_AMAP_EXACT_SCORE` |
 | 候选地理闸门 / 并列裁决 / 候选池一致 | 200km / 分数差 0.05 / ≥3 条落在 0.5km 内 | `coordinates._AMAP_MAX_DRIFT_KM` / `_AMAP_TIE` / `_AMAP_AGREE_MIN` |
 | 模糊兜底阈值 / 分数上限 | 0.65 / 0.80（钳在强匹配阈值以下） | `coordinates._AMAP_FUZZY_SCORE` / `_AMAP_FUZZY_CAP` |
@@ -770,6 +771,16 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       验证：tsc/build、m25–m31 DOM（「AI 盖地图」断言翻转为「AI 打开地图仍常驻」）、desktop-a
       四尺寸（几何断言改底图架构：地图=全宽、面板右锚、行程 38–42%）、mobile-shot 5 尺寸全绿，
       CDP 目检四状态。紧凑态 <1024 不动；文字细排布留待用户真实使用反馈。
+- [x] **M39 AI 预排时间、核验流式化与坐标链审查（2026-11-17）**：新行程由 `engine/schedule_defaults.py`
+      补默认起止／停留（全标 `estimate`，`shared/schedule.js` 以 `caveats` 软提示，不再算「信息不全」），
+      行程页提示「AI 预排，可调整」；Agent 新增 `set_day_schedule(day,start,end,durations,source)`，
+      用户只说「规划第二天时间」时可提议、必须预览确认，固定／预约／已完成点不覆盖；编辑模式坐标核验改为
+      逐点 `trace` 实时下发（`_enrich_coordinates(on_record=…)` + 双通道队列），`stage:done` 移到坐标／facts／
+      二次校验之后，facts／verify／`changed=false` 兜底都有进度；坐标链修 `convert_new_coords` 回显降级
+      （id 优先 + ~11m 容差）、自然景区类型误判、弱匹配「核验一致」文案、预算／缓存顺序、占位酒店与同名酒店
+      去重、复合目的地解析；`AGENTS.md §10.1` 新增「新增可编辑字段必须同步 Agent」强制清单。
+      验证：`_check_coords` 26 项、`_check_m27`／`_check_m30`（11 场景）、`_probe_stream` 27/27、
+      `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、desktop-a／mobile-shot 与真实浏览器 CDP 探针。
 - [x] **M35 Agent 强化·第一轮（知识点地图 + 注入防御统一，2026-11-15）**：`docs/AGENT_KNOWLEDGE_MAP.md`
       把 13 类 Agent 工程模式逐条映射到代码（面试向：30 秒讲法 / 追问预案 / 诚实边界 / 刻意不做清单）；
       提示注入层次防御统一——`agent_turn.DATA_NOT_INSTRUCTION` 规范句三处 SYSTEM 共用、
@@ -793,6 +804,24 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
 
 **候选方向（文档未承诺，仅记录讨论空间）**：多 provider 故障转移（当前单 provider 链）、
 路线质量评分器、导出 HTML 内嵌轻量对话（分享后接收方可继续编辑式修改）。
+
+### 10.1 新增可编辑字段的 Agent 同步清单（强制）
+
+**任何新增／修改「用户可编辑的 route 字段」，必须在同一批改动里把 Agent 一并处理完；不允许先上 UI、以后再补。**
+M39 的日程预排就是第一个执行样例（`set_day_schedule` 与 `schedule.source` 同步落地）。
+
+落地时必须逐项确认：
+
+1. **契约**：后端 `engine/schema.py` + 前端 `types/route.ts` + JSON／HTML 导入导出；
+2. **Agent 写入**：领域 op（`engine/agent_ops.py`）+ 浏览器同构（`shared/agent.js`）+ 前端类型（`lib/agent.ts`）；只读场景再补 `agent_tools.py` 工具；
+3. **意图与提示词**：`agent_turn.handles()` 能识别这类请求，`agent_turn.SYSTEM` 写清可改边界与数值来源；
+4. **保护策略**：明确 AI 是「可直接应用」「必须预览」还是「只能保留」；同步 `arrangements.protect_arrangements` / `shared/schedule.js protect`；
+5. **应用语义**：`routeDiff` 能识别变化、`agent_receipts` 防重放、撤销栈一帧；
+6. **UI 诚实性**：预览里说明改了什么；AI 生成值必须标 `estimate`，不得冒充 `user` 或「已核实」；
+7. **测试**：契约、Agent 校验、真实 React DOM、导出；
+8. **文档**：AGENTS.md、TASKS.md、对应 Milestone 记录。
+
+> 判定标准：用户用自然语言提出这个字段的修改时，系统要么能通过 Agent 正确改出候选，要么明确说明「这类修改暂不支持」；**不能静默不改却回复「已完成」**。
 
 ---
 
