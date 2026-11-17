@@ -78,6 +78,8 @@ const SCENARIOS = {
     while (!res.writableEnded && !serverAborted) {
       i += 1;
       sse(res, "stage", { stage: "geocode", label: "正在核验坐标 " + i + "/99：测试点…" });
+      // M39：坐标核验逐点 trace 必须在流式期间就能看到，而不是等终帧一次性补发。
+      sse(res, "trace", { step: { id: "geo-run", kind: "geocode", status: "run", title: "正在核验坐标", detail: i + "/99" } });
       await sleep(700);
       if (i % 3 === 0) sse(res, "ping", { ms: i * 700, stage: "geocode" });
     }
@@ -221,6 +223,8 @@ try {
   check("运行时同一位置出现停止按钮", !!(await until("!!document.querySelector('[data-testid=stop-btn]')", 5000)));
   check("运行时没有发送按钮（原位切换）", !(await evalIn("!!document.querySelector('[data-testid=send-btn]')")));
   check("状态块在（阶段名 + 计时）", !!(await until("!!document.querySelector('[data-testid=stream-status]') && !!document.querySelector('[data-testid=elapsed]')", 3000)));
+  check("决策过程在流式期间实时出现（不是终帧才补发）",
+        !!(await until("(() => { const t=document.querySelector('[data-testid=decision-trace]'); return !!t && t.innerText.includes('正在核验坐标'); })()", 4000)));
   await sleep(2200); // 让阶段跑几拍，确保「停止」停的是真的进行中的流
   await shot("stream-running");
   const t0 = Date.now();
