@@ -20,6 +20,7 @@ updated: 2026-11-17
 ## 已完成
 
 - [x] M39 AI 预排时间 + Agent 日程 + 核验流式 + 坐标链审查：首次生成由 `engine/schedule_defaults.py` 补默认起止/停留（全标 `estimate`，`shared/schedule.js` 用 `caveats` 软提示，不再算「信息不全」），行程页提示「AI 预排，可调整」；Agent 新增 `set_day_schedule(day,start,end,durations,source)`，用户只说「规划第二天时间」可提议但必须预览，固定/预约/已完成点不覆盖；编辑模式坐标核验改为逐点 trace 实时下发（`_enrich_coordinates(on_record=…)` + 双通道队列），`stage:done` 移到坐标/facts/二次校验之后，facts/verify/changed=false 兜底都有进度；坐标链修回显降级（id 优先 + ~11m 容差）、自然景区类型误判、弱匹配「核验一致」文案、预算/缓存顺序、占位酒店与同名酒店去重、复合目的地解析；`AGENTS.md §10.1` 新增强制同步清单。验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（11 场景）、`_probe_stream` 27/27、`_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、desktop-a/mobile-shot、真实浏览器 CDP（预排提示、Agent 预览应用、逐点 trace 先于 reply）（2026-11-17）
+- [x] M39 后续（重庆实测反馈）：编辑模式不再显示「长期记忆未注入」空步；冲突日状态条/当天面板新增「让 AI 修复」，把确定性冲突原文反馈给 Agent 再跑一轮；Agent user payload 直接带每天 `schedule` 的 issues/unknown，`handles()` 识别「补充/补全/完善/修复某天时间」与「时间冲突」，`SYSTEM` 要求补充/修复时先看日程摘要、交通未知先 `query_transport` 再 `set_day_schedule`；流式状态显示「正文 N 字 · 思考 N 字」，长思考期间也有持续反馈。验证：`_check_m30` 12 场景、`_probe_stream` 28/28、chat-stream 26/26、m31-dom 冲突修复入口断言、真实浏览器 CDP 校验修复按钮请求含冲突原文与 agent_schedule（2026-11-17）
 - [x] M38 前端好用度冲刺·第三批 = 桌面工作台重构实装（方向稿四轮迭代定稿后一次落地）：①地图升全幅底图（`isolation:isolate` 防瓦片越层），调整/收起侧栏不再 resize 地图；②日期带改左竖列 76↔36 角标（`itertrip:desktop-view` 持久化）；③行程列可拖 28–58%、收起只留贴边中段半圆；④顶栏一行化（行程名/日期芯片/天数并入，删 104px 大脑门与面包屑）；⑤AI 面板右缘锚定固定 380/340、无宽度拖拽（用户指认游离拖拽条后按删除测试移除）、顶栏按钮完整开关、**默认停在 AI**（Q2）；⑥「关闭辅助区」→「收起面板」；⑦行程文档标题与日期列去重；图例/标题 chip 跟随可见区（`--dw-left-w`）。验证：tsc/build、m25–m31 DOM（「AI 盖地图」断言翻转）、desktop-a 四尺寸（几何断言改底图架构）、mobile-shot 5 尺寸、CDP 四状态目检；紧凑态 <1024 未动。AGENTS v1.16（§6.3 desktop-view + §10 条目）、DESIGN.md §4/§5 同步（2026-11-15）
 - [x] M38 前端好用度冲刺·第二批（用户指认）：未安排的日程默认安静 —— 当天没有任何安排输入（时刻／已查交通／停留时长全空）时不渲染 dw-statusline 待评估状态板，只留标题行一个安静文字入口「安排与交通」；时间列「未知／未知 离开」「停留时间未知」「耗时未知」占位全部改为留白/只留入口（时间只渲染推算出的真实值）；开始安排后状态板才出现（缺口仍如实报告），入口收敛为状态板一处，data-testid=day-settings 两态都在。起因：用户问「为什么这么多地方都是未知」——新提取行程四类排程依据全空，满屏警示板像坏了；用户方向：「未安排不是错误，暂不完善的效果先不拿出来」。DESIGN.md §9 已写入该规则。tsc/build/m25–m31 DOM/desktop-a/mobile-shot 5 尺寸全绿 + CDP 探针前后对比截图（未安排 0 处「未知」→ 设 19:30 后状态板出现）（2026-11-15）
 - [x] M38 前端好用度冲刺·第一批 = 盲审 4 条收尾债全清：①🤖/🗺 aria-label/expanded + 展开态反色 + 一次性提示条（itertrip:plan-hint）；②⚙ 紧凑态归排右下角 + 抽屉打开时隐藏；③地图 D1–D6 循环配色 + 金色酒店左下角图例（顺带修 >6 天 pin 无色小洞）；④桌面状态条措辞人话化（未定/待查/待评估 + 怎么补，诚实口径不变）；附带 Chat 输入带改浮起圆角输入卡（接缝观感）。bee297b + f987a62；tsc/build/mobile-shot 5 尺寸/m25–m31 DOM/desktop-a/chat-stream 24/24 全绿，逐截图目检（2026-11-15）
@@ -32,6 +33,18 @@ updated: 2026-11-17
 - [x] M32 规划页全尺寸打通：<1024 统一底部抽屉与互斥（平板带不再双栏互叠）、窄屏观感与对话面板对齐工作台设计语言、mobile-shot 覆盖 5 尺寸（2026-11-07）
 
 ## 交接摘要
+
+### 2026-11-17 · M39 后续（重庆实测反馈）
+
+**变更**：
+
+- 记忆未命中/编辑模式本来不注入时，不再输出「长期记忆未注入」空步（用户指认多此一举）。
+- 冲突日状态条与当天安排面板新增「让 AI 修复」：把 `shared/schedule.js` 算出的冲突原文作为 prompt，连同 `agent_schedule` 一起发给 Agent；Agent 可先 `query_transport` 补齐未知交通，再 `set_day_schedule` 出候选。
+- Agent user payload 新增每天 `schedule` 摘要（status/issues/unknown），模型不必为看冲突多花一轮 `check_schedule`。
+- `handles()` 识别「补充/补全/完善/修复某天时间」与「时间冲突」；`SYSTEM` 要求补充/修复时不要反问具体时刻，直接给可执行候选。
+- 流式状态新增「正文 N 字 · 思考 N 字」，长思考/长输出期间持续可见；「模型排队中」提示只在既无正文也无思考时显示。
+
+**验证**：`_check_m30` 12 场景（含 Agent 看到 schedule issues）；`_probe_stream` 28/28（编辑模式无 memory 空步）；`chat-stream` 26/26（正文/思考字数与 trace 实时出现）；`m31-dom` 冲突修复入口；真实浏览器 CDP 确认修复按钮请求含冲突原文与 `agent_schedule`。
 
 ### 2026-11-17 · M39 AI 预排时间、核验流式化与坐标链审查
 

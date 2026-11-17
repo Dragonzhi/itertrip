@@ -65,6 +65,8 @@
 
 M39 补充 `set_day_schedule(day,start,end,durations,source)`：一次提交某天的起止与各站停留，`durations` 只能指向该天，且不能覆盖固定／已完成／锁定／有效预约点。用户明确给出起止时刻且不带多站停留时可直接应用（`source=user`）；只说「帮我规划一下」时必须走 `AgentPreview`（`source=estimate`），应用后才入撤销栈。浏览器端用同一份 `shared/schedule.js` 重算新旧日程，新增冲突整组拒绝。
 
+后续（用户重庆实测）：Agent 的 user payload 直接带前端同版本 `schedule` 摘要（每天 status/issues/unknown），模型不必为看冲突多花一轮工具；`handles()` 识别「补充／补全／完善／修复某天时间」与「时间冲突」；`SYSTEM` 要求补充/修复时不要反问具体时刻，先看日程摘要，交通未知时按地点 ID 调 `query_transport`，再提出能装下已知停留与交通的 `set_day_schedule` 候选。冲突日 UI 的「让 AI 修复」会把确定性冲突原文发进同一 Agent 路径。记忆未命中或编辑模式本来不注入时，不再输出「长期记忆未注入」空步。
+
 ### 供应商能力和预算
 
 默认 `.env` 中 `ITERTRIP_AGENT_PROTOCOL=protocol`，兼容现有双段 JSON。明确支持 Chat Completions 函数调用的供应商可设置 `tools`：传 `tools` 和 `parallel_tool_calls=false`。只接受单个工具调用；出现 400／422 且错误指明不支持工具相关参数才回退，鉴权／配额错误不会冒充能力不足。拒绝请求也消耗一轮预算，回退可见于轨迹。
