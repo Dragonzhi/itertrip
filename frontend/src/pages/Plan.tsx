@@ -297,11 +297,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const agentVersion = useRef('');
   const [agentPending,setAgentPending]=useState<{proposal:AgentProposal;candidate:AgentCandidate;expected:RouteJSON;messageId:string;completedKey:string;evidence:AgentEvidence[]}|null>(null);
   const completedIds = visits(route).filter(v => outing.completed.includes(v.id)).map(v => v.point.id!).filter(Boolean);
-  const scheduleActions: ScheduleActions = {
-    completed: completedIds,
-    day: (di, patch) => mutate(r => { r.days[di].schedule = {...r.days[di].schedule, ...patch, source: 'user'}; }),
-    edit: (di, id) => setScheduleTarget({di, id, version:route}),
-  };
   const scheduledPoint = scheduleTarget && [...route.days[scheduleTarget.di]?.places || [], ...(route.days[scheduleTarget.di]?.hotel ? [route.days[scheduleTarget.di].hotel!] : [])].find(p => p.id === scheduleTarget.id);
   const [navKey, setNavKey] = useState<string | null>(null);
   const routeVisits = useMemo(() => visits(route), [route]);
@@ -505,6 +500,20 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     aiVersion.current = route;
     agentVersion.current=uid();
     void stream.send({ prompt: t, history, route, agent_version:agentVersion.current, completed_ids:completedIds, agent_schedule:route.days.map((_,di)=>schedule.calculate(route,di,completedIds)) }, settings);
+  };
+
+  /** M39 后续：把当天确定性日程的冲突原文反馈给 Agent，再跑一轮给修复候选。 */
+  const repairSchedule = (di: number, issues: string[]) => {
+    if (stream.sending || !issues.length) return;
+    const prompt = `请修复第 ${di + 1} 天的时间冲突：${issues.join('；')}。只调整 AI 预排的起止时间与各站停留，不要移动或删除地点，不改预约与开放资料。先看当前日程摘要；交通未知时按地点 ID 调 query_transport，再提出 set_day_schedule 候选。如果只调整时间无法消除冲突，请直接说明需要移动或删减哪些地点，不要硬塞一个仍然冲突的方案。`;
+    if (desktop) { setAux('ai'); setChatOpen(true); } else { setPanelOpen(false); setChatOpen(true); }
+    sendAiEdit(prompt);
+  };
+  const scheduleActions: ScheduleActions = {
+    completed: completedIds,
+    day: (di, patch) => mutate(r => { r.days[di].schedule = {...r.days[di].schedule, ...patch, source: 'user'}; }),
+    edit: (di, id) => setScheduleTarget({di, id, version:route}),
+    repair: stream.sending ? undefined : repairSchedule,
   };
 
   const finishAgentPreview=(apply:boolean)=>{
@@ -1188,6 +1197,7 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                 active={stream.sending}
                 stageLabel={stream.stageLabel}
                 text={stream.text}
+                thinking={stream.thinking}
                 idleMs={stream.idleMs}
                 health={stream.health}
                 sawPing={stream.sawPing}

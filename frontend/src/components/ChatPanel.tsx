@@ -439,6 +439,7 @@ export default function ChatPanel({ messages, stream, hasRoute, onSend, vision, 
               active={loading}
               stageLabel={stream.stageLabel}
               text={stream.text}
+              thinking={stream.thinking}
               idleMs={stream.idleMs}
               health={stream.health}
               sawPing={stream.sawPing}

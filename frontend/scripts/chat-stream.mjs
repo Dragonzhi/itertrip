@@ -75,6 +75,9 @@ const SCENARIOS = {
   },
   async forever(res) {
     let i = 0;
+    // 先流一小段思考与正文：验证长思考/长输出期间状态区有「正文 N 字 · 思考 N 字」的持续反馈。
+    sse(res, "thinking", { thinking: "先检查一下路线…" });
+    sse(res, "delta", { text: "正在核验…" });
     while (!res.writableEnded && !serverAborted) {
       i += 1;
       sse(res, "stage", { stage: "geocode", label: "正在核验坐标 " + i + "/99：测试点…" });
@@ -223,6 +226,8 @@ try {
   check("运行时同一位置出现停止按钮", !!(await until("!!document.querySelector('[data-testid=stop-btn]')", 5000)));
   check("运行时没有发送按钮（原位切换）", !(await evalIn("!!document.querySelector('[data-testid=send-btn]')")));
   check("状态块在（阶段名 + 计时）", !!(await until("!!document.querySelector('[data-testid=stream-status]') && !!document.querySelector('[data-testid=elapsed]')", 3000)));
+  check("长输出期间有「正文 N 字 · 思考 N 字」的持续反馈",
+        !!(await until("(() => { const n=document.querySelector('[data-testid=stream-output]'); return !!n && n.innerText.includes('正文') && n.innerText.includes('思考'); })()", 3000)));
   check("决策过程在流式期间实时出现（不是终帧才补发）",
         !!(await until("(() => { const t=document.querySelector('[data-testid=decision-trace]'); return !!t && t.innerText.includes('正在核验坐标'); })()", 4000)));
   await sleep(2200); // 让阶段跑几拍，确保「停止」停的是真的进行中的流

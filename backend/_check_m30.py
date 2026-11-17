@@ -37,6 +37,8 @@ assert not A.handles('地点位置不对，请调整到长沙')
 assert not A.handles('看一下今天的天气') and not A.handles('下午下雨，帮我调整路线')
 assert A.handles('帮我给第二天的时间安排都规划一下')
 assert A.handles('把第二天开始时间改成 10:00')
+assert A.handles('帮我补充一下第三天的')
+assert A.handles('帮我修复第二天的时间冲突')
 candidate,p,changed=O.validate(route,proposal(duration),version)
 assert changed and candidate['days'][0]['places'][0]['visit']['duration_min']==45
 assert json.dumps(route)==original
@@ -154,6 +156,13 @@ pure_schedule=dict(op='set_day_schedule',day=2,start='10:00',end='19:00')
 result,_=scenario('用户明确起止，日程可直接应用', 'protocol', lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(pure_schedule)))), dict(prompt='把第二天时间设为 10:00 到 19:00'))
 assert result['agent_proposal'] and result['agent_direct']
 assert result['agent_proposal']['actions'][0]['source']=='user'
+agent_sched=[dict(status='estimated',issues=[],unknown=[]),dict(status='conflict',issues=[dict(id='x',text='预计离开 22:26，超过当天结束 21:00')],unknown=[])]
+def schedule_context(req):
+    user=json.loads(json.loads(req.content)['messages'][-1]['content'])
+    assert user['schedule'][1]['issues']==['预计离开 22:26，超过当天结束 21:00'],user['schedule']
+    return completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(schedule_op))))
+result,_=scenario('Agent 看到当前日程冲突', 'protocol', schedule_context, dict(prompt='帮我修复第二天的时间冲突', agent_schedule=agent_sched))
+assert result['agent_proposal']
 result,_=scenario('仅声称成功，无有效操作','protocol',lambda req:completion('<<<REPLY>>>已经修改成功'))
 assert not result.get('agent_proposal') and '成功' not in result['reply']
 result,_=scenario('合法 JSON，但停留时长不变','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':30})))))

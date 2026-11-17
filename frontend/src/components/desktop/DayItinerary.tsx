@@ -46,6 +46,7 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
       <span className="dw-statusline-action">安排与交通 →</span>
     </button>}
     {arranged&&autoSchedule&&<p className="dw-schedule-hint" data-testid="schedule-auto-hint">时间为 AI 预排，点「安排与交通」可调整。</p>}
+    {arranged&&!!result.issues.length&&p.scheduleActions?.repair&&<div className="dw-schedule-repair"><span>AI 预排有 {result.issues.length} 处时间冲突</span><button type="button" data-testid="schedule-repair" onClick={()=>p.scheduleActions!.repair!(di,result.issues.map(v=>v.text))}>让 AI 修复</button></div>}
     <div className="dw-visits" onDragOver={e=>{if(drag.current)e.preventDefault();}} onDrop={e=>drop(e,day.places.length)}>
       {day.places.map((point,pi)=>{
         const key=`d${di}-p${pi}`, row=result.rows.find(r=>r.id===point.id);

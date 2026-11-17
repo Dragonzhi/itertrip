@@ -32,6 +32,7 @@ const itinerary=()=>document.querySelector('[data-testid=desktop-itinerary]');
 const mapNode=document.querySelector('.dw-map .leaflet-container');assert.ok(mapNode);
 assert.ok(document.querySelector('.dw-dayrail')&&document.querySelector('.dw-itinerary')&&document.querySelector('.dw-divider')&&document.querySelector('.dw-map')&&document.querySelector('.dw-inspector'),'M38 底图架构：日期列/行程列/分割线/底图/面板五件套');
 assert.ok(itinerary().textContent.includes('约 10 分钟'));assert.equal(itinerary().textContent.includes('查看与查询'),false,'交通段不再重复「查看与查询」按钮文案');assert.ok(itinerary().textContent.includes('待查'),'未查交通段只留安静入口');assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
+assert.ok(document.querySelector('[data-testid=schedule-repair]'),'冲突状态暴露「让 AI 修复」入口');
 // M38 后续：进入规划页自动按天补默认方式交通（测试 fetch 直接失败，只验证确实发起了自动补全且不阻塞渲染）
 await act(async()=>{await new Promise(r=>setTimeout(r,30));});
 assert.ok(calls.some(u=>String(u).includes('/api/route/transport')),'进入规划页自动补全交通');

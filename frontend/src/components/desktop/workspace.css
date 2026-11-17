@@ -103,6 +103,10 @@
 .dw-statusline-action { margin-left: auto; color: var(--dw-green); white-space: nowrap; }
 /* AI 预排提醒：安静一行，点整行仍进入「安排与交通」 */
 .dw-schedule-hint { margin: -8px 0 14px; padding-left: 2px; color: var(--dw-muted); font-size: 11px; line-height: 1.5; }
+/* 冲突修复入口：把确定性日程的冲突反馈给 Agent，再跑一轮 */
+.dw-schedule-repair { display: flex; align-items: center; gap: 10px; margin: -6px 0 14px; padding-left: 2px; color: #9C4038; font-size: 11px; }
+.dw-schedule-repair button { border: 0; background: transparent; color: var(--dw-green); font-size: 11px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 2px 0; }
+.dw-schedule-repair button:hover { color: #175740; }
 .dw-danger, .dw-row-warnings { color: #9C4038; }
 .dw-alert { padding: 10px; background: #FCF1EC; color: #9C4038; border-radius: 6px; margin: 12px 0; font-size: 12px; }
 .dw-visit { position: relative; padding: 12px 10px 12px 0; margin: 2px 0; border-radius: 6px; }

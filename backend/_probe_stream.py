@@ -279,6 +279,7 @@ async def t_edit_route() -> None:
           and summary[-1].get("status") == "done", str(summary))
     check("弱匹配轨迹明确说未采用", any(s.get("id") == "geo:d0-p0" and "未采用" in (s.get("detail") or "")
           for s in trace_steps), str([s for s in trace_steps if s.get("id") == "geo:d0-p0"]))
+    check("编辑模式不再显示「记忆未注入」步骤", "memory" not in ids, str(ids))
 
 
 async def main() -> None:

@@ -6,6 +6,8 @@ interface StatusProps {
   stageLabel: string | null;
   /** 正文是否已经开始流出（还没出字时给一句安慰文案） */
   text: string;
+  /** 思考链增量（M39 后续：长思考期间也要有可见的字数反馈） */
+  thinking: string;
   idleMs: number;
   health: StreamHealth;
   sawPing: boolean;
@@ -29,10 +31,12 @@ function HeartDots({ slow }: { slow: boolean }) {
  * 静默时整枚变金/变红，其中红态直接写明「可能已断开 · 可点停止后重试」。
  * 无思考链的模型以前只能靠总计时判断是否还在跑；现在「多久没收到服务端消息」直接可见。
  */
-export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing, variant }: StatusProps) {
+export function StreamStatus({ active, stageLabel, text, thinking, idleMs, health, sawPing, variant }: StatusProps) {
   const elapsed = useElapsed(active);
   const stalled = health === "stalled";
   const slow = health === "slow";
+  const textChars = text.length;
+  const thinkingChars = thinking.length;
   const pill = "inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full border " +
     (stalled ? "border-[#E0C3C3] bg-[#FDF4F4] text-danger" : slow ? "border-[#E4CEA6] bg-[#FDF9F1] text-[#8A6428]" : "border-line bg-white text-ink");
   const dot = stalled ? "bg-[#B85C5C]" : slow ? "bg-gold" : "bg-moss animate-pulse";
@@ -47,6 +51,13 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
         </span>
         {stalled && <span className="font-mono text-[11px] shrink-0">{Math.floor(idleMs / 1000)}s 无响应</span>}
       </div>
+      {active && (textChars > 0 || thinkingChars > 0) && (
+        <div className="text-xs text-ink-soft px-1" data-testid="stream-output">
+          {textChars > 0
+            ? `正在输出：正文 ${textChars} 字${thinkingChars ? ` · 思考 ${thinkingChars} 字` : ''}…`
+            : `模型正在思考：${thinkingChars} 字…`}
+        </div>
+      )}
       {health === "ok" && sawPing && (
         <div className="text-xs text-ink-soft px-1" data-testid="stream-idle">
           {idleMs < 2500 ? "服务端刚刚有响应" : Math.floor(idleMs / 1000) + "s 前有响应"}
@@ -65,7 +76,7 @@ export function StreamStatus({ active, stageLabel, text, idleMs, health, sawPing
             : "已经 " + Math.floor(idleMs / 1000) + " 秒没有任何服务端响应，可能已断开 —— 可点「停止」后重试"}
         </div>
       )}
-      {!text && (
+      {!text && !thinking && (
         <div className="text-[11px] text-ink-soft px-1 leading-relaxed" data-testid="wait-hint">
           {elapsed < 8
             ? variant === "extract"

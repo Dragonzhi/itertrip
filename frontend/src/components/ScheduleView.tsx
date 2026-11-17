@@ -7,6 +7,8 @@ export interface ScheduleActions {
   day(di: number, patch: {start?: string; end?: string}): void;
   edit(di: number, id: string): void;
   completed: string[];
+  /** M39 后续：把当天冲突反馈给 Agent，让它再跑一轮给出修复候选 */
+  repair?: (di: number, issues: string[]) => void;
 }
 export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number; actions?: ScheduleActions}) {
   const result = schedule.calculate(route, di, actions?.completed);
@@ -25,6 +27,7 @@ export function ScheduleDay({route, di, actions}: {route: RouteJSON; di: number;
     {/* 实现细节（时区常量、版本范围）不进界面 —— 只说用户需要拿来做决定的部分 */}
     <p>时间均为目的地当地时间。{day.start_from_hotel ? '开始 = 离开酒店的时刻。' : '开始 = 到达首站的时刻，不含前往首站的交通。'}交通耗时为查询时估算，未来时段可能变化。开放资料选填：不填也能按到达时刻与停留时长推算，不自动等待开门；填写并确认后才核对开门、闭馆与最后入场。</p>
     {!!result.issues.length && <ul className="text-danger">{result.issues.map((v, i) => <li key={i}>⚠ {v.text}</li>)}</ul>}
+    {actions?.repair && !!result.issues.length && <button type="button" className="nav-secondary my-2" data-testid="schedule-repair-panel" onClick={() => actions.repair!(di, result.issues.map(v => v.text))}>让 AI 修复时间冲突</button>}
     {!!caveats.length && <details data-testid="schedule-caveats"><summary>AI 预排提示（{caveats.length}）</summary><ul>{caveats.map((v, i) => <li key={i}>{v.text}</li>)}<li>可直接修改上方起止时间或各站停留；改过后提示会消失。</li></ul></details>}
     {!!result.unknown.length && <details><summary>查看未评估条件（{result.unknown.length}）</summary><ul>{result.unknown.map((v, i) => <li key={i}>{v.text}</li>)}</ul></details>}
     {!!openNotes.length && <details data-testid="schedule-notes"><summary>开放资料待完善（{openNotes.length}）</summary><ul>{openNotes.map((v, i) => <li key={i}>{v.text}</li>)}<li>不影响到达时刻推算；补全并确认后会核对开门、闭馆与最后入场。</li></ul></details>}

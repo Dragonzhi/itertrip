@@ -68,6 +68,7 @@ JSON 结构：
    visit.duration_min（分钟，duration_source 固定写 estimate，餐饮写 kind=meal）。没有把握也给保守估计，
    系统会标注为「AI 预排」并允许用户调整。
 6. 不要声称已核实开放时间、预约或交通耗时；攻略里的营业时间仍写进 time，另行给出可计算的 schedule/visit。
+7. 每天的 schedule 必须能装下当天所有停留与已知交通；放不下时减少停留或地点，不要输出越过 end 的日程。
 """
 
 

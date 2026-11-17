@@ -21,7 +21,12 @@ def handles(prompt):
         return False  # Preserve the existing deterministic price / coordinate repair paths.
     if re.search(r'(?:查|看|搜).*(?:交通|开放|营业|地点|位置)', prompt):
         return True
-    if re.search(r'(?:第\s*[一二三四五六七八九十\d]+\s*天|当天|每天|全天|时间安排|起止).*(?:规划|安排|排|调|设|改|预排)', prompt):
+    if re.search(r'(?:第\s*[一二三四五六七八九十\d]+\s*天|当天|每天|全天|时间安排|起止).*(?:规划|安排|排|调|设|改|补充|补全|完善|修复|预排)', prompt):
+        return True
+    # 「帮我补充一下第三天的」：动作词在日期前面，单独识别，避免落到旧编辑路径。
+    if re.search(r'(?:补充|补全|完善|修复)', prompt) and re.search(r'(?:第\s*[一二三四五六七八九十\d]+\s*天|当天|每天|全天|时间|日程|安排)', prompt):
+        return True
+    if re.search(r'冲突', prompt) and re.search(r'(?:时间|日程|安排)', prompt):
         return True
     return bool(re.search(r'停留|时长|锁定|解锁|预约.*(?:设|记|改)|(?:设|记|改).*预约|(?:移|挪|调).*(?:第|顺序|到)|新增|加(?:一个|个|一处)|查(?:询|看|一下)?.*(?:交通|开放|地点)|检查.*日程|重排|重新排', prompt))
 
@@ -36,7 +41,8 @@ SYSTEM = ('''你是 IterTrip 单模型旅行助手。你只能使用提供的只
 禁止预订、制造已确认事实、改坐标来源、改已完成访问、移动或删除固定预约。
 领域操作：move_place(place_id,to_day,before_id="")、set_duration(place_id,minutes)、lock_visit(place_id,locked)、set_reservation(place_id,date,start,end)、add_place(to_day,name,type)、set_day_schedule(day,start,end,durations=[{place_id,minutes}],source="estimate")。
 日期/预约/停留数值只能来自用户要求；没有给定就询问。set_reservation 只记录 pending，不代表预订成功。
-例外：用户明确要求“规划/安排某天或全天的时间”时，可以用 set_day_schedule 主动提出该天的起止与各站停留建议；这是 AI 预排（source=estimate），必须作为候选等待用户预览确认，不能直接宣称已修改。固定、已完成、锁定或有有效预约的站点不得改停留。
+例外：用户明确要求“规划/安排/补充/完善/修复某天或全天的时间”时，可以用 set_day_schedule 主动提出该天的起止与各站停留建议；这是 AI 预排（source=estimate），必须作为候选等待用户预览确认，不能直接宣称已修改。固定、已完成、锁定或有有效预约的站点不得改停留。
+用户只说“补充一下第三天”时不要反问具体时刻：本轮 user 上下文里的 schedule 是前端同版本派生日程（含每天 issues/unknown），直接据此提出一版可执行候选；交通未知时按地点 ID 调 query_transport。候选必须让已知停留 + 已知交通 + 缓冲落在 start/end 内；放不下就缩短停留或建议分天，不得制造已知冲突。
 新增地点坐标暂为未知，不伪造；所有既有地点通过 id 指认。只能修改用户要求的内容。
 自动重排需要完整日程条件：新相邻段须先按地点 ID 调 query_transport；只读查询结果可作为候选的交通依据，旧路线不会被查询改动。
 transaction_id 和 base_version 必须原样使用本轮上下文提供值。propose_edits 只是候选，不能说“已修改”。
@@ -74,8 +80,23 @@ async def run(req, cfg):
     tooldefs = definitions(Proposal.model_json_schema())
     native = env_value('ITERTRIP_AGENT_PROTOCOL', 'protocol') == 'tools'
     schema_catalog = [{'name': t['function']['name'], 'parameters': t['function']['parameters']} for t in tooldefs]
+    # 前端同版本派生日程：把冲突/未知直接放进上下文，模型不必为了看冲突再花一轮工具。
+    schedule_summary = []
+    for i, s in enumerate(req.agent_schedule[:30]):
+        if not isinstance(s, dict):
+            continue
+        def _texts(items):
+            return [str(v.get("text") if isinstance(v, dict) else v)[:180] for v in (items or [])][:12]
+
+        schedule_summary.append({
+            "day": i + 1,
+            "status": s.get("status"),
+            "label": s.get("label"),
+            "issues": _texts(s.get("issues")),
+            "unknown": _texts(s.get("unknown")),
+        })
     user = dict(prompt=req.prompt, current_route=context_route(req.route), transaction_id=req.agent_version,
-                base_version=req.agent_version, tools=schema_catalog,
+                base_version=req.agent_version, tools=schema_catalog, schedule=schedule_summary,
                 history=[dict(role=h.role, content=h.content[:3000]) for h in req.history[-8:]])
     text = json.dumps(user, ensure_ascii=False)
     if len(text) > 100000:

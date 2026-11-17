@@ -109,6 +109,7 @@ SYSTEM_EXTRACT = (
     "6.1 为每天给出可执行的默认时间安排：schedule.start/end 用 24 小时 HH:mm，按游览节奏给每个地点合理的 "
     "visit.duration_min（分钟，duration_source 固定写 estimate，餐饮写 kind=meal）。没有把握也给保守估计，"
     "系统会标注为「AI 预排」并允许用户调整；不要声称已核实开放时间、预约或交通耗时。\n"
+    "6.2 每天的 schedule 必须能装下当天所有停留与已知交通；放不下时减少停留或地点，不要输出越过 end 的日程。\n"
     '7. 无法确定目的地或提取不到任何地点时，只输出 <<<REPLY>>> 段（后接一个具体的追问），不要输出 <<<JSON>>> 段\n'
     "8. 用户可能附攻略截图（多模态图片输入）：从图中提取地点名/营业时间/门票/贴士/住宿，忠于图片内容；多张截图视为同一篇攻略，按顺序合并为一条路线；图中未提及的坐标一律填 0（系统会自动补全），不要凭空编造\n"
     + _QUESTIONS_HINT
@@ -871,8 +872,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                 "memory", "memory", "done", f"长期记忆命中 {mem_hits} 条",
                 "已拼进本轮【记忆参考】，要求模型带 [n] 引用", ms=mem_meta.get("ms") or 0, hits=mem_hits,
             ))
-        else:
-            yield emit(_trace_step("memory", "memory", "skip", "长期记忆未注入", str(mem_meta.get("reason") or "未命中")))
+        # 没有命中/编辑模式本来就不注入：不占轨迹行（用户指认「多此一举」）。
 
         base_payload = build_payload(edit_mode, req.route, req.prompt, mem_ref)
         system = SYSTEM_EDIT if edit_mode else SYSTEM_EXTRACT
