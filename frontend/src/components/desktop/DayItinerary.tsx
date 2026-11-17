@@ -40,7 +40,7 @@ export default function DayItinerary(p:TimelineProps & {desktopDay:number}) {
         M38 措辞人话化：不再说「未知」，改为说明缺什么、怎么补（诚实口径不变）。
         M38 用户方向：完全未安排的天整块不渲染（见上方 arranged 注释）。 */}
     {arranged&&<button className="dw-statusline" data-testid="day-settings" onClick={()=>p.onDaySettings?.()}>
-      <span>时间 <strong>{day.schedule?.start?(result.end?`${day.schedule.start}–${schedule.fmt(result.end)}`:`${day.schedule.start} 起`):'未定'}</strong>{!day.schedule?.start&&<small> · 补开始时刻后自动推算</small>}</span>
+      <span>时间 <strong>{day.schedule?.start?(result.end?`${day.schedule.start}–${schedule.fmt(result.end)}`:day.schedule.end?`${day.schedule.start}–${day.schedule.end}`:`${day.schedule.start} 起`):'未定'}</strong>{!result.end&&day.schedule?.start&&day.schedule?.end?<small> · 计划</small>:!day.schedule?.start&&<small> · 补开始时刻后自动推算</small>}</span>
       <span>交通 <strong>{traffic.known?`${Math.ceil(traffic.seconds/60)} 分钟`:'待查'}</strong><small>{traffic.known?`${traffic.known}/${traffic.total} 段 · 缓冲 ${traffic.buffer} 分钟${traffic.approx?` · ${traffic.approx} 段估算`:''}`:`共 ${traffic.total} 段`}</small></span>
       <span>日程 <strong className={result.issues.length?'dw-danger':''}>{result.issues.length?`${result.issues.length} 处时间冲突`:result.unknown.length?'待评估':'预计可行'}</strong><small title={unknownDetail?`信息不全：\n${unknownDetail}`:undefined}>{result.unknown.length?` · ${result.unknown.length} 项信息不全`:result.issues.length?'':caveatCount?' · 含 AI 预排':' · 交通为查询时估算'}</small>{!!unknownDetail&&<span className="dw-status-help" role="img" aria-label={`信息不全：${result.unknown.map(v=>v.text).join('；')}`} title={`信息不全：\n${unknownDetail}`}>!</span>}</span>
       <span className="dw-statusline-action">安排与交通 →</span>

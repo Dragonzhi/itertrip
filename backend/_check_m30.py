@@ -125,6 +125,16 @@ async def tools_checks():
         result=await runtime.run('query_transport',dict(from_id='b',to_id='a',mode='walk'))
         assert result['status']=='ok' and runtime.evidence[0]['from_id']=='b'
         assert q.call_args.args[0][0]['from']['id']=='b'
+    # 交通工具被低置信坐标拦住时，原因要透出具体地点，而不是「数据未配置」。
+    runtime=T.Tools(route,version,[])
+    blocked_option=dict(mode='walk',status='unknown',reason='「人民公园休息点」坐标待确认，无法估算这段交通；请先在编辑器确认该地点坐标')
+    with patch.object(transport,'query',new=AsyncMock(return_value=dict(results=[dict(options=[blocked_option])],stats=dict(calls=1)))):
+        blocked=await runtime.run('query_transport',dict(from_id='b',to_id='a',mode='walk'))
+        assert blocked['status']=='unknown' and '人民公园休息点' in blocked['reason']
+    low_route=copy.deepcopy(route);low_route['days'][0]['places'][1]['confidence']='low'
+    gate=await transport.query([dict(signature='gate',city='成都',**{'from':route['days'][0]['places'][0],'to':low_route['days'][0]['places'][1]})],['walk'])
+    gate_reason=gate['results'][0]['options'][0]['reason']
+    assert '人民公园休息点' in gate_reason and '坐标待确认' in gate_reason
     assert (await runtime.run('query_weather',dict(place_id='a')))['status']=='error'
     assert (await runtime.run('check_schedule',dict(day=1)))['status']=='unknown'
     with patch.object(coordinates,'geocode_amap_scored',new=AsyncMock(return_value=(30.66,104.06,.9,1))):
@@ -178,6 +188,17 @@ result,_=scenario('仅声称成功，无有效操作','protocol',lambda req:comp
 assert not result.get('agent_proposal') and '成功' not in result['reply']
 result,_=scenario('合法 JSON，但停留时长不变','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':30})))))
 assert not result.get('agent_proposal') and '没有实际变化' in result['reply']
+same=copy.deepcopy(route)
+same['days'][1]['schedule']=dict(start='09:00',end='18:00',source='estimate')
+same['days'][1]['places'][0].update(source='amap',confidence='low',note='【坐标待确认】')
+same['days'][1]['places'][0]['visit']=dict(kind='rest',duration_min=30,duration_source='estimate')
+same_op=dict(op='set_day_schedule',day=2,start='09:00',end='18:00',durations=[dict(place_id='c',minutes=30)],source='estimate')
+result,_=scenario('补充日程但候选与当前一致','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(same_op)))),
+                  dict(prompt='帮我补充第二天的时间安排',route=same,
+                       agent_schedule=[dict(status='estimated',issues=[],unknown=[]),
+                                       dict(status='unassessed',issues=[],unknown=[dict(id='c',text='到此站的交通耗时未知')])]))
+assert not result.get('agent_proposal') and '没有可应用的改动' in result['reply']
+assert '宽窄巷子休息点' in result['reply'] and '坐标待确认' in result['reply'] and '交通耗时未知' in result['reply']
 result,text=scenario('参数拼错，重试预算用尽','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':True})))))
 assert not result.get('agent_proposal') and result['stats']['attempts']==A.MAX_ROUNDS and '未通过校验' in text
 calls=[]

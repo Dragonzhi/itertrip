@@ -201,7 +201,9 @@ class Session:
 
     async def option(self, client, edge, mode):
         if not queryable(edge["from"]) or not queryable(edge["to"]):
-            return unknown(mode, "请先在编辑器确认起终点坐标；交通耗时未知")
+            blocked = next((p for p in (edge["from"], edge["to"]) if not queryable(p)), {})
+            name = blocked.get("name") or "起终点"
+            return unknown(mode, f'「{name}」坐标待确认，无法估算这段交通；请先在编辑器确认该地点坐标')
         # 未核验但可估：照常查询，结果标 approx，前端如实标注「估算」
         approx = not (trusted(edge["from"]) and trusted(edge["to"]))
         if not self.key:

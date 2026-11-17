@@ -78,7 +78,8 @@ SYSTEM = ('''你是 IterTrip 单模型旅行助手。你只能使用提供的只
 领域操作：move_place(place_id,to_day,before_id="")、set_duration(place_id,minutes)、lock_visit(place_id,locked)、set_reservation(place_id,date,start,end)、add_place(to_day,name,type)、set_day_schedule(day,start,end,durations=[{place_id,minutes}],source="estimate")。
 日期/预约/停留数值只能来自用户要求；没有给定就询问。set_reservation 只记录 pending，不代表预订成功。
 例外：用户明确要求“规划/安排/补充/完善/修复某天或全天的时间”时，可以用 set_day_schedule 主动提出该天的起止与各站停留建议；这是 AI 预排（source=estimate），必须作为候选等待用户预览确认，不能直接宣称已修改。固定、已完成、锁定或有有效预约的站点不得改停留。
-用户只说“补充一下第三天”时不要反问具体时刻：本轮 user 上下文里的 schedule 是前端同版本派生日程（含每天 issues/unknown），不要调用 check_schedule 重复查询，直接据此提出一版可执行候选；只有 schedule.unknown 明确写“交通耗时未知”时才按地点 ID 调 query_transport，否则跳过。候选必须让已知停留 + 已知交通 + 缓冲落在 start/end 内；放不下就缩短停留或建议分天，不得制造已知冲突。
+用户只说“补充一下第三天”时不要反问具体时刻：本轮 user 上下文里的 schedule 是前端同版本派生日程（含每天 start/end/durations、issues/unknown），不要调用 check_schedule 重复查询，直接据此提出一版可执行候选；只有 schedule.unknown 明确写“交通耗时未知”时才按地点 ID 调 query_transport，否则跳过。候选必须让已知停留 + 已知交通 + 缓冲落在 start/end 内；放不下就缩短停留或建议分天，不得制造已知冲突。
+如果该天已有 start/end 与 durations，且你的候选与它们完全相同，不要重复输出同一个 proposal；直接说明时间已经排好，并列出仍缺的交通／坐标项。同一段 query_transport 失败一次后不要重复调用。
 酒店是到达边界，不是游览点：不要把酒店放进 durations；冲突里的酒店条目只表示到达太晚，应通过缩短前面地点或调整当天 end 解决。
 输出纪律：不要复述路线或逐条推演；直接给工具调用或 proposal，内部推理尽量短。
 新增地点坐标暂为未知，不伪造；所有既有地点通过 id 指认。只能修改用户要求的内容。
@@ -124,6 +125,53 @@ def context_route(route, focus: int = 0):
     return view
 
 
+def _schedule_state(req, day_no):
+    """焦点日的当前日程、未评估项和待确认坐标点（用于无改动时给出可执行说明）。"""
+    days = req.route.get('days') or []
+    if not (0 < day_no <= len(days)):
+        return {}, [], [], []
+    day = days[day_no - 1]
+    summary = req.agent_schedule[day_no - 1] if 0 < day_no <= len(req.agent_schedule) else {}
+    summary = summary if isinstance(summary, dict) else {}
+
+    def texts(items):
+        return [str(v.get('text') if isinstance(v, dict) else v)[:180] for v in (items or []) if v][:4]
+
+    weak = [p.get('name') for p in [*day.get('places', []), *([day['hotel']] if day.get('hotel') else [])]
+            if p.get('name') and (p.get('confidence') == 'low' or '坐标待确认' in (p.get('note') or ''))]
+    return day, texts(summary.get('issues')), texts(summary.get('unknown')), weak
+
+
+def no_op_result(req, proposal):
+    """候选与当前路线一致时的回复：说清已有安排和真正卡住的项，而不是只说“没有变化”。"""
+    action = next((a for a in proposal.get('actions') or [] if a.get('op') == 'set_day_schedule'), None)
+    if action is None:
+        return '行程未修改：操作没有实际变化。', '尚未应用；客户端将检查最新路线、访问进度及时间约束。'
+    day_no = action['day']
+    day, issues, unknown, weak = _schedule_state(req, day_no)
+    sched = (day.get('schedule') or {}) if day else {}
+    start, end = sched.get('start'), sched.get('end')
+    if start and end:
+        source = '（AI 预排）' if sched.get('source') == 'estimate' else ''
+        parts = [f'第 {day_no} 天的时间已是 {start}–{end}{source}，候选与现有起止和停留一致，没有可应用的改动。']
+    else:
+        parts = [f'第 {day_no} 天的候选与现有日程一致，没有可应用的改动。']
+    if issues:
+        parts.append('当前仍有：' + '；'.join(issues) + '。')
+    if unknown:
+        parts.append('仍未评估：' + '；'.join(unknown) + '。')
+        if any('交通' in t for t in unknown):
+            if weak:
+                parts.append('这些交通段因「' + '」「'.join(weak[:3]) + '」坐标待确认而无法估算；'
+                             '请点开该地点 →「按名称重新定位」或「更改位置」，确认后再点「安排与交通 → 查询当天交通」。')
+            else:
+                parts.append('请点「安排与交通 → 查询当天交通」补查缺失路段。')
+    if not issues and not unknown:
+        parts.append('如需调整，请直接给出新的起止时刻或各站停留分钟数。')
+    detail = ('仍未评估：' + '；'.join(unknown[:3])) if unknown else '候选与当前日程一致，未重复写入'
+    return ''.join(parts), detail
+
+
 async def run(req, cfg):
     started = time.monotonic()
     tools = Tools(req.route, req.agent_version, req.agent_schedule)
@@ -145,8 +193,14 @@ async def run(req, cfg):
         def _texts(items):
             return [str(v.get("text") if isinstance(v, dict) else v)[:180] for v in (items or [])][:12]
 
+        day_view = req.route['days'][i] if i < len(req.route.get('days') or []) else {}
+        day_schedule = day_view.get('schedule') or {}
         schedule_summary.append({
             "day": i + 1,
+            "start": day_schedule.get("start") or "",
+            "end": day_schedule.get("end") or "",
+            "durations": [dict(name=p.get("name"), minutes=(p.get("visit") or {}).get("duration_min"))
+                          for p in (day_view.get('places') or [])][:20],
             "status": s.get("status"),
             "label": s.get("label"),
             "issues": _texts(s.get("issues")),
@@ -264,7 +318,7 @@ async def run(req, cfg):
                         if '<<<JSON>>>' not in content:
                             reply = content.split('<<<REPLY>>>')[-1].strip()
                             # Text alone cannot be presented as edit success, even if the model claims it.
-                            if re.search(r'已(?:经)?(?:修改|更新|设置|调整|完成|移动|锁定|新增|添加)|成功|已经.*(?:改|调|设)', reply):
+                            if re.search(r'已(?:经)?(?:修改|更新|设置|调整|完成|移动|锁定|新增|添加)|已成功|成功(?:修改|更新|设置|调整|完成|应用)', reply):
                                 reply = '模型只返回了文字，没有有效操作；请给出具体地点与修改值后重试。'
                             yield dict(event='reply', reply=('行程未修改。' + reply) if reply else '行程未修改，请补充具体修改要求。', intent='chitchat', route=None, trace=records, stats=final_stats())
                             return
@@ -299,9 +353,14 @@ async def run(req, cfg):
                                 candidate['days'][a['day'] - 1]['schedule']['source'] = a['source']
                         if any(a['op'] == 'set_day_schedule' for a in proposal['actions']):
                             changed = candidate != req.route
-                    yield trace('edit', 'done' if changed else 'warn', '领域候选已校验' if changed else '操作没有实际变化', '尚未应用；客户端将检查最新路线、访问进度及时间约束。')
+                    if changed:
+                        reply, detail = '修改候选已准备。', '尚未应用；客户端将检查最新路线、访问进度及时间约束。'
+                    else:
+                        reply, detail = no_op_result(req, proposal)
+                    yield trace('edit', 'done' if changed else 'warn',
+                                '领域候选已校验' if changed else '候选与当前日程一致', detail)
                     final_stats()
-                    yield dict(event='reply', reply='修改候选已准备。' if changed else '行程未修改：操作没有实际变化。', intent='route_edit', route=None,
+                    yield dict(event='reply', reply=reply if changed else '行程未修改：' + reply.removeprefix('行程未修改：'), intent='route_edit', route=None,
                                agent_proposal=proposal if changed else None, agent_direct=direct, agent_evidence=tools.evidence, trace=records, stats=stats)
                     return
                 query = obj['tool']

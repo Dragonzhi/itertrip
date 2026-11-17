@@ -81,7 +81,17 @@ class Tools:
             value, sources, calls, known = await asyncio.wait_for(self._query(name, parsed), timeout=min(15, max(.01, 60 - (start - self.started))))
             result.update(data=value, source=sources, http_calls=calls, status='ok' if known else 'unknown')
             if not known:
-                result['reason'] = '数据未配置、未命中或仍需确认；不能视为事实通过'
+                # 交通工具的 unknown 原因比通用文案有用：优先透出具体是哪段／哪个点拦住了。
+                reason = ''
+                if name == 'query_transport' and isinstance(value, dict):
+                    for row in value.get('results') or []:
+                        for opt in (row.get('options') or []) if isinstance(row, dict) else []:
+                            if isinstance(opt, dict) and isinstance(opt.get('reason'), str) and opt['reason']:
+                                reason = opt['reason']
+                                break
+                        if reason:
+                            break
+                result['reason'] = (reason + '；不能视为事实通过') if reason else '数据未配置、未命中或仍需确认；不能视为事实通过'
             self.http_calls += calls or 0
             self.http_known &= calls is not None
             self.cache[key] = copy.deepcopy(result)

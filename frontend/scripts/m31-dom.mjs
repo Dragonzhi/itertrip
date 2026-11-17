@@ -53,6 +53,7 @@ const statusHelp=document.querySelector('.dw-status-help');
 assert.ok(statusHelp,'statusline exposes a missing-info icon');
 assert.ok((statusHelp.getAttribute('title')||'').includes('停留时长未设置'),'hover title names the missing field');
 assert.ok(document.querySelector('[data-testid=schedule-auto-hint]'),'AI-prefilled schedule shows an adjust hint');
+assert.ok(itinerary().textContent.includes('10:00–18:00')&&itinerary().textContent.includes('计划'),'configured end stays visible when dwell/transport blocks the calculation');
 assert.equal(itinerary().textContent.includes('开放资料未核对'),false,'optional opening data is not a schedule status');
 await click(document.querySelectorAll('.dw-dayrail button')[0]);
 assert.equal(itinerary().textContent.includes('完整攻略备注'),false,'notes are contextual');
