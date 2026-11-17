@@ -847,7 +847,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         from ..engine import agent_turn
         if edit_mode and req.agent_version and agent_turn.handles(req.prompt):
             try:
-                async with asyncio.timeout(90):
+                async with asyncio.timeout(agent_turn.TURN_SECONDS):
                     async for frame in agent_turn.run(req, cfg):
                         event = frame.pop('event')
                         if event == 'reply':
@@ -855,7 +855,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
                             yield _sse("stage", {"stage": "done", "label": "完成"})
                         yield _sse(event, frame)
             except TimeoutError:
-                yield _sse('reply', dict(reply='行程未修改：Agent 已达到 90 秒预算，请分步重试。', intent='chitchat', route=None))
+                yield _sse('reply', dict(reply=f'行程未修改：Agent 已达到 {agent_turn.TURN_SECONDS} 秒预算，请分步重试。', intent='chitchat', route=None))
             except Exception as error:
                 yield _sse('error', dict(detail='Agent 未修改行程：' + (str(error)[:180] if isinstance(error, (ValueError, RuntimeError)) else type(error).__name__)))
             return

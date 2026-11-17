@@ -56,6 +56,17 @@ pure=dict(op='set_day_schedule',day=2,start='10:00',end='19:00')
 pure_candidate,pure_p,_=O.validate(route,proposal(pure),version)
 assert pure_candidate['days'][1]['schedule']['source']=='estimate'
 assert O.explicit('把第二天时间设为 10:00 到 19:00',pure_p,route)
+preflight_route={
+    'trip':{'title':'preflight','destination':'重庆','days':1,'start_date':iso,'date_source':'user'},
+    'days':[{'day':1,'schedule':{'start':'09:00','end':'10:00'},'traffic_mode':'walk','start_from_hotel':False,
+             'places':[{'id':'x','name':'长景点','lat':29.5,'lng':106.5,'visit':{'duration_min':120}}],'hotel':None}],
+}
+preflight_prop={'actions':[{'op':'set_day_schedule','day':1,'start':'09:00','end':'10:00','durations':[]}]}
+assert O.schedule_preflight(preflight_route,preflight_prop) and '超过当天结束' in O.schedule_preflight(preflight_route,preflight_prop)[0]
+preflight_prop['actions'][0]['durations']=[{'place_id':'x','minutes':45}]
+assert not O.schedule_preflight(preflight_route,preflight_prop)
+preflight_missing=copy.deepcopy(preflight_route);preflight_missing['days'][0]['transport']=[{'from_id':'h','to_id':'x','mode':'','buffer_min':0,'snapshot':None}]
+assert not O.schedule_preflight(preflight_missing,{'actions':[{'op':'set_day_schedule','day':1,'start':'09:00','end':'10:00','durations':[{'place_id':'x','minutes':120}]}]}),'missing transport is unknown, not a conflict'
 bad_sched=[
     {**schedule_op,'day':9},
     {**schedule_op,'start':'19:00','end':'10:00'},
@@ -168,7 +179,7 @@ assert not result.get('agent_proposal') and '成功' not in result['reply']
 result,_=scenario('合法 JSON，但停留时长不变','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':30})))))
 assert not result.get('agent_proposal') and '没有实际变化' in result['reply']
 result,text=scenario('参数拼错，重试预算用尽','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':True})))))
-assert not result.get('agent_proposal') and result['stats']['attempts']==3 and '未通过校验' in text
+assert not result.get('agent_proposal') and result['stats']['attempts']==A.MAX_ROUNDS and '未通过校验' in text
 calls=[]
 def fallback(req):
     payload=json.loads(req.content);calls.append(payload)
@@ -181,7 +192,7 @@ assert result['agent_proposal'] and result['stats']['tool_calls']==1 and result[
 assert len(calls)==3 and '回退双段协议' in text
 def native(req):
     payload=json.loads(req.content)
-    assert payload['tools'] and payload['max_tokens']==1800
+    assert payload['tools'] and payload['max_tokens']==A.MAX_TOKENS
     return httpx.Response(200,json=dict(choices=[dict(message=dict(role='assistant',tool_calls=[dict(id='call-1',type='function',function=dict(name='propose_edits',arguments=json.dumps(proposal(duration))))]))]))
 result,_=scenario('原生工具提案且供应商无用量字段','tools',native)
 assert result['agent_proposal'] and result['stats']['total_tokens'] is None and not result['stats']['usage_complete']
@@ -195,7 +206,7 @@ def native_read(req):
     return native(req)
 result,text=scenario('原生只读工具回传与后续提案','tools',native_read)
 assert result['agent_proposal'] and result['stats']['tool_calls']==1 and '查询结果：check_schedule' in text
-def cost(req):return httpx.Response(200,json=dict(choices=[],usage=dict(prompt_tokens=17000,completion_tokens=1,total_tokens=17001)))
+def cost(req):return httpx.Response(200,json=dict(choices=[],usage=dict(prompt_tokens=A.TOKEN_BUDGET,completion_tokens=1,total_tokens=A.TOKEN_BUDGET+1)))
 result,text=scenario('已报告 token 超出阈值，停止后续','protocol',cost)
 assert not result.get('agent_proposal') and result['stats']['attempts']==1
 large=copy.deepcopy(route);large['agent_receipts']=[dict(id='older-turn',payload='x'*200000)]

@@ -4,6 +4,7 @@ No generic JSON paths, model-written evidence, bookings or implicit confirmation
 """
 import copy
 import json
+import math
 import re
 from typing import Annotated, Literal
 
@@ -78,6 +79,83 @@ def digest(proposal):
     return json.dumps(proposal, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
 
 
+def _clock(value) -> int | None:
+    if not isinstance(value, str) or len(value) != 5 or value[2] != ':':
+        return None
+    try:
+        h, m = int(value[:2]), int(value[3:])
+    except ValueError:
+        return None
+    return h * 60 + m if 0 <= h < 24 and 0 <= m < 60 else None
+
+
+def _fmt(minutes: int) -> str:
+    days, rem = divmod(minutes, 1440)
+    return (f'+{days}天 ' if days else '') + f'{rem // 60:02d}:{rem % 60:02d}'
+
+
+def _transport_minutes(day: dict, to_id: str) -> int | None:
+    """该段选中的交通分钟（含缓冲）；没有段视为 0；有段但无可用快照返回 None（未知）。"""
+    segment = next((s for s in (day.get('transport') or []) if s.get('to_id') == to_id), None)
+    if segment is None:
+        return 0
+    mode = segment.get('mode') or day.get('traffic_mode') or 'walk'
+    options = ((segment.get('snapshot') or {}).get('options') or [])
+    opt = next((o for o in options if o.get('mode') == mode and o.get('status') == 'ok'
+                and isinstance(o.get('duration_s'), (int, float)) and not isinstance(o.get('duration_s'), bool)
+                and o.get('duration_s') >= 0), None)
+    if opt is None:
+        return None
+    return math.ceil(opt['duration_s'] / 60) + (segment.get('buffer_min') or 0)
+
+
+def schedule_preflight(route: dict, proposal: dict) -> list[str]:
+    """Agent 日程候选的早期时间校验（只覆盖「当天结束前能否走完」）。
+
+    前端 shared/schedule.js 仍是唯一权威（含预约、开放资料、固定约束）；这里只把
+    最直观的「预计离开超过当天 end」先反馈给模型，让它在本轮内再调一次，而不是
+    等到客户端校验失败后才告诉用户「行程未修改」。仅用于纯日程/停留类提案。
+    """
+    errors: list[str] = []
+    days = route.get('days') or []
+    for a in proposal.get('actions') or []:
+        if a.get('op') != 'set_day_schedule':
+            continue
+        di = int(a.get('day') or 0) - 1
+        if di < 0 or di >= len(days):
+            continue
+        day = days[di]
+        start, end = _clock(a.get('start')), _clock(a.get('end'))
+        if start is None or end is None or end <= start:
+            continue
+        durations = {d['place_id']: d['minutes'] for d in (a.get('durations') or [])}
+        cursor: int | None = start
+        for point in day.get('places') or []:
+            minutes = _transport_minutes(day, point.get('id'))
+            if minutes is None:
+                cursor = None
+                break
+            cursor += minutes
+            dur = durations.get(point.get('id'), (point.get('visit') or {}).get('duration_min'))
+            if not isinstance(dur, (int, float)) or isinstance(dur, bool) or not 0 <= dur <= 1440:
+                cursor = None
+                break
+            cursor += dur
+            if cursor > end:
+                errors.append(f'第 {di + 1} 天：{point.get("name") or "地点"}：预计离开 {_fmt(cursor)}，超过当天结束 {_fmt(end)}')
+        hotel = day.get('hotel')
+        if cursor is not None and hotel:
+            minutes = _transport_minutes(day, hotel.get('id'))
+            if minutes is not None:
+                cursor += minutes
+                if cursor > end:
+                    errors.append(f'第 {di + 1} 天：{hotel.get("name") or "酒店"}：预计到达 {_fmt(cursor)}，超过当天结束 {_fmt(end)}')
+        if cursor is not None and cursor > end:
+            # 给模型一个明确的压缩量，避免它只看到最后一条冲突、每次只挪一点点。
+            errors.insert(0, f'第 {di + 1} 天：预计总结束 {_fmt(cursor)}，超过当天结束 {_fmt(end)} 共 {cursor - end} 分钟')
+    return errors[:12]
+
+
 def fixed(p, completed=()):
     v = p.get('visit') or {}
     r = v.get('reservation') or {}
@@ -145,7 +223,9 @@ def validate(route, raw, version, completed=()):
                 if key not in index:
                     raise ValueError('地点不存在：' + key)
                 point, point_di, pi = index[key]
-                if point_di != di or pi < 0:
+                if pi < 0:
+                    raise ValueError('酒店是到达边界，不能设置停留时间；请只调整当天地点')
+                if point_di != di:
                     raise ValueError('只能设置目标天内的地点停留时间')
                 if fixed(point, completed):
                     raise ValueError('固定访问的停留时间不能由 AI 改动')
