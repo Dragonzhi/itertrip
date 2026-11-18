@@ -84,7 +84,8 @@
             if (hotel || di!==a.day-1) reject('只能设置目标天内的地点停留时间');
             if (completed.includes(point.id)||point.visit?.completed||S.fixed(point,completed)) reject('固定访问的停留时间不能由 AI 改动');
             const visit=point.visit||{};
-            point.visit={...visit,duration_min:item.minutes,duration_source:a.source||'estimate'};
+            // 与后端同构：未变化的停留不重写来源，避免把用户设置误标成 AI 预排。
+            if (visit.duration_min!==item.minutes) point.visit={...visit,duration_min:item.minutes,duration_source:a.source||'estimate'};
           }
           day.schedule={start:a.start,end:a.end,source:a.source||'estimate'};
           continue;

@@ -230,8 +230,11 @@ def validate(route, raw, version, completed=()):
                 if fixed(point, completed):
                     raise ValueError('固定访问的停留时间不能由 AI 改动')
                 visit = point.get('visit') or {}
-                visit.update(duration_min=item['minutes'], duration_source=a['source'])
-                point['visit'] = visit
+                # 只改写实际变化的停留；未变化的停留保留原来源，
+                # 否则「AI 重申现有 75 分钟」也会把用户设置标成 AI 预排并制造假变更。
+                if visit.get('duration_min') != item['minutes']:
+                    visit.update(duration_min=item['minutes'], duration_source=a['source'])
+                    point['visit'] = visit
             day['schedule'] = dict(start=a['start'], end=a['end'], source=a['source'])
             continue
         if a['place_id'] not in index:

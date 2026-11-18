@@ -5,6 +5,7 @@
 ## 用户会看到什么
 
 - 在规划页说「把春熙路休息点停留改成 45 分钟」，明确单项编辑直接进入原来的撤销栈，回复从实际 diff 生成，显示具体分钟数。
+- Agent 一轮的过程默认收成一行**执行收据**（查了几段交通、涉及几个时间窗口／停留、耗时），点开才是完整时间线；提案卡逐行显示 before → after，并把交通依据与「仍未评估」折叠在卡内。
 - 组合修改／新增草稿／记录预约先展示预览；应用整组只产生一帧撤销，取消不动路线。
 - 固定预约、已完成访问、不存在的地点或旧路线版本会拒绝。自动重排缺少新相邻段的真实耗时、日期或开放资料时也拒绝，不假装可行。避雨移动另复用 M29 检查，要求已有当前预报／确认属性且风险减少；已知天气也不能被普通重排改成更大暴露。
 - 查询天气／交通／地点／开放线索是只读操作。轨迹记录实际调用、来源、时间、HTTP 次数与失败；结果未知就显示未知。
@@ -21,8 +22,10 @@
 | `backend/engine/agent_tools.py` | 只读适配器、统一结果、查询预算、去重和实际交通证据；复用已有服务 |
 | `backend/engine/agent_turn.py` | 一个模型、有限顺序循环、供应商能力回退、实际轨迹与用量；不提交路线 |
 | `shared/agent.js` / `frontend/src/lib/agent.ts` | 应用前再查当前身份、版本、进度、新日程冲突及固定访问时间，整组失败不写入 |
-| `frontend/src/components/AgentPreview.tsx` | 差异、待评估项、应用／取消；沿用现有 UI 样式 |
-| `frontend/src/pages/Plan.tsx` | 最终接受、同步持久化、同一撤销栈、旧响应保护；不恢复待应用预览 |
+| `frontend/src/lib/agentTrace.ts` | Agent 轨迹的用户语言映射、状态推断、逐 action 行、证据/改动计数（纯函数） |
+| `frontend/src/components/AgentReceipt.tsx` | 执行收据：一行摘要 + 展开时间线；非 Agent 轨迹仍用 `DecisionTrace` |
+| `frontend/src/components/AgentPreview.tsx` | 逐 action 的 before → after、依据、待评估项、应用／取消 |
+| `frontend/src/pages/Plan.tsx` | 最终接受、同步持久化、同一撤销栈、旧响应保护；不恢复待应用预览；提案快照随消息持久化 |
 
 没有引入 Agent 框架、Node 服务端运行时、额外模型或外部 MCP。时间求解仍由 M27 的同一份 `IterTripSchedule` 执行；服务端 `check_schedule` 返回浏览器发送的同版本派生日程，并注明这是确定性输入计算，不是外部核验。**它不能代替应用前的重新计算**。
 

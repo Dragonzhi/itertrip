@@ -76,6 +76,10 @@ export interface ChatMessage {
   trace?: TraceStep[];
   /** M19 本轮统计（模型/耗时/坐标写入数） */
   stats?: TraceStats;
+  /** M39 后续：Agent 提案快照；执行收据在应用/刷新后仍能说清涉及哪些窗口、停留与移动 */
+  agentProposal?: import("../lib/agent").AgentProposal;
+  /** 提案创建时按原始路线算好的真实改动数（跳过未变化的停留），收据摘要用 */
+  agentCounts?: import("../lib/agentTrace").ProposalCounts;
   /** M24 本轮路线的坐标来源摘要（哪些点可信、哪些是降级来的），随消息常驻显示并持久化 */
   geo?: CoordDigest;
 }

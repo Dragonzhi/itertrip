@@ -1,8 +1,8 @@
 # itertrip
 
 status: 进行中
-next: M39 已落地（AI 预排时间 + Agent 日程预览 + 坐标核验逐点流式 + 坐标链修正 + AGENTS 同步清单）；等用户真实使用一轮反馈；M36 legacy 收敛 / M37 LLM-as-judge / MCP / CI 继续挂起；真机回归与盲审 4 条继续挂起
-updated: 2026-11-17
+next: M39 + Agent 对话前端（执行收据 + 展开时间线）已落地；等用户真实使用一轮反馈；M36 legacy 收敛 / M37 LLM-as-judge / MCP / CI 继续挂起；真机回归与盲审 4 条继续挂起
+updated: 2026-11-18
 
 ## 待办
 
@@ -19,6 +19,7 @@ updated: 2026-11-17
 
 ## 已完成
 
+- [x] M39 后续 · Agent 对话前端（用户选定 A+B）：新增 `frontend/src/lib/agentTrace.ts`（轨迹用户语言/状态推断/逐 action 行/改动计数）与 `components/AgentReceipt.tsx`（默认一行「执行收据」，展开为时间线，技术统计只在展开层）；Agent 轨迹不再用 `DecisionTrace`，非 Agent 路径保持原样。`AgentPreview` 改为逐 action 显示 before → after（`set_day_schedule` 未变化的停留不重复列），`agent_evidence` 折叠为「依据」，`candidate.unknown` 金色摘要常驻；提案卡移出助手气泡；`agentProposal`/`agentCounts` 随消息持久化。`set_day_schedule` 未变化的停留不再重写 `duration_source`（`agent_ops.py` + `shared/agent.js` 同构），避免「AI 重申现有 75 分钟」制造假变更。验证：`agentTrace.check` 28 项、tsc/build、m30-dom 两种尺寸、m31-dom、真实浏览器 1440/390 收据展开/应用全流程（2026-11-18）
 - [x] M39 AI 预排时间 + Agent 日程 + 核验流式 + 坐标链审查：首次生成由 `engine/schedule_defaults.py` 补默认起止/停留（全标 `estimate`，`shared/schedule.js` 用 `caveats` 软提示，不再算「信息不全」），行程页提示「AI 预排，可调整」；Agent 新增 `set_day_schedule(day,start,end,durations,source)`，用户只说「规划第二天时间」可提议但必须预览，固定/预约/已完成点不覆盖；编辑模式坐标核验改为逐点 trace 实时下发（`_enrich_coordinates(on_record=…)` + 双通道队列），`stage:done` 移到坐标/facts/二次校验之后，facts/verify/changed=false 兜底都有进度；坐标链修回显降级（id 优先 + ~11m 容差）、自然景区类型误判、弱匹配「核验一致」文案、预算/缓存顺序、占位酒店与同名酒店去重、复合目的地解析；`AGENTS.md §10.1` 新增强制同步清单。验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（11 场景）、`_probe_stream` 27/27、`_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、desktop-a/mobile-shot、真实浏览器 CDP（预排提示、Agent 预览应用、逐点 trace 先于 reply）（2026-11-17）
 - [x] M39 后续（重庆实测反馈）：编辑模式不再显示「长期记忆未注入」空步；冲突日状态条/当天面板新增「让 AI 修复」，把确定性冲突原文反馈给 Agent 再跑一轮；Agent user payload 直接带每天 `schedule` 的 issues/unknown，`handles()` 识别「补充/补全/完善/修复某天时间」与「时间冲突」，`SYSTEM` 要求补充/修复时先看日程摘要、交通未知先 `query_transport` 再 `set_day_schedule`；流式状态显示「正文 N 字 · 思考 N 字」，长思考期间也有持续反馈。验证：`_check_m30` 12 场景、`_probe_stream` 28/28、chat-stream 26/26、m31-dom 冲突修复入口断言、真实浏览器 CDP 校验修复按钮请求含冲突原文与 agent_schedule（2026-11-17）
 - [x] M38 后续 · 右侧 AI／辅助面板可拖宽（用户指认对话栏）：左缘新增 6px `role=separator` 分割线，鼠标拖拽 + ←/→ 键调整 300–720px；实时写入 `itertrip:desktop-view.panelW`，上限锚定行程列右缘（不反向挤压行程列），CSS `max-width` 兜窄屏；未拖过时仍为 380/340 断点默认值。验证：desktop-a 1440 拖拽跟手与持久化、m31-dom 分割线存在/结构、tsc/build
@@ -159,6 +160,7 @@ updated: 2026-11-17
 **未完成/阻塞**：真机人工回归未做（验证基于 CDP 模拟 + 截图目检）。
 
 ## 工作留痕
+- 2026-11-18 · ZCode：Agent 对话前端落实「执行收据 + 展开时间线」（用户选定 A+B）——新增 `lib/agentTrace.ts` + `AgentReceipt.tsx`：默认一行「已查 N 段交通 · X 个时间窗口 · Y 处停留 · 时长」，展开是用户语言的步骤时间线（方案轮次/查交通/候选校验），技术统计只在展开层；`AgentPreview` 逐 action 显示 before → after、依据折叠、unknown 摘要；提案卡移出气泡；`agentProposal`/`agentCounts` 随消息持久化；`set_day_schedule` 未变化的停留不再重写来源（agent_ops + shared/agent.js）。验证 agentTrace.check 28 项 / tsc build / m30-dom 两尺寸 / m31-dom / 真实浏览器 1440+390 收据展开与应用。
 - 2026-11-18 · ZCode：高德弱匹配但带具体 `poi_id` 的坐标允许按估算查询（用户指认「第三天实际上没有安排，前端看不到时刻」）——此前「山城第三步道」`amap/low` 被交通服务拒绝，导致两段耗时未知、各站时刻无法推算；现在 `transport.queryable` 与 `shared/transport.usable` 对该类坐标放行，结果标 `approx`，来源仍 `amap/low`、「坐标待确认」标注保留；重庆第三天实测得到 79/57 分钟估算，日程显示 10:49/13:16/15:40 各站到达并暴露 40 分钟超时，Agent 3 轮压到 90/75/35、16:00 结束的无冲突候选。验证 _check_m26（低置信例外）/ _check_m30 / transport.check / 真实 /api/chat。
 - 2026-11-18 · ZCode：决策过程终帧仍显示「进行中」（用户实测）——根因是 `tool`/`llm` 的 run 步骤用新 id 输出结果、旧 run 永不闭合；改为同 id upsert，`DecisionTrace` 仅在 `live` 时显示「进行中」；`_check_m30` 断言终帧无 `run`，chat-stream 27/27。
 - 2026-11-18 · ZCode：第三天「补充时间」返回没有实际变化（用户实测）——根因是模型重复提交现有 09:30–16:00 + 90/90/60，真正的阻塞是「山城第三步道」低置信坐标让两段交通无法查询；Agent 现在会说明已有安排并点名待确认地点，交通工具透出真实原因，状态条在算不出结束时刻时仍显示配置的 09:30–16:00（标「计划」）。验证 _check_m30 13 场景 / _check_m26 / _check_m27 / tsc+build / m30-dom / m31-dom。

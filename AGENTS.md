@@ -1,6 +1,6 @@
 # IterTrip · AGENTS.md — AI 代理（Agent）架构指南
 
-> 版本：v1.19 · 2026-11-18 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
+> 版本：v1.20 · 2026-11-18 · 适用代码库：`backend/`（FastAPI）+ `frontend/`（React 18 + Vite）
 > 面向读者：开发者、测试者、运维者，以及希望了解系统如何使用 AI 的非技术相关方。
 > 阅读建议：第 1–3 章对非技术读者友好；第 4–7 章面向工程实现；第 8–10 章供产品与规划参考。
 
@@ -129,6 +129,13 @@ IterTrip 把你在小红书/公众号里刷到的旅游攻略，变成一张**�
    **M24 补充**：坐标来源还有一份**常驻**的摘要，直接长在助手气泡里（折叠轨迹生成完就收起，等于没告诉用户）——
    `coordDigest(reply.route)` 从每个 place/hotel 的 `source`/`confidence` 算出「N 处 · 高德核验 x · AI 推测 y ·
    城市中心 z」与逐条降级点名（`CoordReport`，超 6 条折叠）；闲聊/中断轮没有 route ⇒ 不渲染。
+   **M39 后续（2026-11-18，用户选定）**：Agent 路径的轨迹改为**执行收据**——默认只有一行摘要
+   （查了几段交通、几个时间窗口/停留、耗时），展开是完整时间线；过程用用户语言（「查交通」「生成方案（1/6）」
+   「候选已校验」），技术 token/HTTP 收在展开层最后一行。提案卡从气泡里移出，按 action 逐行显示
+   before → after（`set_day_schedule` 未变化的停留不重复列），`agent_evidence` 折叠为「依据」，
+   `candidate.unknown` 以金色摘要常驻。非 Agent 轨迹（提取/旧编辑）仍用 `DecisionTrace`。
+   `agent_proposal` 与提案创建时的改动计数随消息持久化，刷新后收据仍能说明当时改了什么；
+   `set_day_schedule` 不再把未变化的停留重标成 `estimate`（避免「AI 重申现有 75 分钟」制造假变更）。
 8. **提示注入层次防御（M35）**：用户贴的攻略文字、截图、记忆参考块都是**数据**不是指令——三处 SYSTEM
    （提取 / 编辑 / Agent 循环）共用一句规范条款 `agent_turn.DATA_NOT_INSTRUCTION`；当轮 payload 由
    `chat.build_payload` 统一组装：提取模式攻略原文用成对标记包裹、编辑模式 `current_route` 前缀不可信标注、
@@ -485,7 +492,7 @@ M22 文本闭馆警告本地幂等重算；时间结果是派生值，不写成 
 | `itertrip:chat` | 对话历史（最近 30 条，剔除 route 快照） | 发请求时仅回传最近 8 条；**同步落盘**（M24：`Chat.tsx` 的 `commit` 通道，不能用 effect —— 生成路线那一轮 AI 回复与「跳规划页」同批提交，Chat 随即被卸载，effect 永远跑不到，AI 整轮消息就是这么丢的） |
 | `itertrip:map` | 地图显示设置（M16，纯视图态） | 不写入 route/后端 |
 | `itertrip:tid` | 匿名档案 id（M18 记忆库 namespace） | `crypto.randomUUID()` 随机生成，不含身份信息；随 `X-Traveler-Id` 头发送 |
-| `itertrip:planchat` | 规划页 AI 抽屉对话（M19，含决策轨迹/变更清单/澄清问答状态） | 存 `{fp, msgs}`，`fp=标题\|目的地\|天数`：刷新恢复、换行程自动开新会话；剔除 route 快照，最近 30 条 |
+| `itertrip:planchat` | 规划页 AI 抽屉对话（M19，含决策轨迹/变更清单/澄清问答状态；M39 后续含 Agent 提案快照与改动计数） | 存 `{fp, msgs}`，`fp=标题\|目的地\|天数`：刷新恢复、换行程自动开新会话；剔除 route 快照，最近 30 条 |
 | `itertrip:plan-hint` | 🤖/🗺 圆钮一次性使用提示的已读标记（M38） | 置 1 后首访提示条不再显示；点任一入口或 ✕ 时写入 |
 | `itertrip:desktop-view` | 桌面工作台视图态（M38 第三批）：日期列收起/行程列收起/行程列宽 %/右侧面板宽 px | JSON；变更即写；地图为全幅底图不受其影响 |
 
@@ -796,9 +803,12 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       来源仍 `amap`/`low`），重庆第三天据此显示各站时刻并在 3 轮内收敛到无冲突候选。
       预览轨迹收敛：应用／取消／刷新失效时，客户端把「修改预览已准备，尚未应用」原地改为已应用／已取消，
       后端「尚未应用」细节同步；中间轮次的时间预检冲突在最终候选通过后改为「已修正」，不再残留「N 项需注意」。
+      Agent 对话前端（用户选定 A+B）：新增 `lib/agentTrace.ts` + `components/AgentReceipt.tsx`，Agent 轨迹默认收成
+      一行「执行收据」（查了几段交通、几个时间窗口/停留、耗时），展开为时间线；提案卡逐 action 显示 before → after，
+      依据与 `unknown` 折叠；`set_day_schedule` 未变化的停留不再重写来源（backend + `shared/agent.js` 同构）。
       验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（14 场景，含预检冲突同轮修正）、`_probe_stream` 28/28、
-      `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、chat-stream 26/26、desktop-a／mobile-shot
-      与真实浏览器 CDP 探针（含冲突修复按钮请求内容）。
+      `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、chat-stream 26/26、desktop-a／mobile-shot、
+      真实浏览器 CDP 探针（含冲突修复按钮请求内容）、agentTrace 纯函数检查与真实 Agent 收据/提案卡截图（桌面 1440 + 手机 390）。
 - [x] **M35 Agent 强化·第一轮（知识点地图 + 注入防御统一，2026-11-15）**：`docs/AGENT_KNOWLEDGE_MAP.md`
       把 13 类 Agent 工程模式逐条映射到代码（面试向：30 秒讲法 / 追问预案 / 诚实边界 / 刻意不做清单）；
       提示注入层次防御统一——`agent_turn.DATA_NOT_INSTRUCTION` 规范句三处 SYSTEM 共用、

@@ -1,0 +1,58 @@
+/* Agent 执行收据的时间线（A 默认收据 → 展开为 B 时间线） */
+.agent-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.agent-timeline li {
+  position: relative;
+  display: flex;
+  gap: 7px;
+  padding: 0 0 8px 12px;
+}
+.agent-timeline li:last-child {
+  padding-bottom: 0;
+}
+.agent-timeline li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  bottom: 0;
+  width: 1px;
+  background: #e8e0d4;
+}
+.agent-timeline li:last-child::before {
+  display: none;
+}
+.agent-timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1f6b54;
+}
+.agent-timeline li.warn .agent-timeline-dot {
+  background: #c8903c;
+}
+.agent-timeline li.fail .agent-timeline-dot {
+  background: #9c4038;
+}
+.agent-timeline li.skip .agent-timeline-dot {
+  background: #c9c2b4;
+}
+.agent-timeline li.run .agent-timeline-dot {
+  background: #1f6b54;
+  box-shadow: 0 0 0 3px #e3efe8;
+}
+.agent-evidence summary::-webkit-details-marker {
+  display: none;
+}
+.agent-evidence .agent-evidence-chev {
+  transition: transform 0.15s ease;
+}
+.agent-evidence[open] .agent-evidence-chev {
+  transform: rotate(90deg);
+}

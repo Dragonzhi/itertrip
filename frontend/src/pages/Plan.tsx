@@ -4,8 +4,10 @@ import NavigationDialog from "../components/NavigationDialog";
 import OutingView from "../components/OutingView";
 import OfflinePanel from '../components/OfflinePanel';
 import AgentPreview from '../components/AgentPreview';
+import AgentReceipt from '../components/AgentReceipt';
 import NoticeStack, { type Notice } from '../components/NoticeToast';
 import {agent, type AgentProposal, type AgentCandidate, type AgentEvidence} from '../lib/agent';
+import { isAgentTrace, countProposalRows, proposalRows } from '../lib/agentTrace';
 import { isOnline, useOffline } from '../lib/offline';
 import { transport, type Edge } from '../lib/transport';
 import { schedule } from '../lib/schedule';
@@ -413,20 +415,23 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
   const stream = useChatStream({
     onReply: (r, partial, trace) => {
       if (r.agent_proposal) {
-        const id=uid(), stale=!isCurrent(aiVersion.current!) || r.agent_proposal.base_version!==agentVersion.current;
-        const moving=r.agent_proposal.actions.some(a=>a.op==='move_place');
-        const candidate=agent.prepare(route,r.agent_proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct),r.agent_evidence);
+        const proposal=r.agent_proposal;
+        const id=uid(), stale=!isCurrent(aiVersion.current!) || proposal.base_version!==agentVersion.current;
+        const moving=proposal.actions.some(a=>a.op==='move_place');
+        const candidate=agent.prepare(route,proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct),r.agent_evidence);
         const diff=diffRoute(route,candidate.route);
         let applied=false, preview=false, content='修改预览已准备，尚未应用。';
         if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'生成期间路线已变化，请重新发起修改。':candidate.reasons.join('；')||'操作没有实际变化。');
         else if(r.agent_direct) {
           applied=mutate(draft=>Object.assign(draft,candidate.route),aiVersion.current);
           content=applied?'已按要求更新行程。'+(candidate.unknown.length?'其他日程条件仍有未评估项，请在时间安排中查看。':''):'行程未修改：路线已变化，请重试。';
-        } else { preview=true; setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[]}); }
+        } else { preview=true; setAgentPending({proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[]}); }
         // 直接应用/失败时把后端「尚未应用」的细节一并收敛；待预览时保留，等用户点应用或取消再收敛。
         const baseTrace=preview?trace:(settleAgentTrace(trace,applied?'applied':'failed',content,applied?diff.summary.join('；'):undefined)||[]);
         const actualTrace=[...baseTrace,{id:'agent-client',kind:'edit' as const,status:applied?'done' as const:'warn' as const,title:applied?'已应用实际变更':content,detail:applied?diff.summary.join('；'):'行程尚未修改'}];
-        setChatMsgs(prev=>[...prev,{id,role:'assistant',content,changed:applied,changeSummary:applied?diff.summary:undefined,trace:actualTrace,stats:r.stats}]);
+        // 按提案创建时的原始路线计数，跳过未变化的停留；应用后再算会被新路线吃掉这些差异。
+        const agentCounts=(()=>{try{return countProposalRows(proposalRows(proposal,route));}catch{return undefined;}})();
+        setChatMsgs(prev=>[...prev,{id,role:'assistant',content,changed:applied,changeSummary:applied?diff.summary:undefined,trace:actualTrace,stats:r.stats,agentProposal:proposal,agentCounts}]);
         return;
       }
       if (r.route) {
@@ -1204,8 +1209,6 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                 {m.role === "assistant" && m.changed && (
                   <div className="text-xs text-ink-soft mt-1">地图已更新 · 撤销按钮可反悔</div>
                 )}
-                {m.stats?.protocol&&<p className="text-[11px] text-ink-soft mt-2">工具 {m.stats.tool_calls??0} 次 · HTTP {m.stats.http_calls??'未知'} 次 · 已报告 token {m.stats.total_tokens??'未知'} · 费用未知</p>}
-                {agentPending?.messageId===m.id&&<AgentPreview proposal={agentPending.proposal} candidate={agentPending.candidate} original={agentPending.expected} disabled={stream.sending||!!(form||hotelForm||scheduleTarget||picking||trafficBusy)} apply={()=>finishAgentPreview(true)} cancel={()=>finishAgentPreview(false)}/>}
               </div>
               {m.role === "assistant" && m.questions && m.questions.length > 0 && (
                 <div className="w-full max-w-[90%]">
@@ -1226,7 +1229,14 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
               )}
               {m.role === "assistant" && m.trace && m.trace.length > 0 && (
                 <div className="w-full max-w-[90%] mt-1">
-                  <DecisionTrace steps={m.trace} />
+                  {isAgentTrace(m.trace)
+                    ? <AgentReceipt steps={m.trace} proposal={m.agentProposal} counts={m.agentCounts} changeSummary={m.changeSummary} unknownCount={agentPending?.messageId===m.id?agentPending.candidate.unknown.length:undefined} stats={m.stats} failed={m.error} interrupted={m.interrupted} />
+                    : <DecisionTrace steps={m.trace} />}
+                </div>
+              )}
+              {agentPending?.messageId===m.id&&(
+                <div className="w-full max-w-[90%] mt-1">
+                  <AgentPreview proposal={agentPending.proposal} candidate={agentPending.candidate} original={agentPending.expected} evidence={agentPending.evidence} disabled={stream.sending||!!(form||hotelForm||scheduleTarget||picking||trafficBusy)} apply={()=>finishAgentPreview(true)} cancel={()=>finishAgentPreview(false)}/>
                 </div>
               )}
             </div>
@@ -1243,7 +1253,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
                 sawPing={stream.sawPing}
                 variant="edit"
               />
-              {stream.trace.length > 0 && <DecisionTrace steps={stream.trace} live />}
+              {stream.trace.length > 0 && (isAgentTrace(stream.trace)
+                ? <AgentReceipt steps={stream.trace} live stageLabel={stream.stageLabel} />
+                : <DecisionTrace steps={stream.trace} live />)}
               {stream.thinking && <ThinkingBlock text={stream.thinking} streaming />}
               {stream.text && (
                 <div className="flex justify-start">
