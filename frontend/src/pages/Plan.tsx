@@ -39,7 +39,7 @@ import { exportFilename } from "../lib/exportName";
 import { isCompact } from "../lib/viewport";
 import { moveTarget } from "../lib/reorder";
 import { animate, motion, MotionConfig, useDragControls, useMotionValue } from "motion/react";
-import type { ChatMessage, TraceStats } from "../types/chat";
+import type { ChatMessage, TraceStats, TraceStep } from "../types/chat";
 import {
   clearPlanChatHistory,
   loadMapSettings,
@@ -65,6 +65,32 @@ const PROVIDER_LABEL: Record<string, string> = {
 const GEO_SOURCE_TEXT: Record<string, string> = {
   amap: "高德 POI", memory: "记忆库真值", llm: "模型知识", search: "网络搜索", city: "城市中心",
 };
+
+type AgentOutcome = "applied" | "cancelled" | "failed";
+
+/**
+ * 预览落定（应用／取消／失效）后收敛消息轨迹里的过渡态。
+ * 否则用户已经点了应用，决策过程仍挂着「修改预览已准备，尚未应用」和「N 项需注意」。
+ * 只改客户端与后端明确标记为「尚未应用」的步骤，不动其它失败/警告。
+ */
+function settleAgentTrace(
+  trace: TraceStep[] | undefined,
+  outcome: AgentOutcome,
+  content: string,
+  detail?: string,
+): TraceStep[] | undefined {
+  if (!trace?.length) return trace;
+  const status: TraceStep["status"] = outcome === "applied" ? "done" : outcome === "cancelled" ? "skip" : "warn";
+  return trace.map((step) => {
+    if (step.id === "agent-client" || step.id === "agent-commit") {
+      return { ...step, status, title: content, detail: detail ?? (outcome === "applied" ? "已写入行程；可撤销" : "行程未修改") };
+    }
+    if (step.detail?.startsWith("尚未应用")) {
+      return { ...step, detail: outcome === "applied" ? "已应用；客户端已按最新路线、访问进度及时间约束校验" : "未应用；行程未修改" };
+    }
+    return step;
+  });
+}
 
 interface PlanProps {
   tripSession: string;
@@ -340,7 +366,16 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
 
   /* ---------- M14：对话抽屉 + AI 改路线（流式，优化①）；M19：对话与决策轨迹持久化 ---------- */
   const fp = useMemo(() => routeFingerprint(initialRoute), [initialRoute]);
-  const bootMsgs = useMemo(() => loadPlanChatHistory(fp), [fp]);
+  const bootMsgs = useMemo(() => loadPlanChatHistory(fp).map((m) => {
+    // 刷新后待应用预览不会恢复（M30 契约）：把仍标着「准备／尚未应用」的旧轨迹收敛掉，
+    // 避免重新打开页面后决策过程一直显示「N 项需注意」。
+    const unresolved = (m.trace || []).some((s) => s.id === "agent-client" && s.status === "warn" && s.title.includes("修改预览已准备"));
+    if (!unresolved) return m;
+    const applied = !!m.changed || (m.trace || []).some((s) => s.id === "agent-commit" && s.status === "done");
+    if (applied) return { ...m, trace: settleAgentTrace(m.trace, "applied", m.content) };
+    const content = "上一组修改预览未恢复，行程未修改。";
+    return { ...m, content, changed: false, changeSummary: undefined, trace: settleAgentTrace(m.trace, "cancelled", content) };
+  }), [fp]);
   const [chatOpen, setChatOpen] = useState(() => !isCompact() && bootMsgs.length > 0);
   const [chatMsgs, setChatMsgs] = useState<ChatMessage[]>(bootMsgs);
   const [chatInput, setChatInput] = useState("");
@@ -382,13 +417,15 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         const moving=r.agent_proposal.actions.some(a=>a.op==='move_place');
         const candidate=agent.prepare(route,r.agent_proposal,agentVersion.current,completedIds,moving&&(!r.agent_direct),r.agent_evidence);
         const diff=diffRoute(route,candidate.route);
-        let applied=false, content='修改预览已准备，尚未应用。';
+        let applied=false, preview=false, content='修改预览已准备，尚未应用。';
         if(stale||candidate.reasons.length||!candidate.changed||!diff.changed) content='行程未修改：'+(stale?'生成期间路线已变化，请重新发起修改。':candidate.reasons.join('；')||'操作没有实际变化。');
         else if(r.agent_direct) {
           applied=mutate(draft=>Object.assign(draft,candidate.route),aiVersion.current);
           content=applied?'已按要求更新行程。'+(candidate.unknown.length?'其他日程条件仍有未评估项，请在时间安排中查看。':''):'行程未修改：路线已变化，请重试。';
-        } else setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[]});
-        const actualTrace=[...trace,{id:'agent-client',kind:'edit' as const,status:applied?'done' as const:'warn' as const,title:applied?'已应用实际变更':content,detail:applied?diff.summary.join('；'):'行程尚未修改'}];
+        } else { preview=true; setAgentPending({proposal:r.agent_proposal,candidate,expected:route,messageId:id,completedKey:JSON.stringify([...completedIds].sort()),evidence:r.agent_evidence||[]}); }
+        // 直接应用/失败时把后端「尚未应用」的细节一并收敛；待预览时保留，等用户点应用或取消再收敛。
+        const baseTrace=preview?trace:(settleAgentTrace(trace,applied?'applied':'failed',content,applied?diff.summary.join('；'):undefined)||[]);
+        const actualTrace=[...baseTrace,{id:'agent-client',kind:'edit' as const,status:applied?'done' as const:'warn' as const,title:applied?'已应用实际变更':content,detail:applied?diff.summary.join('；'):'行程尚未修改'}];
         setChatMsgs(prev=>[...prev,{id,role:'assistant',content,changed:applied,changeSummary:applied?diff.summary:undefined,trace:actualTrace,stats:r.stats}]);
         return;
       }
@@ -487,7 +524,8 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
     if (!t || stream.sending) return;
     if (!isOnline()) return;
     if(agentPending) {
-      setChatMsgs(prev=>prev.map(m=>m.id===agentPending.messageId?{...m,content:'上一组预览已取消，行程未修改。'}:m));
+      const content='上一组预览已取消，行程未修改。';
+      setChatMsgs(prev=>prev.map(m=>m.id===agentPending.messageId?{...m,content,trace:settleAgentTrace(m.trace,'cancelled',content)}:m));
       setAgentPending(null);
     }
     const userMsg: ChatMessage = { id: uid(), role: "user", content: t };
@@ -531,7 +569,9 @@ export default function Plan({ route: initialRoute, tripSession, source, onRoute
         content=changed?'已应用这组修改，可撤销。'+(candidate.unknown.length?'仍有日程条件未充分评估。':''):'行程未修改：路线已变化。';
       }
     }
-    setChatMsgs(prev=>prev.map(m=>m.id===pending.messageId?{...m,content,changed,changeSummary:summary,trace:[...(m.trace||[]),{id:'agent-commit',kind:'edit',status:changed?'done':'warn',title:content,detail:summary?.join('；')}]}:m));
+    // 原地收敛「修改预览已准备／尚未应用」，而不是再追加一条：否则旧警告会一直计入「N 项需注意」。
+    const outcome=changed?'applied':apply?'failed':'cancelled';
+    setChatMsgs(prev=>prev.map(m=>m.id===pending.messageId?{...m,content,changed,changeSummary:summary,trace:settleAgentTrace(m.trace,outcome,content,summary?.join('；'))}:m));
     setAgentPending(null);
   };
 

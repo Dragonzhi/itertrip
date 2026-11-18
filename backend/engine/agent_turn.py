@@ -251,6 +251,8 @@ async def run(req, cfg):
     yield trace('provider', 'done', '受约束操作模式',
                 f'单模型 · 最多 {MAX_ROUNDS} 轮／6 次只读工具／{TURN_SECONDS} 秒 · 每轮输出 ≤{MAX_TOKENS} token；费用未配置时显示未知')
     terminal_reason = ""
+    # 中间轮次的预检冲突：最终候选被接受后要改成已修正，否则应用后仍挂一条「需注意」。
+    preflight_warnings: list[dict] = []
     reasoning_effort = REASONING_EFFORT
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
         for round_no in range(MAX_ROUNDS):
@@ -332,12 +334,14 @@ async def run(req, cfg):
                     candidate, proposal, changed = validate(req.route, obj['proposal'], req.agent_version, req.completed_ids)
                     schedule_only = all(a['op'] in ('set_day_schedule', 'set_duration', 'lock_visit')
                                         for a in proposal['actions'])
+                    sched_checked = False
                     if changed and schedule_only:
                         sched_errors = schedule_preflight(candidate, proposal)
                         if sched_errors:
                             feedback = ('时间候选仍冲突，整组未应用。请调整 set_day_schedule 的起止/停留后重新输出完整 proposal：'
                                         + '；'.join(sched_errors[:8]))
                             yield trace('edit', 'warn', '时间候选仍有冲突，已反馈给模型', '；'.join(sched_errors[:3]))
+                            preflight_warnings.append(records[-1])
                             if calls:
                                 messages.extend([dict(role='assistant', content=message.get('content'), tool_calls=calls),
                                                  dict(role='tool', tool_call_id=calls[0]['id'], content=feedback)])
@@ -345,6 +349,7 @@ async def run(req, cfg):
                                 messages.extend([dict(role='assistant', content=content),
                                                  dict(role='user', content=feedback)])
                             continue
+                        sched_checked = True
                     direct = explicit(req.prompt, proposal, req.route)
                     # 日程来源：用户明确给时刻 → user；模型主动预排 → estimate。
                     # 纯来源变化不算路线变化（routeDiff 只比较起止时刻），避免只改元数据也弹预览。
@@ -357,6 +362,13 @@ async def run(req, cfg):
                         if any(a['op'] == 'set_day_schedule' for a in proposal['actions']):
                             changed = candidate != req.route
                     if changed:
+                        # 之前的预检冲突已被本次纯日程候选修正：改成完成态，别让用户点完应用还看到旧警告。
+                        # 混合了移动等操作时预检不覆盖，保留原警告，避免声称已通过未做的检查。
+                        if sched_checked:
+                            for step in preflight_warnings:
+                                step.update(status='done', title='时间冲突已反馈并修正',
+                                            detail='中间候选的冲突已在本轮修正；最终候选通过同日预检。')
+                            preflight_warnings.clear()
                         reply, detail = '修改候选已准备。', '尚未应用；客户端将检查最新路线、访问进度及时间约束。'
                     else:
                         reply, detail = no_op_result(req, proposal)

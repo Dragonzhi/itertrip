@@ -185,6 +185,17 @@ def schedule_context(req):
     return completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(schedule_op))))
 result,_=scenario('Agent 看到当前日程冲突', 'protocol', schedule_context, dict(prompt='帮我修复第二天的时间冲突', agent_schedule=agent_sched))
 assert result['agent_proposal']
+conflict_rounds=[]
+def schedule_repair(req):
+    conflict_rounds.append(1)
+    end='09:30' if len(conflict_rounds)==1 else '18:00'
+    act=dict(op='set_day_schedule',day=1,start='09:00',end=end,
+             durations=[dict(place_id='a',minutes=45),dict(place_id='b',minutes=45)],source='estimate')
+    return completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal(act))))
+result,_=scenario('时间候选冲突后同轮修正','protocol',schedule_repair,dict(prompt='帮我给第一天的时间安排都规划一下'))
+assert result['agent_proposal'] and len(conflict_rounds)==2
+assert not any(s['status']=='warn' and '时间候选仍有冲突' in s['title'] for s in result['trace'])
+assert any(s['status']=='done' and s['title']=='时间冲突已反馈并修正' for s in result['trace'])
 result,_=scenario('仅声称成功，无有效操作','protocol',lambda req:completion('<<<REPLY>>>已经修改成功'))
 assert not result.get('agent_proposal') and '成功' not in result['reply']
 result,_=scenario('合法 JSON，但停留时长不变','protocol',lambda req:completion('<<<JSON>>>'+json.dumps(dict(proposal=proposal({**duration,'minutes':30})))))

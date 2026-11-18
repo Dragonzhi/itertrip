@@ -790,7 +790,9 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       行程页状态条仍显示已配置的 `start–end` 并标「计划」。工具／模型轨迹步骤改为同 id 闭合（结果覆盖「查询中／分析中」），
       终帧不再残留 `run`；`DecisionTrace` 只在流式时显示「进行中」。高德弱匹配但带具体 `poi_id` 的坐标允许按估算查询（标 `approx`，
       来源仍 `amap`/`low`），重庆第三天据此显示各站时刻并在 3 轮内收敛到无冲突候选。
-      验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（13 场景）、`_probe_stream` 28/28、
+      预览轨迹收敛：应用／取消／刷新失效时，客户端把「修改预览已准备，尚未应用」原地改为已应用／已取消，
+      后端「尚未应用」细节同步；中间轮次的时间预检冲突在最终候选通过后改为「已修正」，不再残留「N 项需注意」。
+      验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（14 场景，含预检冲突同轮修正）、`_probe_stream` 28/28、
       `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、chat-stream 26/26、desktop-a／mobile-shot
       与真实浏览器 CDP 探针（含冲突修复按钮请求内容）。
 - [x] **M35 Agent 强化·第一轮（知识点地图 + 注入防御统一，2026-11-15）**：`docs/AGENT_KNOWLEDGE_MAP.md`
