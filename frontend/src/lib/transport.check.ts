@@ -29,6 +29,16 @@ equal([approxSummary.known, approxSummary.approx], [1, 1]);
 const low = JSON.parse(JSON.stringify(llm)) as RouteJSON;
 low.days[0].places[0].confidence = 'low';
 ok(!transport.usable(low.days[0].places[0]));
+// 高德弱匹配但仍有具体 POI：可估算（approx），来源与置信度不升级
+const specificAmap = JSON.parse(JSON.stringify(low)) as RouteJSON;
+specificAmap.days[0].places[0].source = 'amap';
+specificAmap.days[0].places[0].poi_id = 'B0TEST';
+specificAmap.days[0].places[0].note = '【坐标待确认】';
+ok(transport.usable(specificAmap.days[0].places[0]));
+const specificEdge = transport.legs(specificAmap, 0)[0];
+specificAmap.days[0].transport![0].snapshot = { signature: transport.sign(specificEdge), options: [{ ...option, approx: true }] };
+const specificSummary = transport.summary(specificAmap, 0);
+equal([specificSummary.known, specificSummary.approx], [1, 1]);
 const savedId = visits(route)[0].id;
 const failedRefresh = JSON.parse(JSON.stringify(route)) as RouteJSON;
 failedRefresh.days[0].transport![0].snapshot!.refresh_error = '网络中断';

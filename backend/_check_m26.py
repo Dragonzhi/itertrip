@@ -78,6 +78,12 @@ async def check():
         low = {**EDGE, "from": {**P, "source": "llm", "confidence": "low", "lat": 30.6416}}
         blocked = await t.query([low], ["walk"], key="test-only-placeholder", client=client)
         assert len(calls) == before and blocked["results"][0]["options"][0]["status"] == "unknown"
+        # 高德弱匹配但仍有具体 POI：允许估算并标 approx，来源不升级
+        before = len(calls)
+        specific = {**EDGE, "from": {**P, "source": "amap", "confidence": "low", "poi_id": "B0TEST", "note": "【坐标待确认】", "lat": 30.6417}}
+        allowed = await t.query([specific], ["walk"], key="test-only-placeholder", client=client)
+        opt = allowed["results"][0]["options"][0]
+        assert len(calls) == before + 1 and opt["status"] == "ok" and opt["approx"] is True
         assert (await t.query([EDGE], ["car"], key="", client=client))["stats"]["calls"] == 0
     reset()
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"status": "0", "infocode": "10003", "info": "SECRET-key"}))) as client:

@@ -61,10 +61,13 @@
     return JSON.stringify(['amap-v3-1', edge.city, key(edge.from), key(edge.to)]);
   }
   function usable(p) {
-    // 可做估算：已核验坐标，或来源明确的模型/搜索高置信坐标（结果会标 approx）；
-    // 低置信、坐标待确认、mock、城市中心仍不可用（诚实边界不变）
+    // 可做估算：已核验坐标，或来源明确的高置信坐标（结果会标 approx）；
+    // 低置信、坐标待确认、mock、城市中心仍不可用（诚实边界不变）。
+    // 例外：高德弱匹配仍带具体 poi_id 的坐标只是名称弱，允许估算但来源/置信度不升级。
     if (root.IterTripNavigation.risk(p) === 'search') return false;
-    if (!p || p.confidence === 'low' || /坐标待确认/.test(p.note || '')) return false;
+    const specificAmap = !!(p && p.source === 'amap' && p.confidence === 'low' &&
+      typeof p.poi_id === 'string' && p.poi_id.trim() && !/mock 占位/.test(p.note || ''));
+    if (!p || (!specificAmap && (p.confidence === 'low' || /坐标待确认/.test(p.note || '')))) return false;
     return ['user', 'memory', 'amap', 'llm', 'search'].includes(p.source);
   }
   function selected(day, edge) {

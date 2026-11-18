@@ -34,13 +34,27 @@ def number(value):
         return None
 
 
-def _basic_ok(p):
+def _coords_ok(p):
     lat, lng = p.get("lat"), p.get("lng")
     if isinstance(lat, bool) or isinstance(lng, bool):
         return False
     if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
         return False
     if not math.isfinite(lat) or not math.isfinite(lng) or not (0 < lat <= 55 and 72 <= lng <= 136):
+        return False
+    return True
+
+
+def _specific_amap(p):
+    """弱名称匹配、但高德返回了具体 POI 的坐标：可以估算，但不能算已核验。"""
+    poi = p.get("poi_id")
+    return (p.get("source") == "amap" and p.get("confidence") == "low"
+            and isinstance(poi, str) and bool(poi.strip())
+            and "mock 占位" not in (p.get("note") or ""))
+
+
+def _basic_ok(p):
+    if not _coords_ok(p):
         return False
     if p.get("confidence") == "low" or "坐标待确认" in p.get("note", "") or "mock 占位" in p.get("note", ""):
         return False
@@ -56,7 +70,11 @@ def trusted(p):
 
 def queryable(p):
     """坐标足以做**估算**：未核验但来源明确的模型/搜索坐标也允许，
-    结果统一标 approx；低置信、待确认、mock、城市中心仍拒绝（诚实边界不变）。"""
+    结果统一标 approx；低置信、待确认、mock、城市中心仍拒绝（诚实边界不变）。
+    例外：高德 weak 匹配仍带具体 poi_id 的坐标只是名称弱，不是城市中心/幻觉；
+    允许估算并标 approx，来源与「坐标待确认」标注都不升级。"""
+    if _specific_amap(p):
+        return _coords_ok(p)
     return _basic_ok(p) and p.get("source") in ("user", "memory", "amap", "llm", "search")
 
 

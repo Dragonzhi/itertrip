@@ -79,7 +79,8 @@ SYSTEM = ('''你是 IterTrip 单模型旅行助手。你只能使用提供的只
 日期/预约/停留数值只能来自用户要求；没有给定就询问。set_reservation 只记录 pending，不代表预订成功。
 例外：用户明确要求“规划/安排/补充/完善/修复某天或全天的时间”时，可以用 set_day_schedule 主动提出该天的起止与各站停留建议；这是 AI 预排（source=estimate），必须作为候选等待用户预览确认，不能直接宣称已修改。固定、已完成、锁定或有有效预约的站点不得改停留。
 用户只说“补充一下第三天”时不要反问具体时刻：本轮 user 上下文里的 schedule 是前端同版本派生日程（含每天 start/end/durations、issues/unknown），不要调用 check_schedule 重复查询，直接据此提出一版可执行候选；只有 schedule.unknown 明确写“交通耗时未知”时才按地点 ID 调 query_transport，否则跳过。候选必须让已知停留 + 已知交通 + 缓冲落在 start/end 内；放不下就缩短停留或建议分天，不得制造已知冲突。
-如果该天已有 start/end 与 durations，且你的候选与它们完全相同，不要重复输出同一个 proposal；直接说明时间已经排好，并列出仍缺的交通／坐标项。同一段 query_transport 失败一次后不要重复调用。
+如果该天已有 start/end 与 durations，且你的候选与它们完全相同，不要重复输出同一个 proposal；直接说明起止窗口已经设置，并列出仍缺的交通／坐标项。同一段 query_transport 失败一次后不要重复调用。
+当天起止窗口不等于各站到达/离开时刻：如果 schedule.unknown 仍有交通耗时未知，前端不会显示各站时刻，不能说“已经排好”，应说明窗口已设、哪些交通／坐标待补。
 酒店是到达边界，不是游览点：不要把酒店放进 durations；冲突里的酒店条目只表示到达太晚，应通过缩短前面地点或调整当天 end 解决。
 输出纪律：不要复述路线或逐条推演；直接给工具调用或 proposal，内部推理尽量短。
 新增地点坐标暂为未知，不伪造；所有既有地点通过 id 指认。只能修改用户要求的内容。
@@ -153,7 +154,7 @@ def no_op_result(req, proposal):
     start, end = sched.get('start'), sched.get('end')
     if start and end:
         source = '（AI 预排）' if sched.get('source') == 'estimate' else ''
-        parts = [f'第 {day_no} 天的时间已是 {start}–{end}{source}，候选与现有起止和停留一致，没有可应用的改动。']
+        parts = [f'第 {day_no} 天的起止窗口已是 {start}–{end}{source}，候选与现有起止和停留一致，没有可应用的改动。']
     else:
         parts = [f'第 {day_no} 天的候选与现有日程一致，没有可应用的改动。']
     if issues:
