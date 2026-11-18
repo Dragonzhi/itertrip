@@ -787,7 +787,8 @@ key 经本地进程但不出用户机器；导出 HTML 注入前已转义 `</`�
       再跑一轮。glm-5.3-flash 实测从「1800 token 全花在 reasoning、空回复」变为 2 轮 34 秒产出无冲突候选。
       第三天「补充时间」实测：候选与当前预排相同时，`agent_turn.no_op_result` 说明已有起止／停留与 `schedule.unknown`，
       并点名 `confidence=low`／【坐标待确认】的地点（`query_transport` 也透出该原因）；日程算不出结束时刻时，
-      行程页状态条仍显示已配置的 `start–end` 并标「计划」。
+      行程页状态条仍显示已配置的 `start–end` 并标「计划」。工具／模型轨迹步骤改为同 id 闭合（结果覆盖「查询中／分析中」），
+      终帧不再残留 `run`；`DecisionTrace` 只在流式时显示「进行中」。
       验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（13 场景）、`_probe_stream` 28/28、
       `_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、chat-stream 26/26、desktop-a／mobile-shot
       与真实浏览器 CDP 探针（含冲突修复按钮请求内容）。
