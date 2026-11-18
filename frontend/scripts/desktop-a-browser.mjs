@@ -72,6 +72,21 @@ try{
     await new Promise(r=>setTimeout(r,200));
     const restored=await page.$eval('.dw-itinerary',e=>e.getBoundingClientRect().width);
     assert.ok(Math.abs(restored-before)<12,'拖回原宽');
+    // 右侧 AI 面板：左侧分割线同样可拖，实时跟手并持久化（上限受行程列右缘约束）
+    await page.click('[data-testid=chat-toggle]');
+    const panelBefore=await page.$eval('.dw-inspector',e=>e.getBoundingClientRect().width);
+    const ai=await (await page.$('.dw-ai-divider')).boundingBox();
+    assert.ok(ai&&ai.width>0,'右侧面板分割线可见');
+    const ay=ai.y+320;
+    await page.mouse.move(ai.x+ai.width/2,ay);
+    await page.mouse.down();
+    await page.mouse.move(ai.x+ai.width/2-80,ay,{steps:6});
+    const panelMid=await page.$eval('.dw-inspector',e=>e.getBoundingClientRect().width);
+    assert.ok(panelMid>panelBefore+50,'右侧面板拖拽实时跟手');
+    await page.mouse.up();
+    const storedPanelW=await page.evaluate(()=>JSON.parse(localStorage.getItem('itertrip:desktop-view')).panelW);
+    assert.ok(storedPanelW>panelBefore+50,'右侧面板宽度持久化');
+    await page.screenshot({path:path.join(out,'ai-resized-1440.png')});
   }
   if(width===1440){
     const clickText=async(scope,text)=>{for(const button of await page.$$(scope+' button'))if(await button.evaluate(e=>e.textContent.trim())===text){await button.click();return;}throw new Error('Missing button '+text)};

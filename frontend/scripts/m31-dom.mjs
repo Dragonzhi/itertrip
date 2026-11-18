@@ -31,6 +31,7 @@ assert.ok(document.querySelector('[data-testid=desktop-workspace]'));assert.equa
 const itinerary=()=>document.querySelector('[data-testid=desktop-itinerary]');
 const mapNode=document.querySelector('.dw-map .leaflet-container');assert.ok(mapNode);
 assert.ok(document.querySelector('.dw-dayrail')&&document.querySelector('.dw-itinerary')&&document.querySelector('.dw-divider')&&document.querySelector('.dw-map')&&document.querySelector('.dw-inspector'),'M38 底图架构：日期列/行程列/分割线/底图/面板五件套');
+assert.ok(document.querySelector('.dw-ai-divider[role=separator]'),'右侧面板也有可拖分割线');
 assert.ok(itinerary().textContent.includes('约 10 分钟'));assert.equal(itinerary().textContent.includes('查看与查询'),false,'交通段不再重复「查看与查询」按钮文案');assert.ok(itinerary().textContent.includes('待查'),'未查交通段只留安静入口');assert.ok(itinerary().textContent.includes('处时间冲突'),'M38 状态条人话化后的冲突措辞');
 assert.ok(document.querySelector('[data-testid=schedule-repair]'),'冲突状态暴露「让 AI 修复」入口');
 // M38 后续：进入规划页自动按天补默认方式交通（测试 fetch 直接失败，只验证确实发起了自动补全且不阻塞渲染）
@@ -118,6 +119,6 @@ for(const value of [1024,1280,1440,1920]){width=value;await act(async()=>{listen
 await act(async()=>{width=900;listeners.forEach(cb=>cb());});assert.equal(document.querySelector('[data-testid=desktop-workspace]'),null);assert.ok(document.querySelector('[data-testid=timeline-panel]'));
 await act(async()=>{width=1440;listeners.forEach(cb=>cb());});assert.ok(document.querySelector('[data-testid=desktop-workspace]'));
 assert.equal(JSON.stringify(saved()),original);
-assert.equal(document.querySelector('.dw-body').children.length,6); // 竖列+半圆+行程+分割线+底图+面板
+assert.equal(document.querySelector('.dw-body').children.length,7); // 竖列+半圆+行程+分割线+底图+右侧分割线+面板
 await act(async()=>root.unmount());assert.ok(observers.some(o=>o.closed),'map observer cleans up');dom.window.close();
 console.log('M31 React passed: two-column A layout, opt-in ordering, four desktop breakpoint states, stable selection/move/delete/undo/redo, traffic read-only, AI draft and single map retention, detail/edit/booking/navigation, mobile fallback, observer cleanup. Native visual acceptance recorded separately.');

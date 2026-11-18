@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode} from 'react';
 import type {RouteJSON} from '../../types/route';
 import {schedule} from '../../lib/schedule';
 import {applyUpdate, startOffline, useOffline} from '../../lib/offline';
@@ -63,7 +63,7 @@ function Toolbar({route,date,undo,redo,canUndo,canRedo,open,onHome,onJson,onHtml
 }
 
 // 桌面视图态（列宽/收起）持久化：itertrip:desktop-view
-type DesktopView={railCollapsed?:boolean; docCollapsed?:boolean; docW?:number};
+type DesktopView={railCollapsed?:boolean; docCollapsed?:boolean; docW?:number; panelW?:number};
 const loadView=():DesktopView=>{try{return JSON.parse(localStorage.getItem('itertrip:desktop-view')||'{}')||{};}catch{return {};}};
 
 // M38 第三批（用户方向稿定稿）：地图是全幅底图（永不 resize），日期列/行程列/AI 面板是浮起的一层。
@@ -78,6 +78,8 @@ export default function Workspace(props:{
   const [view,setView]=useState<DesktopView>(loadView);
   const railCollapsed=!!view.railCollapsed, docCollapsed=!!view.docCollapsed;
   const docW=Math.max(28,Math.min(58,view.docW??40));
+  // AI/辅助面板宽度：px 持久化；未拖过时沿用 CSS 的 380/340 断点默认值。
+  const panelW=typeof view.panelW==='number'?Math.max(300,Math.min(720,view.panelW)):null;
   const patchView=(p:DesktopView)=>setView(v=>{
     const n={...v,...p};
     try{localStorage.setItem('itertrip:desktop-view',JSON.stringify(n));}catch{/* 容量失败不打断布局 */}
@@ -109,9 +111,51 @@ export default function Workspace(props:{
     const up=()=>{ws?.classList.remove('dw-dragging');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
     window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
   };
+  // 右侧面板的可用宽度：以行程列分割线右缘为界，最多占满剩余空间（地图是底图，可以被面板覆盖）。
+  const panelLimit=()=>{
+    const el=bodyRef.current; if(!el)return 300;
+    const rect=el.getBoundingClientRect();
+    const divider=el.querySelector('.dw-divider') as HTMLElement|null;
+    const rail=el.querySelector('.dw-dayrail') as HTMLElement|null;
+    const left=divider&&divider.offsetParent!==null?divider.getBoundingClientRect().right:(rail?rail.getBoundingClientRect().right:rect.left);
+    return Math.min(720,Math.max(300,rect.width-(left-rect.left)-6));
+  };
+  const setPanelW=(w:number)=>{
+    const max=panelLimit(),min=Math.min(300,max);
+    patchView({panelW:Math.round(Math.max(min,Math.min(max,w)))});
+  };
+  const onAiDividerDown=(e:ReactMouseEvent)=>{
+    if((e.target as HTMLElement).closest('button'))return;
+    e.preventDefault();
+    const el=bodyRef.current; if(!el)return;
+    const ws=el.closest('.dw-workspace');
+    ws?.classList.add('dw-dragging');
+    const rect=el.getBoundingClientRect();
+    const divider=el.querySelector('.dw-divider') as HTMLElement|null;
+    const rail=el.querySelector('.dw-dayrail') as HTMLElement|null;
+    const left=divider&&divider.offsetParent!==null?divider.getBoundingClientRect().right:(rail?rail.getBoundingClientRect().right:rect.left);
+    // 上限锚定拖拽开始时的行程列右缘，避免面板变宽反过来挤压行程列（行程列自身仍有 28–58% 的约束）。
+    const max=Math.min(720,Math.max(300,rect.width-(left-rect.left)-6)),min=Math.min(300,max);
+    const move=(ev:MouseEvent)=>{
+      const w=Math.max(min,Math.min(max,rect.right-ev.clientX-6));
+      patchView({panelW:Math.round(w)});
+    };
+    const up=()=>{ws?.classList.remove('dw-dragging');window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);};
+    window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+  };
+  const onAiDividerKey=(e:ReactKeyboardEvent)=>{
+    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+    e.preventDefault();
+    const current=bodyRef.current?.querySelector('.dw-inspector')?.getBoundingClientRect().width??380;
+    setPanelW(current+(e.key==='ArrowLeft'?20:-20));
+  };
   // docW 绑定到 CSS 变量（拖拽/方向键才有真实效果）；收起时不写内联值，让 .dw-doc-collapsed 的类规则接管（内联会覆盖类）
+  const vars={
+    ...(docCollapsed?{}:{'--dw-doc-w':String(docW)}),
+    ...(panelW==null?{}:{'--dw-panel-w':`${panelW}px`}),
+  } as CSSProperties;
   return <div className={`dw-workspace${railCollapsed?' dw-rail-collapsed':''}${docCollapsed?' dw-doc-collapsed':''}`} data-testid="desktop-workspace"
-    style={docCollapsed?undefined:({'--dw-doc-w':String(docW)} as CSSProperties)}>
+    style={Object.keys(vars).length?vars:undefined}>
     <Toolbar {...props} updateBlocked={!!props.updateBlocked}/>
     <div className="dw-body" ref={bodyRef}>
       <nav className="dw-dayrail" aria-label="选择行程日期">
@@ -139,6 +183,8 @@ export default function Workspace(props:{
         <button className="dw-div-collapse" aria-expanded={!docCollapsed} aria-label={docCollapsed?'展开行程列':'收起行程列'} title={docCollapsed?'展开行程列':'收起行程列'} onClick={()=>patchView({docCollapsed:!docCollapsed})}>‹</button>
       </div>
       <section className="dw-map" aria-label="行程地图">{props.map}<div className="dw-map-caption">第{props.route.days[props.day]?.day||props.day+1}天 · 地点顺序 <span>连线不代表实际道路</span></div></section>
+      <div className="dw-ai-divider" role="separator" aria-label="调整右侧面板宽度" aria-orientation="vertical" title="拖动调整右侧面板宽度" tabIndex={0} hidden={!props.aux}
+        onMouseDown={onAiDividerDown} onKeyDown={onAiDividerKey}/>
       <aside className="dw-inspector" hidden={!props.aux} aria-label="行程辅助区" onKeyDown={e=>{if(e.key==='Escape'){close();e.stopPropagation();}}}>
         <header><h2>{props.aux?titles[props.aux]:''}</h2><button ref={closeRef} onClick={close} aria-label="收起面板" title="收起面板"><Icon name="close"/></button></header>
         <div className="dw-ai-slot" hidden={props.aux!=='ai'}>{props.ai}</div>

@@ -158,8 +158,13 @@
 .dw-map-caption { position: absolute; z-index: 500; top: 12px; left: var(--dw-left-w); max-width: calc(100% - var(--dw-left-w) - 12px); background: #FAF6F0ee; padding: 7px 10px; border: 1px solid var(--dw-line); border-radius: 5px; font-size: 12px; pointer-events: none; }
 .dw-map-caption span { color: var(--dw-muted); margin-left: 8px; }
 .dw-map .iter-pin.active { box-shadow: 0 0 0 4px #1F6B5480; }
-/* AI 面板：右缘锚定的浮层，固定宽度（380 / 1024–1439 为 340），不做宽度拖拽 */
-.dw-inspector { position: relative; z-index: 2; margin-left: auto; width: var(--dw-panel-w); flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; background: white; overflow: hidden; border-left: 1px solid var(--dw-line); box-shadow: -4px 0 16px #2b2b2812; }
+/* 右侧面板：右缘锚定的浮层，宽度默认 380（1024–1439 为 340），左侧分割线可拖 300–720，
+   上限受行程列右缘约束；用户拖过之后宽度写入 --dw-panel-w 并持久化。 */
+.dw-ai-divider { position: relative; z-index: 3; width: 6px; flex: 0 0 auto; margin-left: auto; cursor: col-resize; border-right: 1px solid var(--dw-line); }
+.dw-ai-divider::after { content: ''; position: absolute; left: 1px; top: 50%; width: 4px; height: 34px; transform: translateY(-50%); border-radius: 3px; background: #CFC5B0; opacity: .55; pointer-events: none; }
+.dw-ai-divider:hover { background: #E3EFE8; }
+.dw-ai-divider:hover::after { background: var(--dw-green); opacity: 1; }
+.dw-inspector { position: relative; z-index: 2; width: var(--dw-panel-w); max-width: calc(100% - var(--dw-left-w) - 6px); flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; background: white; overflow: hidden; box-shadow: -4px 0 16px #2b2b2812; }
 .dw-inspector > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--dw-line); min-height: 48px; flex-shrink: 0; }
 .dw-inspector > header h2 { font-size: 14px; font-weight: 600; }
 .dw-inspector > header button { border: 0; background: transparent; padding: 2px; min-height: 24px; font-size: 12px; color: var(--dw-green); }
