@@ -164,6 +164,7 @@ def scenario(name,mode,handler,body=None):
     assert frames,response.text
     result=frames[-1]
     assert result['route'] is None,'server must not claim committed route'
+    assert not any(step.get('status')=='run' for step in result.get('trace') or []),(name,result.get('trace'))
     rows.append(dict(scenario=name,passed=True,elapsed_ms=round((time.perf_counter()-start)*1000),metrics=result.get('stats',{}),proposed=bool(result.get('agent_proposal'))))
     return result,response.text
 

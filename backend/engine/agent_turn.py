@@ -284,12 +284,14 @@ async def run(req, cfg):
             calls = message.get('tool_calls') or []
             if choice.get('finish_reason') == 'length' and not content.strip() and not calls:
                 terminal_reason = '模型输出达到本轮上限（reasoning 占满输出预算）'
-                yield trace('llm', 'warn', '模型输出达到本轮上限',
-                            f'reasoning 占满了 {MAX_TOKENS} token，未生成最终 JSON；可调高 ITERTRIP_AGENT_MAX_TOKENS 或换用非推理模型。')
+                llm_step.update(status='warn', title='模型输出达到本轮上限',
+                                detail=f'reasoning 占满了 {MAX_TOKENS} token，未生成最终 JSON；可调高 ITERTRIP_AGENT_MAX_TOKENS 或换用非推理模型。')
+                yield dict(event='trace', step=llm_step)
                 break
             if not content.strip() and not calls:
                 terminal_reason = '模型没有返回最终内容'
-                yield trace('llm', 'warn', '模型没有返回最终内容', '只有推理内容或空响应；请重试或换用非推理模型。')
+                llm_step.update(status='warn', title='模型没有返回最终内容', detail='只有推理内容或空响应；请重试或换用非推理模型。')
+                yield dict(event='trace', step=llm_step)
                 break
             usage = raw.get('usage') or {}
             stats['usage_complete'] &= all(isinstance(usage.get(k), int) and not isinstance(usage.get(k), bool) and usage[k] >= 0 for k in ('prompt_tokens','completion_tokens','total_tokens'))
@@ -368,8 +370,13 @@ async def run(req, cfg):
                     raise ValueError('工具必须只有 name 和 arguments')
                 yield dict(event='stage', stage='agent-tool', label='正在查询只读资料…')
                 yield trace('tool', 'run', '查询：' + query['name'])
+                tool_step = records[-1]
                 result = await tools.run(query['name'], query['arguments'])
-                yield trace('tool', 'done' if result['status'] == 'ok' else 'warn', '查询结果：' + query['name'], result['reason'], tool_status=result['status'], **{k: result[k] for k in ('source', 'queried_at', 'http_calls', 'cached', 'elapsed_ms')})
+                # 同 id 闭合：否则终帧里这条永远停在 run，前端会一直显示「进行中」。
+                tool_step.update(status='done' if result['status'] == 'ok' else 'warn',
+                                 title='查询结果：' + query['name'], detail=result['reason'],
+                                 meta=dict(tool_status=result['status'], **{k: result[k] for k in ('source', 'queried_at', 'http_calls', 'cached', 'elapsed_ms')}))
+                yield dict(event='trace', step=tool_step)
                 output = json.dumps(result, ensure_ascii=False)
                 if len(output) > 24000:
                     output = json.dumps(dict(status='unknown', reason='工具结果超出上下文预算，请按地点分次查询'), ensure_ascii=False)

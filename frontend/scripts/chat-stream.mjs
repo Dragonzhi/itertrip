@@ -236,6 +236,7 @@ try {
   await evalIn("document.querySelector('[data-testid=stop-btn]').click(); true");
   const interrupted = await until("!!document.querySelector('[data-testid=msg-interrupted]')", 5000);
   check("点击后出现「已中断」消息", !!interrupted, "耗时 " + (Date.now() - t0) + "ms");
+  check("中断后不再显示「进行中」", !(await evalIn("document.body.innerText.includes('进行中')")));
   check("中断后 ≤1.5s 内恢复空闲", (await until("!!document.querySelector('[data-testid=send-btn]')", 1500)) ? true : false);
   check("中断不产生报错气泡", !(await evalIn(TEXT + ".includes('连接中断')")));
   check("服务端确实观察到连接断开", serverAborted);

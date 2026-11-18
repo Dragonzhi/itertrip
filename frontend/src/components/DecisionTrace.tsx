@@ -64,7 +64,8 @@ export default function DecisionTrace({ steps, live }: Props) {
   const warns = list.filter((s) => s.status === "warn" || s.status === "fail").length;
   const errs = list.filter((s) => s.status === "fail").length;
   const last = list[list.length - 1];
-  const running = list.some((s) => s.status === "run");
+  // 终帧落库的轨迹即使有未闭合的 run 步（中断/旧数据）也不再显示「进行中」。
+  const running = !!live && list.some((s) => s.status === "run");
 
   return (
     <div
