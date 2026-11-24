@@ -135,3 +135,36 @@ npx vite preview --port 4173   # 预览生产构建（记得配 VITE_API_BASE �
 - 历史行程的坏坐标可就地修（M20）：规划页「🔍 校准坐标」→ `POST /api/route/recheck`，
   按同样的高德预算/熔断规则重跑；接口无鉴权但与其它端点一致（本地优先形态，公网部署建议放在 CORS 白名单之后）
 - 提交前自检：`git grep -i "api_key|bearer" -- . ':!*.md'`
+
+## 六、服务器一键部署（Ubuntu + systemd）
+
+线上形态是单进程 C-1：`itertrip.service` 用 `uvicorn backend.main:app` 起在 `127.0.0.1:8100`，
+由 Nginx 以 `/itertrip/` 子路径反代（`proxy_pass http://127.0.0.1:8100/`）。仓库根的 `deploy.sh` 把这套流程固化：
+
+```bash
+./deploy.sh                  # 拉取 origin/main → 按变更重建前端/装依赖 → 重启 → 健康检查
+./deploy.sh --no-pull        # 不拉代码，本地改好直接上线
+./deploy.sh --force          # 没有新提交也重建前端并重启
+./deploy.sh --dry-run        # 只打印计划，不动代码不动服务
+```
+
+脚本做的事与判断依据：
+
+| 变更范围 | 动作 |
+| --- | --- |
+| `frontend/`、`shared/` | `npm run build`（`tsc -b && vite build`），产物进 `frontend/dist` |
+| `frontend/package.json` / `package-lock.json` | 先 `npm ci --no-audit --no-fund` 再构建 |
+| `backend/requirements.txt` | `python3 -m pip install -r`（Ubuntu 24.04 遇 PEP 668 自动加 `--break-system-packages`） |
+| `backend/`、`shared/`、`frontend/` 任一变动 | 重启服务（后端从 `frontend/dist` 供静态资源，产物换了必须换进程） |
+
+可靠性约定：
+
+- **只做快进合并**（`git merge --ff-only`）。本地有未推提交或有冲突改动时脚本直接失败并说明原因，不替你 merge。
+- **构建失败不重启**：前端构建或 pip 失败即中止，旧进程继续对外服务。
+- **重启降级链**：非交互 systemctl 重启 → 直接 systemctl 重启 → 杀掉主进程靠 `Restart=always` 拉起。
+- **健康检查**：轮询 `http://127.0.0.1:8100/api/health`（最多 60 秒），再验本地首页 200；
+  设 `ITERTRIP_PUBLIC_URL=https://dragonzhi.xyz/itertrip/` 可顺带验公网与 Nginx 反代。
+- **GitHub 慢**：本机到 GitHub 常年 20~30 KB/s，fetch 单次给 10 分钟并重试 3 次，失败会明确报错而不是悄悄跳过。
+
+可覆盖的环境变量：`ITERTRIP_SERVICE`（默认 `itertrip`）、`ITERTRIP_PORT`（默认 `8100`）、
+`ITERTRIP_BRANCH`（默认 `main`）、`ITERTRIP_PUBLIC_URL`（默认不校验公网）。

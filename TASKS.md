@@ -2,7 +2,7 @@
 
 status: 进行中
 next: M39 + Agent 对话前端（执行收据 + 展开时间线）已落地；等用户真实使用一轮反馈；M36 legacy 收敛 / M37 LLM-as-judge / MCP / CI 继续挂起；真机回归与盲审 4 条继续挂起
-updated: 2026-11-18
+updated: 2026-11-24
 
 ## 待办
 
@@ -18,6 +18,8 @@ updated: 2026-11-18
 （无）
 
 ## 已完成
+
+- [x] 部署脚本 `deploy.sh`：把线上手工流程固化为一条命令（拉取→按变更重建前端/装依赖→重启→健康检查）。判断依据按变更范围分流（`frontend/`+`shared/` 重建、lock 变动先 `npm ci`、`requirements.txt` 变动才 pip）；只做 `--ff-only` 快进、有本地未推提交直接失败；构建失败不重启（旧进程继续服务）；重启走 `非交互 systemctl → systemctl → kill 主进程靠 Restart=always` 三级降级；健康检查轮询 `/api/health` 60 秒 + 本地首页 200，可加 `ITERTRIP_PUBLIC_URL` 顺带验公网反代；fetch 因 GitHub 常年 20~30 KB/s 设 10 分钟超时并重试 3 次。支持 `--no-pull` / `--force` / `--dry-run`。DEPLOY.md 新增第六章说明。实测：`--dry-run --force` 计划正确、`--force` 全流程跑通（sudo 重启 + 本地与公网双 200）（2026-11-24）
 
 - [x] M39 后续 · Agent 对话前端（用户选定 A+B）：新增 `frontend/src/lib/agentTrace.ts`（轨迹用户语言/状态推断/逐 action 行/改动计数）与 `components/AgentReceipt.tsx`（默认一行「执行收据」，展开为时间线，技术统计只在展开层）；Agent 轨迹不再用 `DecisionTrace`，非 Agent 路径保持原样。`AgentPreview` 改为逐 action 显示 before → after（`set_day_schedule` 未变化的停留不重复列），`agent_evidence` 折叠为「依据」，`candidate.unknown` 金色摘要常驻；提案卡移出助手气泡；`agentProposal`/`agentCounts` 随消息持久化。`set_day_schedule` 未变化的停留不再重写 `duration_source`（`agent_ops.py` + `shared/agent.js` 同构），避免「AI 重申现有 75 分钟」制造假变更。验证：`agentTrace.check` 28 项、tsc/build、m30-dom 两种尺寸、m31-dom、真实浏览器 1440/390 收据展开/应用全流程（2026-11-18）
 - [x] M39 AI 预排时间 + Agent 日程 + 核验流式 + 坐标链审查：首次生成由 `engine/schedule_defaults.py` 补默认起止/停留（全标 `estimate`，`shared/schedule.js` 用 `caveats` 软提示，不再算「信息不全」），行程页提示「AI 预排，可调整」；Agent 新增 `set_day_schedule(day,start,end,durations,source)`，用户只说「规划第二天时间」可提议但必须预览，固定/预约/已完成点不覆盖；编辑模式坐标核验改为逐点 trace 实时下发（`_enrich_coordinates(on_record=…)` + 双通道队列），`stage:done` 移到坐标/facts/二次校验之后，facts/verify/changed=false 兜底都有进度；坐标链修回显降级（id 优先 + ~11m 容差）、自然景区类型误判、弱匹配「核验一致」文案、预算/缓存顺序、占位酒店与同名酒店去重、复合目的地解析；`AGENTS.md §10.1` 新增强制同步清单。验证：`_check_coords` 26 项、`_check_m27`、`_check_m30`（11 场景）、`_probe_stream` 27/27、`_check_injection`、tsc/build、m30-core/m30-dom/m31-dom、desktop-a/mobile-shot、真实浏览器 CDP（预排提示、Agent 预览应用、逐点 trace 先于 reply）（2026-11-17）
